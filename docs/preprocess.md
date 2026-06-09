@@ -7,11 +7,13 @@ This page describes the current preprocessing flow used by LISAI.
 Run preprocessing with either of these commands:
 
 ```powershell
-lisai preprocess preprocess
-python src/scripts/preprocess/preprocess.py configs/preprocess/preprocess.yml
+lisai preprocess single
+lisai preprocess configs/preprocess/single.yml
 ```
 
 The CLI resolves short config names from `configs/preprocess/` in the same way `lisai train ...` resolves training configs.
+
+Tracked example configs are `single.yml`, `mltpl_snr.yml`, and `timelapse.yml`.
 
 ## Flow
 
@@ -56,6 +58,8 @@ The preprocess config supports three split modes:
 - `random`: deterministic random split using a seed and val/test fractions
 - `manual`: assign items explicitly by `source_name`, `source_relpath`, or `sample_id`
 - `reuse`: copy assignments from a previous preprocess manifest
+
+Current pipeline names are registered in `src/lisai/preprocess/pipelines/__init__.py`: `single_recon`, `recon_mltpl_snr`, and `recon_timelapse_simple`.
 
 ## Outputs
 

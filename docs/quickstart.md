@@ -24,29 +24,41 @@ Install the package in editable mode:
 pip install -e . --no-deps
 ```
 
+## Local Data Root
+
+LISAI resolves datasets, saved runs, inference outputs, and noise models from a local data root. Create `configs/local_config.yml` on your machine:
+
+```yaml
+infrastructure:
+  data_root: "D:/path/to/lisai-data"
+```
+
+This file is intentionally ignored by Git. If it is missing, the first CLI command prompts for a data root and writes the file.
+
 ## Smoke Test
 
 Check that the CLI is available:
 
 ```powershell
+lisai --help
 lisai train --help
 ```
 
 ## Training
 
-Run a config from `configs/experiments` by name:
+Run a public example config from `configs/training/examples`:
 
 ```powershell
-lisai train hdn_training
+lisai train examples/vim_denoising_unet
 ```
 
 You can also pass an explicit file path:
 
 ```powershell
-lisai train configs/experiments/hdn_training.yml
+lisai train configs/training/examples/vim_denoising_unet.yml
 ```
 
-Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder.
+Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Example configs assume the referenced datasets already exist under your configured data root.
 
 ## Evaluation
 
@@ -68,8 +80,11 @@ experiment name when it can be resolved unambiguously.
 Run preprocessing from a YAML config:
 
 ```powershell
-python src/scripts/preprocess/preprocess.py path/to/preprocess.yml
+lisai preprocess single
+lisai preprocess configs/preprocess/single.yml
 ```
+
+Tracked preprocess examples are available in `configs/preprocess/`. They assume the corresponding dataset dump folders already exist under your configured data root.
 
 ## Where To Look Next
 

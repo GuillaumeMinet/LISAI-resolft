@@ -18,15 +18,16 @@ This page describes the current production architecture under `src/lisai/**`.
 1. [`run_apply_model`](../src/lisai/evaluation/run_apply_model.py) and [`run_evaluate`](../src/lisai/evaluation/run_evaluate.py) are the entrypoints.
 2. [`load_saved_run`](../src/lisai/evaluation/saved_run.py) turns a saved `config_train.yaml` into `SavedTrainingRun`.
 3. [`initialize_runtime`](../src/lisai/evaluation/runtime.py) loads the model checkpoint into `InferenceRuntime`.
-4. [`build_eval_loader`](../src/lisai/evaluation/data.py) rebuilds a test loader when dataset-based evaluation is needed.
+4. [`build_eval_source`](../src/lisai/evaluation/data.py) rebuilds an evaluation sample source when dataset-based evaluation is needed.
 5. [`src/lisai/evaluation/inference/**`](../src/lisai/evaluation/inference) performs inference, and [`src/lisai/evaluation/io.py`](../src/lisai/evaluation/io.py) saves outputs.
 
 ### Preprocess
 
-1. [`src/scripts/preprocess/preprocess.py`](../src/scripts/preprocess/preprocess.py) is the entry script.
-2. [`PreprocessRun`](../src/lisai/data/preprocess/run_preprocess.py) orchestrates preprocessing.
-3. Pipelines under [`src/lisai/data/preprocess/pipelines/**`](../src/lisai/data/preprocess/pipelines) define the actual dataset transformation logic.
-4. The dataset registry is updated after a successful run.
+1. `lisai preprocess ...` is registered by [`src/lisai/cli.py`](../src/lisai/cli.py) through [`src/lisai/preprocess/cli.py`](../src/lisai/preprocess/cli.py).
+2. [`run_preprocess_config`](../src/lisai/preprocess/cli.py) loads the YAML config and builds `PreprocessRun`.
+3. [`PreprocessRun`](../src/lisai/preprocess/run_preprocess.py) orchestrates preprocessing.
+4. Pipelines under [`src/lisai/preprocess/pipelines/**`](../src/lisai/preprocess/pipelines) define dataset transformation logic.
+5. The dataset registry is updated after a successful run.
 
 ## Core Boundaries
 
@@ -44,16 +45,21 @@ This page describes the current production architecture under `src/lisai/**`.
   Live evaluation resources only.
 - `Paths` in [`src/lisai/infra/paths/paths.py`](../src/lisai/infra/paths/paths.py)
   Canonical filesystem/path API.
+- `PreprocessRun` in [`src/lisai/preprocess/run_preprocess.py`](../src/lisai/preprocess/run_preprocess.py)
+  Preprocessing orchestration boundary.
 
 ## Directory Responsibilities
 
 - `src/lisai/config/**`: config loading, validation, settings, schema
-- `src/lisai/infra/paths/**`: canonical path resolution
+- `src/lisai/infra/**`: canonical path resolution, filesystem helpers, logging
 - `src/lisai/training/**`: training orchestration, setup, trainers, checkpointing
 - `src/lisai/models/**`: model registry and load/build logic
-- `src/lisai/data/**`: data loading and preprocessing
+- `src/lisai/data/**`: data loading, data utilities, split manifests, noise-model helpers
+- `src/lisai/preprocess/**`: preprocessing configs, pipelines, splitting, saving, and registry updates
 - `src/lisai/evaluation/**`: saved-run loading, evaluation runtime, inference, metrics, output IO
-- `src/scripts/**`: convenience entry scripts
+- `src/lisai/runs/**`: run metadata, discovery, selectors, lifecycle tracking, loss plotting
+- `src/lisai/lib/**`: bundled model/library support code used by LISAI models
+- `src/scripts/**`: schema generation and legacy import helper scripts
 
 ## Rule of Thumb
 

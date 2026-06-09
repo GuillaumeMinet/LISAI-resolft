@@ -19,6 +19,7 @@ lisai runs list
 lisai runs list --dataset Gag
 lisai runs list --exp-name upsamp
 lisai runs list --run-dir my_model_00
+lisai runs list --status running
 lisai runs list --full
 ```
 
@@ -54,7 +55,7 @@ If the model subfolder is nested, include all subfolder parts:
 lisai runs open Gag/Upsamp_base/SubA/my_model_00
 ```
 
-Do not combine this form with `--dataset` or `--subfolder`; the selector already contains that information.
+Do not combine this form with `--dataset`, `--model-subfolder`, or its aliases; the selector already contains that information.
 
 ### Run Directory Name
 
@@ -69,8 +70,10 @@ lisai continue my_model_00 --yes
 You can add filters if the same run folder exists in multiple datasets or subfolders:
 
 ```powershell
-lisai runs open my_model_00 --dataset Gag --subfolder Upsamp
+lisai runs open my_model_00 --dataset Gag --model-subfolder Upsamp
 ```
+
+`--subfolder` and `--models-subfolder` are accepted aliases for `--model-subfolder`.
 
 ### Partial Experiment Name
 
@@ -94,7 +97,7 @@ Multiple matching runs found:
 Select run number from '#' (for example 01), or press Enter to cancel:
 ```
 
-In non-interactive contexts, LISAI cannot ask you to choose. It returns an error and suggests using `--dataset`, `--subfolder`, or `--run-id`.
+In non-interactive contexts, LISAI cannot ask you to choose. It returns an error and suggests using `--dataset`, `--model-subfolder`/`--subfolder`, or `--run-id`.
 
 ## Common Workflows
 

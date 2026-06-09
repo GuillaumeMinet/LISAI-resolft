@@ -21,8 +21,10 @@ Inside a run folder, `Paths` also resolves the standard artifacts:
 - `config_train.yaml`: `Paths.cfg_train_path(...)`
 - training log: `Paths.log_file_path(...)`
 - loss file: `Paths.loss_file_path(...)`
+- loss plot: `Paths.loss_plot_path(...)`
 - checkpoints folder: `Paths.checkpoints_dir(...)`
 - validation images folder: `Paths.validation_images_dir(...)`
+- split manifest: `Paths.split_manifest_path(...)`
 - retrain origin folder: `Paths.retrain_origin_dir(...)`
 
 ## Preprocess Layout
