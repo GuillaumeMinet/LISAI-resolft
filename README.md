@@ -9,12 +9,11 @@ This repository contains the code associated with our preprint:
 This project implements a deep learning framework to enhance RESOLFT (Reversible Saturable Optical Fluorescence Transitions) time-lapse nanoscopy.  More specifically, we use the parallelized RESOLFT implementation **MoNaLISA** together with both denoising and up-sampling approaches to enable **prolonged imaging**, or a **4-fold speed improvement**, pushing the boundaries of **live-cell nanoscopy**.
 
 
-# PACKAGE OVERVIEW
+# Package overview
 
-More generally, LISAI is a Python package for microscopy image restoration workflows: dataset preprocessing,
+LISAI is the Python package implementing the full image restoration workflow: dataset preprocessing,
 model training, run tracking, evaluation, and applying trained models to image files. The current
-codebase is centered on YAML-driven command line workflows and the production package under
-`src/lisai`.
+codebase is centered on YAML-driven command line workflows and the package under `src/lisai`.
 
 The main supported tasks are denoising and upsampling, with configuration examples for U-Net,
 UNet-RCAN, RCAN, and LVAE/HDN-style models.
