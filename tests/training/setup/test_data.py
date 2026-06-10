@@ -1,14 +1,28 @@
 from __future__ import annotations
 
-from pathlib import Path
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import lisai.training.setup.data as data_mod
+from lisai.preprocess.core.dataset_registry import DatasetRegistry
 
 
+def _write_preprocess_registry_entry(registry_path: Path, *, dataset_name: str, data_format: str) -> None:
+    registry = DatasetRegistry(registry_path)
+    registry.update_after_preprocess(
+        dataset_name=dataset_name,
+        data_type="recon",
+        data_format=data_format,
+        structure=["inp"],
+        result=SimpleNamespace(n_files=1, n_frames=None, snr_levels=None),
+        split_summary={"counts": {"train": 1, "val": 0, "test": 0}},
+    )
+    registry.data[dataset_name]["shape"] = [1, 2, 3]
+    registry.save()
 
-def test_prepare_data_returns_prepared_training_data(monkeypatch):
+
+def test_prepare_data_returns_prepared_training_data(monkeypatch, tmp_path: Path):
     resolved_kwargs = {}
 
     def fake_resolved(**kwargs):
@@ -21,14 +35,15 @@ def test_prepare_data_returns_prepared_training_data(monkeypatch):
         data=SimpleNamespace(dataset_name="demo", resolved=fake_resolved),
         routing=SimpleNamespace(data_subfolder="raw"),
     )
+    registry_path = tmp_path / "dataset_registry.yml"
+    _write_preprocess_registry_entry(registry_path, dataset_name="demo", data_format="single")
     runtime = SimpleNamespace(
         paths=SimpleNamespace(
             dataset_dir=lambda dataset_name, data_subfolder: Path("/tmp/data"),
-            dataset_registry_path=lambda: Path("/tmp/registry.yaml"),
+            dataset_registry_path=lambda: registry_path,
         )
     )
 
-    monkeypatch.setattr(data_mod, "load_yaml", lambda path: {"demo": {"shape": [1, 2, 3]}})
     monkeypatch.setattr(
         data_mod,
         "make_training_loaders",
@@ -53,7 +68,14 @@ def test_prepare_data_returns_prepared_training_data(monkeypatch):
     assert resolved_kwargs == {
         "data_dir": Path("/tmp/data"),
         "norm_prm": {"mean": 1.0},
-        "dataset_info": {"shape": [1, 2, 3]},
+        "dataset_info": {
+            "data_format": "single",
+            "for_training": True,
+            "size": {"recon": {"n_files": 1}},
+            "split": {"recon": {"counts": {"train": 1, "val": 0, "test": 0}}},
+            "structure": {"recon": ["inp"]},
+            "shape": [1, 2, 3],
+        },
         "volumetric": False,
     }
 
@@ -85,7 +107,6 @@ def test_prepare_data_uses_noise_model_metadata_for_lvae(monkeypatch):
         return {"mean": 3.0}
 
     monkeypatch.setattr(data_mod, "resolve_noise_model_metadata", fake_resolve_noise_model_metadata)
-    monkeypatch.setattr(data_mod, "load_yaml", lambda path: {})
     monkeypatch.setattr(
         data_mod,
         "make_training_loaders",
@@ -138,7 +159,6 @@ def test_prepare_data_reuses_origin_manifest_for_continue(monkeypatch, tmp_path:
         captured["split_manifest"] = split_manifest
         return "train_loader", "val_loader", None, None, split_manifest
 
-    monkeypatch.setattr(data_mod, "load_yaml", lambda path: {})
     monkeypatch.setattr(data_mod, "make_training_loaders", fake_make_training_loaders)
 
     prepared = data_mod.prepare_data(cfg, runtime)
@@ -172,8 +192,6 @@ def test_prepare_data_errors_when_retrain_reuse_manifest_is_missing(monkeypatch,
             split_manifest_path=lambda run_dir: Path(run_dir) / "split_manifest.json",
         ),
     )
-
-    monkeypatch.setattr(data_mod, "load_yaml", lambda path: {})
 
     try:
         data_mod.prepare_data(cfg, runtime)
@@ -211,7 +229,6 @@ def test_prepare_data_creates_new_manifest_for_retrain_new_policy(monkeypatch, t
         captured["split_manifest"] = split_manifest
         return "train_loader", "val_loader", None, None, created_manifest
 
-    monkeypatch.setattr(data_mod, "load_yaml", lambda path: {})
     monkeypatch.setattr(data_mod, "make_training_loaders", fake_make_training_loaders)
 
     prepared = data_mod.prepare_data(cfg, runtime)

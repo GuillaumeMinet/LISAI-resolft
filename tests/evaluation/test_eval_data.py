@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from tifffile import imwrite
@@ -8,6 +9,7 @@ from tifffile import imwrite
 import lisai.evaluation.data as data_mod
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.models.params import UNetParams
+from lisai.preprocess.core.dataset_registry import DatasetRegistry
 
 
 class FakePaths:
@@ -18,8 +20,20 @@ class FakePaths:
         return self.root / dataset_name / data_subfolder
 
     def dataset_registry_path(self):
-        return Path('/registry.yaml')
+        return self.root / 'dataset_registry.yml'
 
+
+def _write_preprocess_registry_entry(registry_path: Path, *, dataset_name: str, data_format: str) -> None:
+    registry = DatasetRegistry(registry_path)
+    registry.update_after_preprocess(
+        dataset_name=dataset_name,
+        data_type='recon',
+        data_format=data_format,
+        structure=['inp'],
+        result=SimpleNamespace(n_files=1, n_frames=None, snr_levels=None),
+        split_summary={'counts': {'train': 1, 'val': 0, 'test': 0}},
+    )
+    registry.save()
 
 
 def _make_saved_run(data_cfg: dict | None = None, split_manifest: dict | None = None) -> SavedTrainingRun:
@@ -64,9 +78,13 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
     gt_dir.mkdir(parents=True)
     imwrite(inp_dir / 'img_a.tif', np.ones((4, 5), dtype=np.float32) * 3)
     imwrite(gt_dir / 'img_a.tif', np.ones((4, 5), dtype=np.float32))
+    _write_preprocess_registry_entry(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        data_format='single',
+    )
 
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
-    monkeypatch.setattr(data_mod, 'load_yaml', lambda path: {'dataset_a': {'data_format': 'single'}})
 
     source = data_mod.build_eval_source(
         saved_run,
@@ -79,7 +97,7 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
     assert isinstance(source, data_mod.EvalSampleSource)
     cfg = source.config
     assert cfg.data_dir == data_dir
-    assert cfg.dataset_info == {'data_format': 'single'}
+    assert cfg.dataset_info['data_format'] == 'single'
     assert cfg.target == 'gt_folder'
     assert cfg.initial_crop == 32
     assert cfg.split == 'val'
@@ -112,7 +130,11 @@ def test_build_eval_source_streams_mixed_size_inputs(monkeypatch, tmp_path: Path
     imwrite(inp_dir / 'a_small.tif', np.ones((3, 4), dtype=np.float32))
     imwrite(inp_dir / 'b_large.tif', np.ones((5, 7), dtype=np.float32))
 
-    monkeypatch.setattr(data_mod, 'load_yaml', lambda path: {'dataset_a': {'data_format': 'single'}})
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'single'},
+    )
 
     source = data_mod.build_eval_source(
         saved_run,
@@ -151,7 +173,11 @@ def test_build_eval_source_uses_split_manifest(monkeypatch, tmp_path: Path):
     imwrite(dump_dir / 'val_a.tif', np.ones((4, 5), dtype=np.float32))
     imwrite(dump_dir / 'test_a.tif', np.ones((5, 6), dtype=np.float32))
 
-    monkeypatch.setattr(data_mod, 'load_yaml', lambda path: {'dataset_a': {'data_format': 'single'}})
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'single'},
+    )
 
     source = data_mod.build_eval_source(
         saved_run,
@@ -179,7 +205,11 @@ def test_eval_source_keeps_timelapse_item_and_time_indices(monkeypatch, tmp_path
     stack = np.arange(5, dtype=np.float32)[:, None, None] * np.ones((5, 4, 5), dtype=np.float32)
     imwrite(inp_dir / 'stack_a.tif', stack)
 
-    monkeypatch.setattr(data_mod, 'load_yaml', lambda path: {'dataset_a': {'data_format': 'timelapse'}})
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'timelapse'},
+    )
 
     source = data_mod.build_eval_source(
         saved_run,

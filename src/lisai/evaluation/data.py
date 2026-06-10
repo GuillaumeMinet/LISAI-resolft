@@ -14,12 +14,13 @@ from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
 import torch
-from lisai.config import load_yaml, settings
+from lisai.config import settings
 from lisai.config.io import deep_merge
 from lisai.config.models.training import DataSection
 from lisai.data.data_loaders.dataset_io import load_image
 from lisai.data.data_loaders.split_manifest import manifest_split_entries
 from lisai.data.data_loaders.transforms import apply_additional_transforms, apply_inp_transformations
+from lisai.data.dataset_registry import load_dataset_info
 from lisai.data.utils import crop_center, make_pair_4d
 from lisai.infra.paths import Paths
 from lisai.lib.upsamp.artificial_movement import apply_movement
@@ -219,15 +220,7 @@ def resolve_dataset_info(dataset_name: str | None) -> dict[str, Any] | None:
         return None
 
     paths = Paths(settings)
-    try:
-        registry = load_yaml(paths.dataset_registry_path())
-    except FileNotFoundError:
-        return None
-
-    info = registry.get(dataset_name)
-    if isinstance(info, Mapping):
-        return dict(info)
-    return None
+    return load_dataset_info(paths.dataset_registry_path(), dataset_name)
 
 
 def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, Any]) -> Path | None:

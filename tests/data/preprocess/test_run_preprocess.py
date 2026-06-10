@@ -122,6 +122,8 @@ def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
     }
 
     registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["data_format"] == "single"
+    assert "format" not in registry[dataset_name]
     assert registry[dataset_name]["split"]["recon"]["counts"] == {"train": 1, "val": 1, "test": 1}
     assert "train" not in registry[dataset_name]["split"]["recon"]
 

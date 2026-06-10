@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from lisai.config.io.yaml import load_yaml, save_yaml
+from lisai.data.dataset_registry import load_dataset_registry, save_dataset_registry
 
 
 class PipelineResultLike(Protocol):
@@ -20,29 +20,16 @@ class DatasetRegistry:
 
     def __post_init__(self):
         self.path = Path(self.path)
-        raw = load_yaml(self.path) if self.path.exists() else {}
-        self.data = self._normalize_registry_data(raw)
-
-    @staticmethod
-    def _normalize_registry_data(raw: dict[str, Any]) -> dict[str, Any]:
-        if not isinstance(raw, dict):
-            return {}
-
-        normalized = dict(raw)
-        nested = normalized.pop("datasets", None)
-        if isinstance(nested, dict):
-            for dataset_name, dataset_value in nested.items():
-                normalized.setdefault(dataset_name, dataset_value)
-        return normalized
+        self.data = load_dataset_registry(self.path)
 
     def save(self) -> None:
-        save_yaml(self.data or {}, self.path)
+        save_dataset_registry(self.data or {}, self.path)
 
     def ensure_dataset(self, dataset_name: str) -> dict[str, Any]:
         datasets = self.data
         if dataset_name not in datasets:
             datasets[dataset_name] = {
-                "format": None,
+                "data_format": None,
                 "for_training": True,
                 "size": {},
                 "split": {},
@@ -63,7 +50,7 @@ class DatasetRegistry:
         ds = self.ensure_dataset(dataset_name)
 
         if data_format is not None:
-            ds["format"] = data_format
+            ds["data_format"] = data_format
 
         ds.setdefault("size", {})
         ds.setdefault("structure", {})
