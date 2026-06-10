@@ -4,11 +4,12 @@ from copy import deepcopy
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .merge import deep_merge
-from ..models import ContinueTrainingConfig, ExperimentConfig, ResolvedExperiment, RetrainConfig
-from .yaml import load_yaml
-
 from lisai.runs.io import read_run_metadata
+
+from ..models import ContinueTrainingConfig, ExperimentConfig, ResolvedExperiment, RetrainConfig
+from .merge import deep_merge
+from .metadata import split_config_metadata
+from .yaml import load_yaml
 
 if TYPE_CHECKING:
     from lisai.infra.paths import Paths
@@ -268,7 +269,14 @@ def _resolve_loaded_config(
     data_cfg = stg.data_cfg.model_dump(mode="python")
     paths = Paths(stg)
 
-    # save experiment config 
+    # save experiment config
+    exp_cfg, metadata = split_config_metadata(exp_cfg)
+    if metadata is not None and metadata.get("kind") == "template":
+        raise ValueError("Training templates must be instantiated before they can be resolved or trained.")
+    changeme_paths = _changeme_paths(exp_cfg)
+    if changeme_paths:
+        joined = ", ".join(changeme_paths)
+        raise ValueError(f"Training config still contains CHANGEME placeholder(s): {joined}")
     exp_cfg = deepcopy(exp_cfg)
     
     # mode normalization and validation of experiment config
@@ -334,6 +342,23 @@ def resolve_config_dict(
         raise TypeError("experiment_cfg must be a dictionary")
 
     return _resolve_loaded_config(experiment_cfg, stg=stg)
+
+
+def _changeme_paths(value, *, path: str = "") -> list[str]:
+    if isinstance(value, dict):
+        out: list[str] = []
+        for key, item in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            out.extend(_changeme_paths(item, path=child_path))
+        return out
+    if isinstance(value, list):
+        out: list[str] = []
+        for index, item in enumerate(value):
+            out.extend(_changeme_paths(item, path=f"{path}[{index}]"))
+        return out
+    if value == "CHANGEME":
+        return [path or "<root>"]
+    return []
 
 def prune_config_for_saving(cfg: ResolvedExperiment) -> dict:
     out = cfg.model_dump(exclude_none=True)

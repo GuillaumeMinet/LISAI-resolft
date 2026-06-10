@@ -9,9 +9,11 @@ from lisai.config import load_yaml
 from lisai.config.json_schema import (
     continue_training_json_schema,
     experiment_json_schema,
+    experiment_template_json_schema,
     retrain_json_schema,
     write_continue_training_json_schema,
     write_experiment_json_schema,
+    write_experiment_template_json_schema,
     write_retrain_json_schema,
 )
 from lisai.config.models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
@@ -53,6 +55,7 @@ def test_experiment_json_schema_describes_train_authoring_shape_only():
 
     data_ref = schema["properties"]["data"]["$ref"].split("/")[-1]
     data_properties = schema["$defs"][data_ref]["properties"]
+    assert "metadata" in schema["properties"]
     assert "data_dir" not in data_properties
     assert "dataset_info" not in data_properties
     assert "volumetric" not in data_properties
@@ -95,6 +98,11 @@ def test_retrain_json_schema_exposes_transfer_learning_roots_but_not_model():
 def test_write_training_json_schemas_write_json_files(tmp_path: Path):
     outputs = [
         (write_experiment_json_schema, tmp_path / "experiment.schema.json", "ExperimentConfig"),
+        (
+            write_experiment_template_json_schema,
+            tmp_path / "experiment-template.schema.json",
+            "ExperimentTemplateConfig",
+        ),
         (write_continue_training_json_schema, tmp_path / "continue_training.schema.json", "ContinueTrainingConfig"),
         (write_retrain_json_schema, tmp_path / "retrain.schema.json", "RetrainConfig"),
     ]
@@ -116,3 +124,14 @@ def test_training_schema_exposes_new_controls_and_deprecates_val_loss_patience()
     assert "debug_stop" in training_properties
     assert "val_loss_patience" in training_properties
     assert training_properties["val_loss_patience"].get("deprecated") is True
+
+
+def test_experiment_template_schema_allows_placeholders():
+    schema = experiment_template_json_schema()
+
+    assert schema["title"] == "ExperimentTemplateConfig"
+    assert "metadata" in schema["properties"]
+    experiment_ref = schema["properties"]["experiment"]["$ref"].split("/")[-1]
+    exp_name_schema = schema["$defs"][experiment_ref]["properties"]["exp_name"]
+    assert "anyOf" in exp_name_schema
+    assert any(item.get("pattern") for item in exp_name_schema["anyOf"])

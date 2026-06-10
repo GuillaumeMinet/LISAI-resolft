@@ -46,9 +46,38 @@ lisai train --help
 
 ## Training
 
-Run a public example config from `configs/training/examples`:
+List available training configs:
 
 ```powershell
+lisai configs list
+lisai configs list --kind preset
+```
+
+Create a local editable config from a preset:
+
+```powershell
+lisai configs new denoising_hdn_unsup --name my_hdn
+# or to specify the configs subfolder:
+lisai configs new denoising_hdn_unsup --output local/my_hdn
+
+
+# Edit configs/training/local/my_hdn.yml and replace CHANGEME values.
+lisai configs validate local/my_hdn
+lisai configs resolve local/my_hdn
+```
+
+To start from the generic base template instead:
+
+```powershell
+lisai configs new --custom --name my_experiment --output local/my_experiment
+```
+
+If `configs new` warns about `CHANGEME`, those fields must be edited before `configs validate` or `train` can succeed.
+
+Run a local config or a public example config:
+
+```powershell
+lisai train local/my_hdn
 lisai train examples/vim_denoising_unet
 ```
 
@@ -58,7 +87,7 @@ You can also pass an explicit file path:
 lisai train configs/training/examples/vim_denoising_unet.yml
 ```
 
-Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Example configs assume the referenced datasets already exist under your configured data root.
+Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into `configs/training/local/` before training. Example configs assume the referenced datasets already exist under your configured data root.
 
 ## Evaluation
 

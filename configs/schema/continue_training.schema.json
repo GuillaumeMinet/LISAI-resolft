@@ -492,6 +492,36 @@
     "recovery": {
       "$ref": "#/$defs/RecoveryConfig",
       "description": "Recovery behavior for safe resume on continue_training."
+    },
+    "metadata": {
+      "type": "object",
+      "title": "ConfigMetadata",
+      "description": "Catalog metadata used by `lisai configs`; stripped before runtime validation.",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "preset",
+            "template",
+            "example",
+            "local"
+          ],
+          "description": "Config catalog kind."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable config name."
+        },
+        "task": {
+          "type": "string",
+          "description": "Associated training task name."
+        },
+        "description": {
+          "type": "string",
+          "description": "Short catalog description."
+        }
+      }
     }
   },
   "required": [

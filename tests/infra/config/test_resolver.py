@@ -13,6 +13,7 @@ from lisai.infra.paths import Paths
 from lisai.runs.io import write_run_metadata_atomic
 from lisai.runs.schema import RunMetadata
 
+
 def _failed_run_metadata_payload(run_dir: Path, *, checkpoint_name: str | None = None) -> dict:
     return {
         "schema_version": 2,
@@ -54,6 +55,46 @@ def test_resolve_config_train_mode_forbids_load_model_section(tmp_path: Path):
 
     with pytest.raises(ValidationError, match="load_model"):
         resolve_config(experiment_cfg_path=exp_cfg)
+
+
+def test_resolve_config_dict_strips_catalog_metadata():
+    cfg = resolve_config_dict(
+        {
+            "metadata": {
+                "kind": "example",
+                "name": "metadata_smoke",
+                "description": "Catalog metadata is not part of the training schema.",
+            },
+            "experiment": {"mode": "train", "exp_name": "metadata_smoke"},
+            "data": {"dataset_name": "ds_metadata"},
+            "model": {"architecture": "unet", "parameters": {}},
+        }
+    )
+
+    assert cfg.experiment.exp_name == "metadata_smoke"
+    assert cfg.data.dataset_name == "ds_metadata"
+
+
+def test_resolve_config_dict_refuses_template_metadata():
+    with pytest.raises(ValueError, match="templates must be instantiated"):
+        resolve_config_dict(
+            {
+                "metadata": {"kind": "template", "name": "base"},
+                "experiment": {"mode": "train", "exp_name": "template"},
+                "data": {"dataset_name": "ds_template"},
+            }
+        )
+
+
+def test_resolve_config_dict_refuses_changeme_placeholders():
+    with pytest.raises(ValueError, match="data.dataset_name"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "exp"},
+                "data": {"dataset_name": "CHANGEME"},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
 
 
 

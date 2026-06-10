@@ -100,6 +100,22 @@ lisai train configs/training/examples/vim_denoising_unet.yml
 Example training configs assume that the referenced preprocessed datasets already exist under your
 configured data root.
 
+Create a local editable training config from a preset:
+
+```bash
+lisai configs list --kind preset
+lisai configs new denoising_hdn_unsup --output local/my_hdn
+# Edit configs/training/local/my_hdn.yml and replace CHANGEME values.
+lisai configs validate local/my_hdn
+lisai train local/my_hdn
+```
+
+To start from the generic base template instead of a preset:
+
+```bash
+lisai configs new --custom --name my_experiment --output local/my_experiment
+```
+
 Inspect and manage saved runs:
 
 ```bash
@@ -134,6 +150,8 @@ All main workflows are configured with YAML files:
 - `configs/project_config.yml`: project-level path templates, run layout, naming, recovery, and queue defaults
 - `configs/data_config.yml`: supported data formats, filename templates, and data subfolder names
 - `configs/preprocess/*.yml`: preprocessing pipeline configs
+- `configs/training/presets/*.yml`: tracked recipes used to create local configs
+- `configs/training/templates/*.yml`: tracked generic starting points with placeholders
 - `configs/training/examples/*.yml`: tracked training examples
 - `configs/training/local/*.yml`: local training configs, ignored by Git
 - `configs/inference/*.yml`: defaults and named inference configs
@@ -142,6 +160,10 @@ All main workflows are configured with YAML files:
 Short config names are resolved from their workflow folder. For example, `lisai train
 examples/vim_denoising_unet` resolves under `configs/training/`, and `lisai preprocess single`
 resolves under `configs/preprocess/`.
+
+Training presets and templates are catalog inputs, not direct training inputs. Use `lisai configs
+new ...` to instantiate a preset or template into `configs/training/local/`, then train the local
+config.
 
 ## Data Preparation
 

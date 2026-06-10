@@ -69,8 +69,8 @@ class ConfigPathResolver:
         available: set[str] = set()
         for suffix in self.suffixes:
             available.update(
-                path.name
-                for path in self.root.glob(f"*{suffix}")
+                path.relative_to(self.root).as_posix()
+                for path in self.root.rglob(f"*{suffix}")
                 if path.is_file()
             )
         return sorted(available)

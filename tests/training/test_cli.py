@@ -8,18 +8,18 @@ import lisai.cli as root_cli
 import lisai.training.cli as training_cli
 
 
-def test_resolve_config_path_supports_training_short_name():
+def test_resolve_config_path_supports_training_subpath():
     repo_root = Path(__file__).resolve().parents[2]
-    expected = (repo_root / "configs" / "training" / "hdn.yml").resolve()
+    expected = (repo_root / "configs" / "training" / "examples" / "vim_denoising_unet.yml").resolve()
 
-    assert training_cli.resolve_config_path("hdn.yml") == expected
+    assert training_cli.resolve_config_path("examples/vim_denoising_unet.yml") == expected
 
 
-def test_resolve_config_path_supports_training_short_name_without_extension():
+def test_resolve_config_path_supports_training_subpath_without_extension():
     repo_root = Path(__file__).resolve().parents[2]
-    expected = (repo_root / "configs" / "training" / "upsamp.yml").resolve()
+    expected = (repo_root / "configs" / "training" / "examples" / "vim_denoising_unet.yml").resolve()
 
-    assert training_cli.resolve_config_path("upsamp") == expected
+    assert training_cli.resolve_config_path("examples/vim_denoising_unet") == expected
 
 
 def test_resolve_config_path_lists_available_configs_when_missing():
@@ -28,8 +28,16 @@ def test_resolve_config_path_lists_available_configs_when_missing():
 
     message = str(exc_info.value)
     assert "Available configs:" in message
-    assert "hdn.yml" in message
-    assert "upsamp.yml" in message
+    assert "examples/vim_denoising_unet.yml" in message
+    assert "presets/denoising_care.yml" in message
+
+
+def test_resolve_config_path_refuses_presets_and_templates():
+    with pytest.raises(ValueError, match="must be instantiated"):
+        training_cli.resolve_config_path("presets/denoising_hdn_unsup")
+
+    with pytest.raises(ValueError, match="must be instantiated"):
+        training_cli.resolve_config_path("templates/base_training")
 
 
 def test_training_cli_main_accepts_config_flag(monkeypatch: pytest.MonkeyPatch):
@@ -40,10 +48,10 @@ def test_training_cli_main_accepts_config_flag(monkeypatch: pytest.MonkeyPatch):
 
     monkeypatch.setattr(training_cli, "run_training", fake_run_training)
 
-    exit_code = training_cli.main(["--config", "hdn.yml"])
+    exit_code = training_cli.main(["--config", "examples/vim_denoising_unet"])
 
     assert exit_code == 0
-    assert captured["config_path"].name == "hdn.yml"
+    assert captured["config_path"].name == "vim_denoising_unet.yml"
 
 
 def test_training_cli_main_accepts_extensionless_config_name(monkeypatch: pytest.MonkeyPatch):
@@ -54,10 +62,10 @@ def test_training_cli_main_accepts_extensionless_config_name(monkeypatch: pytest
 
     monkeypatch.setattr(training_cli, "run_training", fake_run_training)
 
-    exit_code = training_cli.main(["upsamp"])
+    exit_code = training_cli.main(["examples/vim_denoising_unet"])
 
     assert exit_code == 0
-    assert captured["config_path"].name == "upsamp.yml"
+    assert captured["config_path"].name == "vim_denoising_unet.yml"
 
 
 def test_root_cli_train_dispatches_extensionless_config_to_training(monkeypatch: pytest.MonkeyPatch):
@@ -68,7 +76,7 @@ def test_root_cli_train_dispatches_extensionless_config_to_training(monkeypatch:
 
     monkeypatch.setattr(training_cli, "run_training", fake_run_training)
 
-    exit_code = root_cli.main(["train", "upsamp"])
+    exit_code = root_cli.main(["train", "examples/vim_denoising_unet"])
 
     assert exit_code == 0
-    assert captured["config_path"].name == "upsamp.yml"
+    assert captured["config_path"].name == "vim_denoising_unet.yml"

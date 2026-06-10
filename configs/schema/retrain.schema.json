@@ -662,6 +662,10 @@
           "default": null,
           "description": "Multi-SNR selection options, used when a dataset contains several noise levels per sample."
         },
+        "split_manifest": {
+          "$ref": "#/$defs/SplitManifestParams",
+          "description": "File-level split manifest options used only when prep_before is false."
+        },
         "downsampling": {
           "anyOf": [
             {
@@ -1210,6 +1214,67 @@
       "title": "SavingSection",
       "type": "object"
     },
+    "SplitManifestParams": {
+      "additionalProperties": false,
+      "description": "Options for file-level split manifests used by prep_before=false.",
+      "properties": {
+        "seed": {
+          "default": 0,
+          "description": "Random seed used when creating a new unprepared-data split manifest.",
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "ratios": {
+          "$ref": "#/$defs/SplitRatios",
+          "description": "Train/validation/test file-level split ratios for unprepared datasets."
+        },
+        "retrain_policy": {
+          "default": "reuse",
+          "description": "For retrain with prep_before=false, reuse the origin split manifest or create a new one.",
+          "enum": [
+            "reuse",
+            "new"
+          ],
+          "title": "Retrain Policy",
+          "type": "string"
+        }
+      },
+      "title": "SplitManifestParams",
+      "type": "object"
+    },
+    "SplitRatios": {
+      "additionalProperties": false,
+      "description": "File-level split ratios used for unprepared, unpaired datasets.",
+      "properties": {
+        "train": {
+          "default": 0.6,
+          "description": "Fraction of files assigned to training.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Train",
+          "type": "number"
+        },
+        "val": {
+          "default": 0.2,
+          "description": "Fraction of files assigned to validation.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Val",
+          "type": "number"
+        },
+        "test": {
+          "default": 0.2,
+          "description": "Fraction of files assigned to testing.",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Test",
+          "type": "number"
+        }
+      },
+      "title": "SplitRatios",
+      "type": "object"
+    },
     "TensorboardSection": {
       "additionalProperties": true,
       "description": "TensorBoard logging settings.",
@@ -1548,6 +1613,36 @@
     "load_model": {
       "$ref": "#/$defs/ExperimentLoadModelSection",
       "description": "Required source-run selector identifying which existing run should provide the starting weights."
+    },
+    "metadata": {
+      "type": "object",
+      "title": "ConfigMetadata",
+      "description": "Catalog metadata used by `lisai configs`; stripped before runtime validation.",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "preset",
+            "template",
+            "example",
+            "local"
+          ],
+          "description": "Config catalog kind."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable config name."
+        },
+        "task": {
+          "type": "string",
+          "description": "Associated training task name."
+        },
+        "description": {
+          "type": "string",
+          "description": "Short catalog description."
+        }
+      }
     }
   },
   "required": [
