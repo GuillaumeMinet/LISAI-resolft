@@ -76,9 +76,11 @@ class PreprocessRun:
 
     data_type: str
     fmt: str
+    usage: str
     pipeline_cfg: dict[str, Any]
     pipeline_name: str
     log_cfg: PreprocessLogConfig
+    registry_defaults: dict[str, str | None]
     split_cfg: PreprocessSplitConfig
 
     @classmethod
@@ -96,11 +98,13 @@ class PreprocessRun:
             pipeline_name=pcfg.pipeline,
             data_type=pcfg.data_type,
             fmt=pcfg.fmt,
+            usage=pcfg.usage,
             pipeline_cfg=pcfg.pipeline_cfg,
             paths=paths,
             registry=registry,
             logger=logger,
             log_cfg=pcfg.log,
+            registry_defaults=pcfg.registry.defaults.model_dump(exclude_unset=True),
             split_cfg=pcfg.split,
         )
 
@@ -346,7 +350,10 @@ class PreprocessRun:
                 data_type=self.data_type,
                 data_format=self.fmt,
                 structure=spec.structure_keys(),
+                outputs=spec.output_entries(),
                 result=result,
+                usage=self.usage,
+                default_overrides=self.registry_defaults,
                 split_summary=registry_split_summary,
             )
             self.registry.save()
@@ -391,5 +398,3 @@ class PreprocessRun:
                 )
             )
             raise
-
-

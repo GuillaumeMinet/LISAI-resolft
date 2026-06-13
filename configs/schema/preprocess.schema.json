@@ -37,6 +37,16 @@
         "timelapse"
       ]
     },
+    "usage": {
+      "default": "training",
+      "description": "Intended dataset usage in the registry: training datasets may also be evaluated, evaluation datasets are test-only.",
+      "enum": [
+        "training",
+        "evaluation"
+      ],
+      "title": "Usage",
+      "type": "string"
+    },
     "pipeline_cfg": {
       "additionalProperties": true,
       "description": "Pipeline-specific configuration. Editor hints depend on the selected pipeline.",
@@ -46,6 +56,10 @@
     "log": {
       "$ref": "#/$defs/PreprocessLogConfig",
       "description": "Options controlling YAML manifest logging for the preprocess run."
+    },
+    "registry": {
+      "$ref": "#/$defs/PreprocessRegistryConfig",
+      "description": "Options controlling metadata written to the dataset registry."
     },
     "split": {
       "$ref": "#/$defs/PreprocessSplitConfig",
@@ -326,6 +340,63 @@
         }
       },
       "title": "PreprocessLogConfig",
+      "type": "object"
+    },
+    "PreprocessRegistryConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "$ref": "#/$defs/PreprocessRegistryDefaultsConfig",
+          "description": "Optional registry default overrides merged over defaults inferred from produced outputs."
+        }
+      },
+      "title": "PreprocessRegistryConfig",
+      "type": "object"
+    },
+    "PreprocessRegistryDefaultsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "input": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional registry default input path/key override for this preprocess data type.",
+          "title": "Input"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional registry default supervised target path/key override. Use null when no default should be selected.",
+          "title": "Target"
+        },
+        "eval_gt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional registry default ground-truth path/key used for evaluation. Use null when no default should be selected.",
+          "title": "Eval Gt"
+        }
+      },
+      "title": "PreprocessRegistryDefaultsConfig",
       "type": "object"
     },
     "PreprocessSplitConfig": {

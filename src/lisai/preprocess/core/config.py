@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+DatasetUsage = Literal["training", "evaluation"]
 SplitMode = Literal["random", "manual", "reuse"]
 SplitMatchBy = Literal["source_name", "source_relpath", "sample_id"]
 
@@ -136,6 +137,32 @@ class PreprocessSplitConfig(BaseModel):
         return self
 
 
+class PreprocessRegistryDefaultsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    input: str | None = Field(
+        default=None,
+        description="Optional registry default input path/key override for this preprocess data type.",
+    )
+    target: str | None = Field(
+        default=None,
+        description="Optional registry default supervised target path/key override. Use null when no default should be selected.",
+    )
+    eval_gt: str | None = Field(
+        default=None,
+        description="Optional registry default ground-truth path/key used for evaluation. Use null when no default should be selected.",
+    )
+
+
+class PreprocessRegistryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    defaults: PreprocessRegistryDefaultsConfig = Field(
+        default_factory=PreprocessRegistryDefaultsConfig,
+        description="Optional registry default overrides merged over defaults inferred from produced outputs.",
+    )
+
+
 class PreprocessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -151,6 +178,10 @@ class PreprocessConfig(BaseModel):
     fmt: str = Field(
         description="Output data format used for canonical naming and saving templates.",
     )
+    usage: DatasetUsage = Field(
+        default="training",
+        description="Intended dataset usage in the registry: training datasets may also be evaluated, evaluation datasets are test-only.",
+    )
     pipeline_cfg: dict[str, Any] = Field(
         default_factory=dict,
         description="Pipeline-specific configuration. Editor hints depend on the selected pipeline.",
@@ -158,6 +189,10 @@ class PreprocessConfig(BaseModel):
     log: PreprocessLogConfig = Field(
         default_factory=PreprocessLogConfig,
         description="Options controlling YAML manifest logging for the preprocess run.",
+    )
+    registry: PreprocessRegistryConfig = Field(
+        default_factory=PreprocessRegistryConfig,
+        description="Options controlling metadata written to the dataset registry.",
     )
     split: PreprocessSplitConfig = Field(
         default_factory=PreprocessSplitConfig,

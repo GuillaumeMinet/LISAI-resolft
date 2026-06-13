@@ -8,6 +8,7 @@ from lisai.config.io.yaml import load_yaml, save_yaml
 DATA_FORMAT_KEY = "data_format"
 LEGACY_FORMAT_KEY = "format"
 NESTED_DATASETS_KEY = "datasets"
+RANGE_SUMMARY_KEYS = {"snr_levels", "timepoints"}
 
 
 class DatasetRegistryError(ValueError):
@@ -63,16 +64,55 @@ def load_dataset_info(path: str | Path, dataset_name: str | None) -> dict[str, A
     return dict(info) if isinstance(info, Mapping) else None
 
 
+def summarize_numeric_range(value: Any) -> Any:
+    """Return a compact min/max mapping for numeric registry ranges."""
+    if not isinstance(value, list):
+        return value
+    if not value:
+        return value
+    if not all(isinstance(item, int) and not isinstance(item, bool) for item in value):
+        return value
+    return {"min": min(value), "max": max(value)}
+
+
+def compact_dataset_registry_ranges(registry: Mapping[str, Any]) -> dict[str, Any]:
+    """Compact verbose numeric size lists into structured min/max ranges."""
+    compacted: dict[str, Any] = {}
+    for dataset_name, entry in registry.items():
+        if not isinstance(entry, Mapping):
+            compacted[str(dataset_name)] = entry
+            continue
+
+        compact_entry = dict(entry)
+        size = compact_entry.get("size")
+        if isinstance(size, Mapping):
+            compact_size: dict[str, Any] = {}
+            for data_type, size_entry in size.items():
+                if isinstance(size_entry, Mapping):
+                    compact_size[str(data_type)] = {
+                        key: summarize_numeric_range(value) if key in RANGE_SUMMARY_KEYS else value
+                        for key, value in size_entry.items()
+                    }
+                else:
+                    compact_size[str(data_type)] = size_entry
+            compact_entry["size"] = compact_size
+
+        compacted[str(dataset_name)] = compact_entry
+    return compacted
+
+
 def save_dataset_registry(registry: Mapping[str, Any], path: str | Path) -> None:
     """Persist registry metadata using the canonical flat on-disk contract."""
-    save_yaml(normalize_dataset_registry(registry), path)
+    save_yaml(compact_dataset_registry_ranges(normalize_dataset_registry(registry)), path)
 
 
 __all__ = [
     "DATA_FORMAT_KEY",
     "DatasetRegistryError",
+    "compact_dataset_registry_ranges",
     "load_dataset_info",
     "load_dataset_registry",
     "normalize_dataset_registry",
     "save_dataset_registry",
+    "summarize_numeric_range",
 ]

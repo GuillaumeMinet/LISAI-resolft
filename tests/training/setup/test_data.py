@@ -15,7 +15,8 @@ def _write_preprocess_registry_entry(registry_path: Path, *, dataset_name: str, 
         data_type="recon",
         data_format=data_format,
         structure=["inp"],
-        result=SimpleNamespace(n_files=1, n_frames=None, snr_levels=None),
+        outputs=[{"key": "inp", "path": "inp", "role": "inp", "axes": "YX"}],
+        result=SimpleNamespace(n_files=1, n_frames=None, snr_levels=None, timepoints=None),
         split_summary={"counts": {"train": 1, "val": 0, "test": 0}},
     )
     registry.data[dataset_name]["shape"] = [1, 2, 3]
@@ -71,6 +72,9 @@ def test_prepare_data_returns_prepared_training_data(monkeypatch, tmp_path: Path
         "dataset_info": {
             "data_format": "single",
             "for_training": True,
+            "usage": "training",
+            "defaults": {"recon": {"input": "inp", "target": None, "eval_gt": None}},
+            "outputs": {"recon": [{"key": "inp", "path": "inp", "role": "inp", "axes": "YX"}]},
             "size": {"recon": {"n_files": 1}},
             "split": {"recon": {"counts": {"train": 1, "val": 0, "test": 0}}},
             "structure": {"recon": ["inp"]},

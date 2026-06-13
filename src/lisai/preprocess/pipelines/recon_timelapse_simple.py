@@ -120,12 +120,18 @@ class ReconTimelapseSimplePipeline(BasePipeline[ReconTimelapseSimpleConfig]):
         return {}
 
     def init_stats(self) -> dict[str, Any]:
-        return {"n_frames": 0}
+        return {"n_frames": 0, "timepoints": set()}
 
     def update_stats(self, *, stats: dict[str, Any], item, outputs: dict[str, Any]) -> dict[str, Any]:
         stack = outputs[MAIN_OUTPUT_KEY]
         stats["n_frames"] += int(stack.shape[0])
+        stats["timepoints"].add(int(stack.shape[0]))
         return stats
 
     def make_result(self, *, n_files: int, stats: dict[str, Any]) -> PipelineResult:
-        return PipelineResult(n_files=n_files, n_frames=int(stats.get("n_frames", 0)))
+        timepoints = sorted(int(x) for x in stats.get("timepoints", set()))
+        return PipelineResult(
+            n_files=n_files,
+            n_frames=int(stats.get("n_frames", 0)),
+            timepoints=timepoints or None,
+        )

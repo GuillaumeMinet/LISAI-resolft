@@ -30,7 +30,8 @@ def _write_preprocess_registry_entry(registry_path: Path, *, dataset_name: str, 
         data_type='recon',
         data_format=data_format,
         structure=['inp'],
-        result=SimpleNamespace(n_files=1, n_frames=None, snr_levels=None),
+        outputs=[{'key': 'inp', 'path': 'inp', 'role': 'inp', 'axes': 'YX'}],
+        result=SimpleNamespace(n_files=1, n_frames=None, snr_levels=None, timepoints=None),
         split_summary={'counts': {'train': 1, 'val': 0, 'test': 0}},
     )
     registry.save()

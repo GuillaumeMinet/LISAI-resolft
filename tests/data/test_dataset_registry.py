@@ -4,11 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from lisai.config.io.yaml import save_yaml
+from lisai.config.io.yaml import load_yaml, save_yaml
 from lisai.data.dataset_registry import (
     DatasetRegistryError,
     load_dataset_info,
     load_dataset_registry,
+    save_dataset_registry,
 )
 
 
@@ -59,3 +60,27 @@ def test_load_dataset_registry_rejects_nested_datasets_layout(tmp_path: Path):
 
 def test_load_dataset_registry_returns_empty_for_missing_file(tmp_path: Path):
     assert load_dataset_registry(tmp_path / "missing.yml") == {}
+
+
+def test_save_dataset_registry_compacts_numeric_size_ranges(tmp_path: Path):
+    path = tmp_path / "dataset_registry.yml"
+
+    save_dataset_registry(
+        {
+            "demo": {
+                "data_format": "timelapse",
+                "size": {
+                    "recon": {
+                        "n_files": 2,
+                        "timepoints": [10, 26],
+                        "snr_levels": [5, 6],
+                    }
+                },
+            }
+        },
+        path,
+    )
+
+    registry = load_yaml(path)
+    assert registry["demo"]["size"]["recon"]["timepoints"] == {"min": 10, "max": 26}
+    assert registry["demo"]["size"]["recon"]["snr_levels"] == {"min": 5, "max": 6}

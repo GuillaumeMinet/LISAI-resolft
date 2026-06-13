@@ -54,7 +54,7 @@ def _write_timelapse_source_dataset(root: Path, dataset_name: str, *, file_name:
     dump_dir = root / dataset_name / "dump" / "recon"
     dump_dir.mkdir(parents=True, exist_ok=True)
     stack = np.full((n_timepoints, 8, 8), fill_value=1, dtype=np.uint16)
-    tifffile.imwrite(dump_dir / file_name, stack)
+    tifffile.imwrite(dump_dir / file_name, stack, photometric="minisblack")
 
 
 def _write_broken_single_source_dataset(root: Path, dataset_name: str) -> None:
@@ -124,8 +124,49 @@ def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
     registry = load_yaml(tmp_path / "dataset_registry.yml")
     assert registry[dataset_name]["data_format"] == "single"
     assert "format" not in registry[dataset_name]
+    assert registry[dataset_name]["usage"] == "training"
+    assert registry[dataset_name]["outputs"]["recon"] == [
+        {"key": "main", "path": "", "role": "inp", "axes": "YX"}
+    ]
+    assert registry[dataset_name]["defaults"]["recon"] == {"input": "", "target": None, "eval_gt": None}
+    assert registry[dataset_name]["size"]["recon"] == {"n_files": 3}
     assert registry[dataset_name]["split"]["recon"]["counts"] == {"train": 1, "val": 1, "test": 1}
     assert "train" not in registry[dataset_name]["split"]["recon"]
+
+
+def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path):
+    dataset_name = "OverrideDefaultsDataset"
+    _write_timelapse_source_dataset(tmp_path, dataset_name, file_name="stack.tif", n_timepoints=4)
+
+    cfg = {
+        "dataset_name": dataset_name,
+        "pipeline": "recon_mltpl_snr",
+        "data_type": "recon",
+        "fmt": "mltpl_snr",
+        "pipeline_cfg": {
+            "first_low_inp": True,
+            "registration": False,
+            "gt_types": ["snr0", "avg"],
+        },
+        "registry": {
+            "defaults": {
+                "input": "inp_mltpl_snr",
+                "target": None,
+                "eval_gt": "gt_snr0",
+            }
+        },
+        "log": {"enabled": True},
+        "split": {"enabled": False},
+    }
+
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+
+    registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["defaults"]["recon"] == {
+        "input": "inp_mltpl_snr",
+        "target": None,
+        "eval_gt": "gt_snr0",
+    }
 
 
 def test_preprocess_run_reports_progress_and_final_console_summary(tmp_path: Path):
@@ -196,6 +237,16 @@ def test_preprocess_run_progress_uses_full_timelapse_output_name(tmp_path: Path)
         "count": 1,
         "source_names": ["17h23m11s_rec_scan00_CAM.hdf5_multi.0.reconstruction.tiff"],
         "output_names": ["c00_t31.tif"],
+    }
+    registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["outputs"]["recon"] == [
+        {"key": "main", "path": "", "role": "inp", "axes": "TYX"}
+    ]
+    assert registry[dataset_name]["defaults"]["recon"] == {"input": "", "target": None, "eval_gt": None}
+    assert registry[dataset_name]["size"]["recon"] == {
+        "n_files": 1,
+        "n_frames": 31,
+        "timepoints": {"min": 31, "max": 31},
     }
 
 

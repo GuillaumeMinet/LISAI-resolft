@@ -85,3 +85,15 @@ class OutputSpec:
             else:
                 out.append(o.key)
         return out
+
+    def output_entries(self) -> list[dict[str, str]]:
+        """Registry-ready descriptions of produced outputs."""
+        return [
+            {
+                "key": o.key,
+                "path": self.folder_for(o.key),
+                "role": o.role,
+                "axes": o.axes,
+            }
+            for o in self.outputs
+        ]

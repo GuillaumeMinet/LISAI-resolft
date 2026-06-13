@@ -78,9 +78,11 @@ def test_preprocess_json_schema_exposes_described_pipeline_specific_branches():
 
     assert shared_properties["dataset_name"]["description"]
     assert shared_properties["pipeline"]["description"]
+    assert shared_properties["registry"]["$ref"] == "#/$defs/PreprocessRegistryConfig"
     assert shared_properties["split"]["$ref"] == "#/$defs/PreprocessSplitConfig"
     assert pipeline_cfg_properties["dump_subfolder"]["description"]
     assert pipeline_cfg_properties["crop_size"]["description"]
+    assert schema["$defs"]["PreprocessRegistryDefaultsConfig"]["properties"]["eval_gt"]["description"]
     assert schema["$defs"]["PreprocessSplitConfig"]["properties"]["mode"]["description"]
     assert schema["$defs"]["PreprocessLogConfig"]["properties"]["enabled"]["description"]
 
