@@ -6,10 +6,40 @@ import pytest
 import yaml
 
 import lisai.cli as root_cli
+import lisai.config.catalog as catalog_mod
 import lisai.config.io.resolver as resolver_mod
 from lisai.config import cli as config_cli
 from lisai.config.catalog import validate_training_config_dict, validate_training_template_dict
 from lisai.config.io.yaml import load_yaml
+
+
+def _registry_entry(
+    *,
+    inputs: list[str] | None = None,
+    targets: list[str] | None = None,
+    input_default: str | None = None,
+    target_default: str | None = None,
+    data_format: str = "single",
+    input_overrides: dict[str, str] | None = None,
+) -> dict:
+    inputs = inputs if inputs is not None else ([] if input_default is None else [input_default])
+    targets = targets if targets is not None else ([] if target_default is None else [target_default])
+    input_overrides = input_overrides or {}
+    outputs = []
+    for input_name in inputs:
+        output = {"key": input_name or "image", "path": input_name, "role": "inp", "axes": "YX"}
+        if input_name in input_overrides:
+            output["data_format_override"] = input_overrides[input_name]
+        outputs.append(output)
+    outputs.extend({"key": target_name, "path": target_name, "role": "gt", "axes": "YX"} for target_name in targets)
+    return {
+        "data_format": data_format,
+        "usage": "training",
+        "for_training": True,
+        "structure": {"recon": [*inputs, *targets]},
+        "outputs": {"recon": outputs},
+        "defaults": {"recon": {"input": input_default, "target": target_default, "eval_gt": target_default}},
+    }
 
 
 def test_configs_list_filters_presets(capsys: pytest.CaptureFixture[str]):
@@ -152,7 +182,7 @@ def test_configs_new_custom_starts_from_base_template(tmp_path: Path):
     assert cfg["experiment"]["exp_name"] == "scratch"
     assert cfg["experiment"]["task"]["name"] == "custom"
     assert cfg["data"]["dataset_name"] == "CHANGEME"
-    assert cfg["data"]["input"] == ""
+    assert cfg["data"]["input"] == "CHANGEME"
     assert cfg["model"]["architecture"] == "CHANGEME"
 
 
@@ -176,11 +206,137 @@ def test_configs_new_can_scaffold_with_missing_editable_fields(
     assert exit_code == 0
     assert cfg["experiment"]["exp_name"] == "CHANGEME"
     assert cfg["data"]["dataset_name"] == "CHANGEME"
-    assert cfg["data"]["input"] == ""
+    assert cfg["data"]["input"] == "CHANGEME"
     assert "Warning: experiment.exp_name was left as CHANGEME." in captured.out
     assert "Warning: data.dataset_name was left as CHANGEME." in captured.out
-    assert "Warning: data.input was left empty." in captured.out
+    assert "Warning: data.input was left as CHANGEME." in captured.out
     assert "Warning: experiment.task.betaKL kept from the preset." in captured.out
+
+
+def test_configs_new_fills_registry_defaults_for_dataset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    output = tmp_path / "registry_defaults.yml"
+    monkeypatch.setattr(
+        catalog_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "demo": _registry_entry(
+                inputs=["inp_single", "inp_mltpl_snr"],
+                targets=["gt_avg"],
+                input_default="inp_single",
+                target_default="gt_avg",
+                data_format="mltpl_snr",
+                input_overrides={"inp_single": "single"},
+            )
+        },
+    )
+
+    exit_code = config_cli.main(
+        [
+            "new",
+            "denoising_hdn_sup",
+            "--name",
+            "registry_defaults",
+            "--dataset",
+            "demo",
+            "--output",
+            str(output),
+        ]
+    )
+
+    cfg = load_yaml(output)
+    assert exit_code == 0
+    assert cfg["data"]["dataset_name"] == "demo"
+    assert cfg["data"]["input"] == "inp_single"
+    assert cfg["data"]["target"] == "gt_avg"
+    assert cfg["data"]["data_format"] == "single"
+
+
+def test_configs_new_keeps_cli_dataset_fields_over_registry_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    output = tmp_path / "registry_cli_priority.yml"
+    monkeypatch.setattr(
+        catalog_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "demo": _registry_entry(
+                inputs=["inp_registry", "inp_cli"],
+                targets=["gt_registry", "gt_cli"],
+                input_default="inp_registry",
+                target_default="gt_registry",
+                data_format="mltpl_snr",
+                input_overrides={"inp_cli": "single"},
+            )
+        },
+    )
+
+    exit_code = config_cli.main(
+        [
+            "new",
+            "denoising_hdn_sup",
+            "--name",
+            "registry_cli_priority",
+            "--dataset",
+            "demo",
+            "--input",
+            "inp_cli",
+            "--target",
+            "gt_cli",
+            "--output",
+            str(output),
+        ]
+    )
+
+    cfg = load_yaml(output)
+    assert exit_code == 0
+    assert cfg["data"]["input"] == "inp_cli"
+    assert cfg["data"]["target"] == "gt_cli"
+    assert cfg["data"]["data_format"] == "single"
+
+
+def test_configs_new_leaves_ambiguous_registry_choices_as_changeme(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    output = tmp_path / "registry_ambiguous.yml"
+    monkeypatch.setattr(
+        catalog_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "demo": _registry_entry(
+                inputs=["inp_a", "inp_b"],
+                targets=["gt_a", "gt_b"],
+                input_default=None,
+                target_default=None,
+            )
+        },
+    )
+
+    exit_code = config_cli.main(
+        [
+            "new",
+            "denoising_hdn_sup",
+            "--name",
+            "registry_ambiguous",
+            "--dataset",
+            "demo",
+            "--output",
+            str(output),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    cfg = load_yaml(output)
+    assert exit_code == 0
+    assert cfg["data"]["input"] == "CHANGEME"
+    assert cfg["data"]["target"] == "CHANGEME"
+    assert "Warning: data.input was left as CHANGEME." in captured.out
+    assert "Warning: data.target was left as CHANGEME for supervised denoising_hdn." in captured.out
 
 
 def test_configs_validate_rejects_scaffolded_changeme_config(

@@ -3,13 +3,21 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 import yaml
 
 from lisai.config.io.metadata import split_config_metadata, strip_config_metadata
 from lisai.config.io.yaml import load_yaml
 from lisai.config.models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
+from lisai.data.dataset_registry import (
+    load_dataset_registry,
+    registry_data_format_for_output,
+    registry_data_types,
+    registry_mapping_for_data_type,
+    registry_value_for_data_type,
+)
+from lisai.infra.paths import Paths
 
 TrainingConfigKind = Literal["preset", "template", "example", "local"]
 TrainingPresetName = str
@@ -58,6 +66,13 @@ class TrainingConfigEntry:
     task: str | None
     description: str | None
     metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class RegistryScaffoldDefaults:
+    input_name: str | None = None
+    target_name: str | None = None
+    data_format: str | None = None
 
 
 def training_config_root() -> Path:
@@ -172,13 +187,23 @@ def create_training_config_from_preset(
     if not dataset_name:
         dataset_name = "CHANGEME"
         warnings.append("data.dataset_name was left as CHANGEME.")
+    registry_defaults = _registry_scaffold_defaults(
+        dataset_name=dataset_name,
+        cfg=cfg,
+        input_name=input_name,
+    )
+
     if input_name is None:
-        input_name = ""
-        warnings.append("data.input was left empty.")
+        input_name = registry_defaults.input_name
+        if input_name is None:
+            input_name = "CHANGEME"
+            warnings.append("data.input was left as CHANGEME.")
 
     _dset(cfg, "experiment.exp_name", exp_name)
     _dset(cfg, "data.dataset_name", dataset_name)
     _dset(cfg, "data.input", input_name)
+    if registry_defaults.data_format is not None:
+        _dset(cfg, "data.data_format", registry_defaults.data_format)
 
     task_cfg = _task_section(cfg)
     task_name = task_cfg.get("name")
@@ -191,6 +216,8 @@ def create_training_config_from_preset(
             task_cfg["betaKL"] = float(betaKL)
         else:
             warnings.append("experiment.task.betaKL kept from the preset.")
+        if bool(supervised) and target_name is None:
+            target_name = registry_defaults.target_name
         _dset(cfg, "data.paired", bool(supervised))
         _dset(cfg, "data.target", target_name if bool(supervised) else None)
         if bool(supervised) and not target_name:
@@ -200,6 +227,8 @@ def create_training_config_from_preset(
     elif task_name in {"denoising_care", "denoising_unetrcan"}:
         if loss is not None:
             task_cfg["loss"] = loss
+        if target_name is None:
+            target_name = registry_defaults.target_name
         if not target_name:
             target_name = "CHANGEME"
             warnings.append(f"data.target was left as CHANGEME for {task_name}.")
@@ -263,13 +292,25 @@ def create_training_config_from_template(
     if not dataset_name:
         dataset_name = "CHANGEME"
         warnings.append("data.dataset_name was left as CHANGEME.")
+    registry_defaults = _registry_scaffold_defaults(
+        dataset_name=dataset_name,
+        cfg=cfg,
+        input_name=input_name,
+    )
+
     if input_name is None:
-        input_name = ""
-        warnings.append("data.input was left empty.")
+        input_name = registry_defaults.input_name
+        if input_name is None:
+            input_name = "CHANGEME"
+            warnings.append("data.input was left as CHANGEME.")
+    if target_name is None and bool(_dget(cfg, "data.paired", False)):
+        target_name = registry_defaults.target_name
 
     _dset(cfg, "experiment.exp_name", exp_name)
     _dset(cfg, "data.dataset_name", dataset_name)
     _dset(cfg, "data.input", input_name)
+    if registry_defaults.data_format is not None:
+        _dset(cfg, "data.data_format", registry_defaults.data_format)
     if target_name is not None:
         _dset(cfg, "data.target", target_name)
 
@@ -398,6 +439,132 @@ def _authoring_model_for_mode(mode: str):
     raise ValueError(f"Unknown mode: {mode}")
 
 
+def _registry_scaffold_defaults(
+    *,
+    dataset_name: str | None,
+    cfg: dict[str, Any],
+    input_name: str | None = None,
+) -> RegistryScaffoldDefaults:
+    if not dataset_name or dataset_name == "CHANGEME":
+        return RegistryScaffoldDefaults()
+
+    registry = load_dataset_registry(Paths().dataset_registry_path())
+    dataset_info = registry.get(str(dataset_name))
+    if not isinstance(dataset_info, Mapping):
+        return RegistryScaffoldDefaults()
+
+    data_type = _registry_data_type_for_config(cfg, dataset_info)
+    suggested_input = input_name
+    if suggested_input is None:
+        suggested_input = _registry_default_or_single_role(
+            dataset_info=dataset_info,
+            data_type=data_type,
+            default_key="input",
+            role="inp",
+        )
+
+    return RegistryScaffoldDefaults(
+        input_name=suggested_input if input_name is None else None,
+        target_name=_registry_default_or_single_role(
+            dataset_info=dataset_info,
+            data_type=data_type,
+            default_key="target",
+            role="gt",
+        ),
+        data_format=_registry_data_format_for_scaffold(
+            dataset_info=dataset_info,
+            data_type=data_type,
+            input_name=suggested_input,
+        ),
+    )
+
+
+def _registry_data_type_for_config(cfg: dict[str, Any], dataset_info: Mapping[str, Any]) -> str | None:
+    explicit = _dget(cfg, "data.data_type")
+    if explicit not in (None, ""):
+        return str(explicit)
+
+    known = registry_data_types(dataset_info)
+    routing_data_type = _last_path_component(_dget(cfg, "routing.data_subfolder"))
+    if routing_data_type in known:
+        return routing_data_type
+
+    defaults = dataset_info.get("defaults")
+    if isinstance(defaults, Mapping) and len(defaults) == 1:
+        return str(next(iter(defaults)))
+    if len(known) == 1:
+        return next(iter(known))
+    return None
+
+
+def _last_path_component(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).replace("\\", "/").strip("/")
+    if not text:
+        return None
+    return text.rsplit("/", 1)[-1]
+
+
+def _registry_default_or_single_role(
+    *,
+    dataset_info: Mapping[str, Any],
+    data_type: str | None,
+    default_key: str,
+    role: str,
+) -> str | None:
+    defaults = registry_mapping_for_data_type(dataset_info, "defaults", data_type)
+    if isinstance(defaults, Mapping) and defaults.get(default_key) is not None:
+        return str(defaults[default_key])
+
+    outputs = registry_value_for_data_type(dataset_info, "outputs", data_type)
+    if not isinstance(outputs, list):
+        return None
+
+    role_outputs = [
+        output
+        for output in outputs
+        if isinstance(output, Mapping) and output.get("role") == role
+    ]
+    if len(role_outputs) != 1:
+        return None
+
+    output = role_outputs[0]
+    value = output.get("path")
+    if value is None:
+        value = output.get("key")
+    return str(value) if value is not None else None
+
+
+def _registry_data_format_for_scaffold(
+    *,
+    dataset_info: Mapping[str, Any],
+    data_type: str | None,
+    input_name: str | None,
+) -> str | None:
+    if input_name is not None:
+        return registry_data_format_for_output(dataset_info, data_type, input_name)
+
+    outputs = registry_value_for_data_type(dataset_info, "outputs", data_type)
+    if not isinstance(outputs, list):
+        fallback = dataset_info.get("data_format")
+        return str(fallback) if fallback is not None else None
+
+    formats = {
+        registry_data_format_for_output(
+            dataset_info,
+            data_type,
+            output.get("path") if output.get("path") is not None else output.get("key"),
+        )
+        for output in outputs
+        if isinstance(output, Mapping) and output.get("role") == "inp"
+    }
+    formats.discard(None)
+    if len(formats) == 1:
+        return next(iter(formats))
+    return None
+
+
 def _known_training_roots() -> set[str]:
     roots = {"metadata", "mode"}
     for model in (ExperimentConfig, ContinueTrainingConfig, RetrainConfig):
@@ -469,6 +636,15 @@ def _task_section(cfg: dict[str, Any]) -> dict[str, Any]:
         task = {"name": task}
         experiment["task"] = task
     return task
+
+
+def _dget(d: dict[str, Any], path: str, default: Any = None) -> Any:
+    cur: Any = d
+    for key in path.split("."):
+        if not isinstance(cur, dict) or key not in cur:
+            return default
+        cur = cur[key]
+    return cur
 
 
 def _dset(d: dict[str, Any], path: str, value: Any) -> None:
