@@ -820,6 +820,20 @@
         "dataset_name": {
           "anyOf": [
             {
+              "type": "string",
+              "enum": [
+                "Gag_noisy_single",
+                "Gag_noisy_timelapses",
+                "Gag_timelapses",
+                "actin_fixed",
+                "mito_live",
+                "mito_live_noisy",
+                "vim_fixed",
+                "vim_live"
+              ],
+              "description": "Registered dataset names available in the current dataset registry."
+            },
+            {
               "default": "unknown_dataset",
               "description": "Dataset registry name used to resolve dataset metadata and canonical paths.",
               "title": "Dataset Name",
@@ -829,6 +843,16 @@
               "type": "string",
               "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
             }
+          ],
+          "examples": [
+            "Gag_noisy_single",
+            "Gag_noisy_timelapses",
+            "Gag_timelapses",
+            "actin_fixed",
+            "mito_live",
+            "mito_live_noisy",
+            "vim_fixed",
+            "vim_live"
           ]
         },
         "canonical_load": {
@@ -4681,5 +4705,1674 @@
     }
   },
   "title": "ExperimentTemplateConfig",
-  "type": "object"
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "Gag_noisy_single"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "single"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "Gag_noisy_timelapses"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "Gag_timelapses"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "actin_fixed"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr"
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "mltpl_snr"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "paired": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "paired"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "target"
+                      ],
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "gt"
+                      ],
+                      "properties": {
+                        "gt": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "mito_live"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "mito_live_noisy"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "vim_fixed"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr",
+                  "inp_single"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr",
+                  "inp_single"
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "mltpl_snr",
+                      "single"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "paired": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "paired"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "target"
+                      ],
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "gt"
+                      ],
+                      "properties": {
+                        "gt": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp_single"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp_single"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "vim_live"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "",
+                  "main"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "main"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "allOf": [
+                  {
+                    "not": {
+                      "enum": [
+                        "Gag_noisy_single",
+                        "Gag_noisy_timelapses",
+                        "Gag_timelapses",
+                        "actin_fixed",
+                        "mito_live",
+                        "mito_live_noisy",
+                        "vim_fixed",
+                        "vim_live"
+                      ]
+                    }
+                  },
+                  {
+                    "not": {
+                      "type": "string",
+                      "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "prep_before"
+            ],
+            "properties": {
+              "prep_before": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
