@@ -7,6 +7,7 @@ import numpy as np
 from tifffile import imwrite
 
 import lisai.evaluation.data as data_mod
+from lisai.config.io.yaml import save_yaml
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.models.params import UNetParams
 from lisai.preprocess.core.dataset_registry import DatasetRegistry
@@ -35,6 +36,34 @@ def _write_preprocess_registry_entry(registry_path: Path, *, dataset_name: str, 
         split_summary={'counts': {'train': 1, 'val': 0, 'test': 0}},
     )
     registry.save()
+
+
+def _write_registry_eval_gt(registry_path: Path, *, dataset_name: str, eval_gt: str | None) -> None:
+    save_yaml(
+        {
+            dataset_name: {
+                'data_format': 'single',
+                'defaults': {
+                    'recon': {
+                        'input': 'inp',
+                        'target': None,
+                        'eval_gt': eval_gt,
+                    }
+                },
+            }
+        },
+        registry_path,
+    )
+
+
+def _write_eval_split(data_dir: Path, *, input_name: str = 'inp', target_names: tuple[str, ...] = ()) -> None:
+    inp_dir = data_dir / input_name / 'test'
+    inp_dir.mkdir(parents=True)
+    imwrite(inp_dir / 'img_a.tif', np.ones((4, 5), dtype=np.float32) * 3)
+    for target_name in target_names:
+        target_dir = data_dir / target_name / 'test'
+        target_dir.mkdir(parents=True)
+        imwrite(target_dir / 'img_a.tif', np.ones((4, 5), dtype=np.float32))
 
 
 def _make_saved_run(data_cfg: dict | None = None, split_manifest: dict | None = None) -> SavedTrainingRun:
@@ -112,6 +141,101 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
     assert sample.x.shape == (1, 4, 5)
     assert sample.y is not None
     assert sample.y.shape == (1, 4, 5)
+
+
+def test_build_eval_source_uses_registry_eval_gt_when_omitted(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run()
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('registry_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test')
+
+    assert source.config.target == 'registry_gt'
+    assert source.config.paired is True
+    assert source.config.model_norm_prm['data_mean_gt'] == 0
+    assert source.config.model_norm_prm['data_std_gt'] == 1
+    assert next(iter(source)).y is not None
+
+
+def test_build_eval_source_registry_eval_gt_overrides_training_target(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(data_cfg={'paired': True, 'target': 'training_gt'})
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('registry_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test')
+
+    assert source.config.target == 'registry_gt'
+    assert source.items[0].gt_path == data_dir / 'registry_gt' / 'test' / 'img_a.tif'
+
+
+def test_build_eval_source_explicit_eval_gt_overrides_registry_and_training_target(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(data_cfg={'paired': True, 'target': 'training_gt'})
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('explicit_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='explicit_gt')
+
+    assert source.config.target == 'explicit_gt'
+    assert source.items[0].gt_path == data_dir / 'explicit_gt' / 'test' / 'img_a.tif'
+
+
+def test_build_eval_source_training_eval_gt_token_uses_training_target(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(data_cfg={'paired': True, 'target': 'training_gt'})
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('training_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='@training')
+
+    assert source.config.target == 'training_gt'
+    assert source.items[0].gt_path == data_dir / 'training_gt' / 'test' / 'img_a.tif'
+
+
+def test_build_eval_source_none_eval_gt_token_disables_gt(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(data_cfg={'paired': True, 'target': 'training_gt'})
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir)
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='@none')
+
+    assert source.config.paired is False
+    assert source.config.target is None
+    assert source.items[0].gt_path is None
+    assert next(iter(source)).y is None
 
 
 

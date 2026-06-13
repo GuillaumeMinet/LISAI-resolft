@@ -27,6 +27,9 @@ from lisai.lib.upsamp.artificial_movement import apply_movement
 
 from .saved_run import SavedTrainingRun
 
+EVAL_GT_NONE = "@none"
+EVAL_GT_TRAINING = "@training"
+
 
 @dataclass(frozen=True)
 class EvalSample:
@@ -214,6 +217,12 @@ class EvalSampleSource:
                 yield sample
 
 
+@dataclass(frozen=True)
+class EvalGtResolution:
+    target: str | None
+    force_no_gt: bool = False
+
+
 def resolve_dataset_info(dataset_name: str | None) -> dict[str, Any] | None:
     """Load dataset-registry metadata for a dataset name when available."""
     if not dataset_name:
@@ -243,6 +252,64 @@ def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, An
 
     paths = Paths(settings)
     return paths.dataset_dir(dataset_name=dataset_name, data_subfolder=subfolder or "")
+
+
+def _training_target(data_cfg: Mapping[str, Any]) -> str | None:
+    target = data_cfg.get("target")
+    if target is None:
+        target = data_cfg.get("gt")
+    return None if target is None else str(target)
+
+
+def _registry_eval_gt(dataset_info: Mapping[str, Any] | None, data_type: str | None) -> str | None:
+    if not isinstance(dataset_info, Mapping):
+        return None
+
+    defaults = dataset_info.get("defaults")
+    if not isinstance(defaults, Mapping):
+        return None
+
+    candidate_data_types: list[str] = []
+    if data_type:
+        candidate_data_types.append(str(data_type))
+    elif len(defaults) == 1:
+        candidate_data_types.append(str(next(iter(defaults))))
+
+    for candidate_data_type in candidate_data_types:
+        data_defaults = defaults.get(candidate_data_type)
+        if not isinstance(data_defaults, Mapping):
+            continue
+        eval_gt = data_defaults.get("eval_gt")
+        if eval_gt is not None:
+            return str(eval_gt)
+    return None
+
+
+def _resolve_eval_gt(
+    *,
+    eval_gt: str | None,
+    data_cfg: Mapping[str, Any],
+    dataset_info: Mapping[str, Any] | None,
+) -> EvalGtResolution:
+    if eval_gt == EVAL_GT_NONE:
+        return EvalGtResolution(target=None, force_no_gt=True)
+    if eval_gt == EVAL_GT_TRAINING:
+        return EvalGtResolution(target=_training_target(data_cfg))
+    if eval_gt is not None:
+        return EvalGtResolution(target=str(eval_gt))
+
+    registry_target = _registry_eval_gt(dataset_info, data_cfg.get("data_type"))
+    if registry_target is not None:
+        return EvalGtResolution(target=registry_target)
+    return EvalGtResolution(target=_training_target(data_cfg))
+
+
+def _ensure_gt_normalization_defaults(model_norm_prm: dict[str, Any] | None) -> dict[str, Any]:
+    if model_norm_prm is None:
+        model_norm_prm = {}
+    model_norm_prm.setdefault("data_mean_gt", 0)
+    model_norm_prm.setdefault("data_std_gt", 1)
+    return model_norm_prm
 
 
 def _collect_split_files(data_dir: Path, filters: list[str]) -> list[Path]:
@@ -418,20 +485,22 @@ def build_eval_source(
     data_cfg = dict(saved_run.data_cfg)
     model_norm_prm = dict(saved_run.model_norm_prm) if saved_run.model_norm_prm is not None else None
 
-    # Update parameters from evaluation overrides.
-    if eval_gt is not None and data_cfg.get("paired") is False:
-        data_cfg["paired"] = True
-        data_cfg["target"] = eval_gt
-        if model_norm_prm is None:
-            model_norm_prm = {}
-        model_norm_prm["data_mean_gt"] = 0
-        model_norm_prm["data_std_gt"] = 1
-
     if crop_size is not None:
         data_cfg["initial_crop"] = crop_size
 
     if data_prm_update is not None:
         data_cfg = deep_merge(data_cfg, dict(data_prm_update))
+
+    dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
+    eval_gt_resolution = _resolve_eval_gt(eval_gt=eval_gt, data_cfg=data_cfg, dataset_info=dataset_info)
+    if eval_gt_resolution.force_no_gt:
+        data_cfg["paired"] = False
+        data_cfg["target"] = None
+        data_cfg["gt"] = None
+    elif eval_gt_resolution.target is not None:
+        data_cfg["paired"] = True
+        data_cfg["target"] = eval_gt_resolution.target
+        model_norm_prm = _ensure_gt_normalization_defaults(model_norm_prm)
 
     data_dir = resolve_eval_data_dir(saved_run, data_cfg)
     if data_dir is None:
@@ -439,8 +508,6 @@ def build_eval_source(
             "Could not resolve `data_dir` for evaluation. "
             "Provide it through `data_prm_update={\'data_dir\': \'...path...\'}`."
         )
-
-    dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
 
     # build data prep config with updated parameters
     prep_cfg = DataSection.model_validate(data_cfg).resolved(

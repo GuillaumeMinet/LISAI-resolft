@@ -147,7 +147,12 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
     parser.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)
     parser.add_argument("--save-folder", "--save_folder", dest="save_folder")
     parser.add_argument("--overwrite", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--eval-gt", "--eval_gt", dest="eval_gt")
+    parser.add_argument(
+        "--eval-gt",
+        "--eval_gt",
+        dest="eval_gt",
+        help="Evaluation GT path/key. Use @training for the saved training target or @none to disable GT.",
+    )
     parser.add_argument(
         "--data-option",
         "--data_option",

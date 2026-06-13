@@ -62,6 +62,14 @@ def _expand_checkpoint_selection(options: dict[str, Any]) -> list[dict[str, Any]
     return expanded
 
 
+def _format_eval_gt_for_display(eval_gt: str | None) -> str:
+    if eval_gt is None:
+        return "<none>"
+    if eval_gt == "":
+        return "<root>"
+    return str(eval_gt)
+
+
 def _run_single_evaluation(*, run_dir: Path, saved_run: SavedTrainingRun, options: dict[str, Any]) -> None:
     """Run one resolved checkpoint evaluation and save outputs/metrics."""
     runtime = initialize_runtime(
@@ -102,6 +110,7 @@ def _run_single_evaluation(*, run_dir: Path, saved_run: SavedTrainingRun, option
         eval_gt=options["eval_gt"],
         data_prm_update=options["data_prm_update"],
     )
+    print(f"Evaluation GT: {_format_eval_gt_for_display(sample_source.config.target)}")
     results = options["results"]
 
     n_processed = 0

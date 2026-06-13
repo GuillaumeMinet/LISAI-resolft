@@ -5,6 +5,7 @@ from pathlib import Path
 from lisai.evaluation.run_evaluate import (
     _build_evaluation_folder_name,
     _expand_checkpoint_selection,
+    _format_eval_gt_for_display,
 )
 
 
@@ -52,3 +53,9 @@ def test_expand_checkpoint_selection_for_both_creates_two_runs():
     assert expanded[1]["results"] == {"seed": 1}
     assert expanded[0]["results"] is not options["results"]
     assert expanded[1]["results"] is not options["results"]
+
+
+def test_format_eval_gt_for_display_handles_special_values():
+    assert _format_eval_gt_for_display(None) == "<none>"
+    assert _format_eval_gt_for_display("") == "<root>"
+    assert _format_eval_gt_for_display("gt_avg") == "gt_avg"

@@ -492,7 +492,7 @@
             }
           ],
           "default": null,
-          "description": "Optional ground-truth override path used when evaluating against a custom target location.",
+          "description": "Optional evaluation ground-truth path/key. If omitted, evaluation uses the dataset registry eval_gt default when present, otherwise the training target. Use @training to force the saved training target and @none to evaluate without ground truth.",
           "title": "Eval Gt"
         },
         "data_prm_update": {

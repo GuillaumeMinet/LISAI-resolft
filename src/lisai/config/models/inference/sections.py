@@ -44,7 +44,11 @@ ZSTEP_DESC = "Physical or logical spacing between z slices used when scaling the
 METRICS_LIST_DESC = "Metrics to compute during evaluation, for example ['psnr', 'ssim']. Use null to skip metrics."
 RESULTS_DESC = "Optional in-memory metrics accumulator used by the Python API when evaluating programmatically."
 OVERWRITE_DESC = "Whether an existing save folder may be overwritten."
-EVAL_GT_DESC = "Optional ground-truth override path used when evaluating against a custom target location."
+EVAL_GT_DESC = (
+    "Optional evaluation ground-truth path/key. If omitted, evaluation uses the dataset registry eval_gt "
+    "default when present, otherwise the training target. Use @training to force the saved training target "
+    "and @none to evaluate without ground truth."
+)
 DATA_PRM_UPDATE_DESC = "Optional extra data-loader overrides such as {'data_dir': '...'} or {'subfolder': '...'} used during evaluation."
 CH_OUT_DESC = (
     "Output channel count forwarded to inference. Defaults to 1 for evaluation "
