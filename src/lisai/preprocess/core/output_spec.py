@@ -13,6 +13,7 @@ class OutputDecl:
     key: str
     axes: Axes
     role: Role
+    data_format_override: Optional[str] = None
 
 @dataclass(frozen=True)
 class OutputSpec:
@@ -30,6 +31,8 @@ class OutputSpec:
 
       - axes: expected array layout ("YX" for 2D images, "TYX" for stacks).
       - role: semantic meaning ("inp", "gt", or "aux"), useful for training logic.
+      - data_format_override: optional loader format for outputs whose format differs
+        from the dataset-level data_format.
 
     Example:
         OutputSpec(
@@ -88,12 +91,15 @@ class OutputSpec:
 
     def output_entries(self) -> list[dict[str, str]]:
         """Registry-ready descriptions of produced outputs."""
-        return [
-            {
+        entries: list[dict[str, str]] = []
+        for o in self.outputs:
+            entry = {
                 "key": o.key,
                 "path": self.folder_for(o.key),
                 "role": o.role,
                 "axes": o.axes,
             }
-            for o in self.outputs
-        ]
+            if o.data_format_override is not None:
+                entry["data_format_override"] = o.data_format_override
+            entries.append(entry)
+        return entries

@@ -6,6 +6,7 @@ from typing import Any, Mapping
 from lisai.config.io.yaml import load_yaml, save_yaml
 
 DATA_FORMAT_KEY = "data_format"
+DATA_FORMAT_OVERRIDE_KEY = "data_format_override"
 LEGACY_FORMAT_KEY = "format"
 NESTED_DATASETS_KEY = "datasets"
 RANGE_SUMMARY_KEYS = {"snr_levels", "timepoints"}
@@ -64,6 +65,132 @@ def load_dataset_info(path: str | Path, dataset_name: str | None) -> dict[str, A
     return dict(info) if isinstance(info, Mapping) else None
 
 
+def registry_data_types(info: Mapping[str, Any]) -> set[str]:
+    """Return data type keys described by a registry entry."""
+    keys: set[str] = set()
+    for section_name in ("defaults", "structure", "outputs", "size", "split"):
+        section = info.get(section_name)
+        if isinstance(section, Mapping):
+            keys.update(str(key) for key in section)
+    return keys
+
+
+def registry_value_for_data_type(
+    info: Mapping[str, Any],
+    section_name: str,
+    data_type: str | None,
+) -> Any:
+    """Return a registry subsection value for a data type when unambiguous."""
+    section = info.get(section_name)
+    if not isinstance(section, Mapping):
+        return None
+
+    if data_type is not None:
+        return section.get(data_type)
+
+    if len(section) == 1:
+        return next(iter(section.values()))
+    return None
+
+
+def registry_mapping_for_data_type(
+    info: Mapping[str, Any],
+    section_name: str,
+    data_type: str | None,
+) -> Mapping[str, Any] | None:
+    """Return a registry subsection mapping for a data type when unambiguous."""
+    value = registry_value_for_data_type(info, section_name, data_type)
+    return value if isinstance(value, Mapping) else None
+
+
+def registry_output_axes(info: Mapping[str, Any], data_type: str | None, value: Any) -> str | None:
+    """Return axes for a registered output key/path, when known."""
+    if value is None:
+        return None
+
+    outputs = registry_value_for_data_type(info, "outputs", data_type)
+    if not isinstance(outputs, list):
+        return None
+
+    text = str(value)
+    for output in outputs:
+        if not isinstance(output, Mapping):
+            continue
+        if text not in {str(output.get("key")), str(output.get("path"))}:
+            continue
+        axes = output.get("axes")
+        return str(axes) if axes is not None else None
+    return None
+
+
+def registry_data_format_for_output(
+    info: Mapping[str, Any],
+    data_type: str | None,
+    value: Any,
+) -> str | None:
+    """Return the loader format for an output, honoring explicit overrides."""
+    fallback = info.get(DATA_FORMAT_KEY)
+    fallback_format = str(fallback) if fallback is not None else None
+    if value is None:
+        return fallback_format
+
+    outputs = registry_value_for_data_type(info, "outputs", data_type)
+    if not isinstance(outputs, list):
+        return fallback_format
+
+    text = str(value)
+    for output in outputs:
+        if not isinstance(output, Mapping):
+            continue
+        if text not in {str(output.get("key")), str(output.get("path"))}:
+            continue
+        override = output.get(DATA_FORMAT_OVERRIDE_KEY)
+        return str(override) if override is not None else fallback_format
+    return fallback_format
+
+
+def registry_output_data_format_override(info: Mapping[str, Any], data_type: str | None, value: Any) -> str | None:
+    """Return an output-specific data format override, when present."""
+    if value is None:
+        return None
+
+    outputs = registry_value_for_data_type(info, "outputs", data_type)
+    if not isinstance(outputs, list):
+        return None
+
+    text = str(value)
+    for output in outputs:
+        if not isinstance(output, Mapping):
+            continue
+        if text not in {str(output.get("key")), str(output.get("path"))}:
+            continue
+        override = output.get(DATA_FORMAT_OVERRIDE_KEY)
+        return str(override) if override is not None else None
+    return None
+
+
+def registry_paths_for_data_type(info: Mapping[str, Any], data_type: str | None) -> set[str]:
+    """Return registered output keys/paths for a data type."""
+    paths: set[str] = set()
+
+    structure = registry_value_for_data_type(info, "structure", data_type)
+    if isinstance(structure, list):
+        paths.update(str(item) for item in structure)
+
+    outputs = registry_value_for_data_type(info, "outputs", data_type)
+    if isinstance(outputs, list):
+        for output in outputs:
+            if isinstance(output, Mapping):
+                if output.get("key") is not None:
+                    paths.add(str(output["key"]))
+                if output.get("path") is not None:
+                    paths.add(str(output["path"]))
+            elif output is not None:
+                paths.add(str(output))
+
+    return paths
+
+
 def summarize_numeric_range(value: Any) -> Any:
     """Return a compact min/max mapping for numeric registry ranges."""
     if not isinstance(value, list):
@@ -108,11 +235,19 @@ def save_dataset_registry(registry: Mapping[str, Any], path: str | Path) -> None
 
 __all__ = [
     "DATA_FORMAT_KEY",
+    "DATA_FORMAT_OVERRIDE_KEY",
     "DatasetRegistryError",
     "compact_dataset_registry_ranges",
     "load_dataset_info",
     "load_dataset_registry",
     "normalize_dataset_registry",
+    "registry_data_format_for_output",
+    "registry_data_types",
+    "registry_mapping_for_data_type",
+    "registry_output_axes",
+    "registry_output_data_format_override",
+    "registry_paths_for_data_type",
+    "registry_value_for_data_type",
     "save_dataset_registry",
     "summarize_numeric_range",
 ]

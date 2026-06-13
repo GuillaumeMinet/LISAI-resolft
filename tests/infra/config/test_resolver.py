@@ -37,6 +37,62 @@ def _failed_run_metadata_payload(run_dir: Path, *, checkpoint_name: str | None =
     }
 
 
+def _registry_entry(
+    *,
+    input_name: str | None = "",
+    target_name: str | None = None,
+    usage: str = "training",
+    data_format: str = "single",
+    input_axes: str = "YX",
+    input_data_format_override: str | None = None,
+) -> dict:
+    outputs = []
+    structure = []
+    if input_name is not None:
+        structure.append(input_name)
+        input_output = {
+            "key": input_name or "image",
+            "path": input_name,
+            "role": "inp",
+            "axes": input_axes,
+        }
+        if input_data_format_override is not None:
+            input_output["data_format_override"] = input_data_format_override
+        outputs.append(input_output)
+    if target_name is not None:
+        structure.append(target_name)
+        outputs.append({"key": target_name, "path": target_name, "role": "gt", "axes": "YX"})
+
+    return {
+        "data_format": data_format,
+        "usage": usage,
+        "for_training": usage == "training",
+        "structure": {"recon": structure},
+        "outputs": {"recon": outputs},
+        "defaults": {
+            "recon": {
+                "input": input_name,
+                "target": target_name,
+                "eval_gt": target_name,
+            }
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
+def _fake_dataset_registry(monkeypatch: pytest.MonkeyPatch):
+    names = {
+        "ds",
+        "ds_metadata",
+        "ds_template",
+        "ds_train",
+        "origin_ds",
+        "target_ds",
+    }
+    registry = {name: _registry_entry() for name in names}
+    monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: registry)
+
+
 def test_resolve_config_train_mode_forbids_load_model_section(tmp_path: Path):
     exp_cfg = tmp_path / "exp_train.yml"
     save_yaml(
@@ -92,6 +148,229 @@ def test_resolve_config_dict_refuses_changeme_placeholders():
             {
                 "experiment": {"mode": "train", "exp_name": "exp"},
                 "data": {"dataset_name": "CHANGEME"},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_fills_single_root_registry_input(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {"demo": _registry_entry(input_name="")},
+    )
+
+    cfg = resolve_config_dict(
+        {
+            "experiment": {"mode": "train", "exp_name": "root_registry_input"},
+            "routing": {"data_subfolder": "preprocess/recon"},
+            "data": {"dataset_name": "demo"},
+            "model": {"architecture": "unet", "parameters": {}},
+        }
+    )
+
+    assert cfg.data.data_format == "single"
+    assert cfg.data.input == ""
+    assert cfg.data.registry_data_type == "recon"
+
+
+def test_resolve_config_dict_requires_explicit_non_root_registry_input(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {"demo": _registry_entry(input_name="inp", target_name="gt")},
+    )
+
+    with pytest.raises(ValidationError, match="registry default is 'inp'"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "explicit_input"},
+                "routing": {"data_subfolder": "preprocess/recon"},
+                "data": {"dataset_name": "demo", "paired": True},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_requires_explicit_paired_registry_target(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {"demo": _registry_entry(input_name="inp", target_name="gt")},
+    )
+
+    with pytest.raises(ValidationError, match="registry default is 'gt'"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "explicit_target"},
+                "routing": {"data_subfolder": "preprocess/recon"},
+                "data": {"dataset_name": "demo", "paired": True, "input": "inp"},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_uses_format_from_output_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "demo": _registry_entry(
+                input_name="inp_single",
+                data_format="mltpl_snr",
+                input_axes="YX",
+                input_data_format_override="single",
+            )
+        },
+    )
+
+    cfg = resolve_config_dict(
+        {
+            "experiment": {"mode": "train", "exp_name": "single_axes_default"},
+            "routing": {"data_subfolder": "preprocess/recon"},
+            "data": {"dataset_name": "demo", "input": "inp_single"},
+            "model": {"architecture": "unet", "parameters": {}},
+        }
+    )
+
+    assert cfg.data.input == "inp_single"
+    assert cfg.data.data_format == "single"
+
+
+def test_resolve_config_dict_allows_format_from_output_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "demo": _registry_entry(
+                input_name="inp_single",
+                data_format="mltpl_snr",
+                input_axes="YX",
+                input_data_format_override="single",
+            )
+        },
+    )
+
+    cfg = resolve_config_dict(
+        {
+            "experiment": {"mode": "train", "exp_name": "single_axes_explicit"},
+            "routing": {"data_subfolder": "preprocess/recon"},
+            "data": {"dataset_name": "demo", "data_format": "single", "input": "inp_single"},
+            "model": {"architecture": "unet", "parameters": {}},
+        }
+    )
+
+    assert cfg.data.data_format == "single"
+
+
+def test_resolve_config_dict_rejects_single_format_without_output_override(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "demo": _registry_entry(
+                input_name="inp_single",
+                data_format="mltpl_snr",
+                input_axes="YX",
+            )
+        },
+    )
+
+    with pytest.raises(ValidationError, match="data.data_format"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "single_axes_without_override"},
+                "routing": {"data_subfolder": "preprocess/recon"},
+                "data": {
+                    "dataset_name": "demo",
+                    "data_format": "single",
+                    "input": "inp_single",
+                },
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_rejects_unregistered_prepared_dataset(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: {})
+
+    with pytest.raises(ValidationError, match="not registered"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "missing_registry"},
+                "data": {"dataset_name": "missing_ds", "prep_before": True},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_allows_unregistered_unprepared_dataset(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: {})
+
+    cfg = resolve_config_dict(
+        {
+            "experiment": {"mode": "train", "exp_name": "unprepared"},
+            "data": {"dataset_name": "missing_ds", "prep_before": False},
+            "model": {"architecture": "unet", "parameters": {}},
+        }
+    )
+
+    assert cfg.data.dataset_info is None
+    assert cfg.data.prep_before is False
+
+
+def test_resolve_config_dict_rejects_registry_data_format_conflict(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {"demo": _registry_entry(input_name="inp")},
+    )
+
+    with pytest.raises(ValidationError, match="data.data_format"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "format_conflict"},
+                "routing": {"data_subfolder": "preprocess/recon"},
+                "data": {"dataset_name": "demo", "data_format": "timelapse", "input": "inp"},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_rejects_evaluation_only_registry_dataset(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {"eval_ds": _registry_entry(input_name="inp", usage="evaluation")},
+    )
+
+    with pytest.raises(ValidationError, match="evaluation-only"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "eval_only"},
+                "routing": {"data_subfolder": "preprocess/recon"},
+                "data": {"dataset_name": "eval_ds"},
+                "model": {"architecture": "unet", "parameters": {}},
+            }
+        )
+
+
+def test_resolve_config_dict_requires_input_when_registry_default_is_ambiguous(monkeypatch: pytest.MonkeyPatch):
+    entry = _registry_entry(input_name=None)
+    entry["structure"]["recon"] = ["inp_a", "inp_b"]
+    entry["outputs"]["recon"] = [
+        {"key": "inp_a", "path": "inp_a", "role": "inp", "axes": "YX"},
+        {"key": "inp_b", "path": "inp_b", "role": "inp", "axes": "YX"},
+    ]
+    entry["defaults"]["recon"]["input"] = None
+    monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: {"ambiguous": entry})
+
+    with pytest.raises(ValidationError, match="data.input"):
+        resolve_config_dict(
+            {
+                "experiment": {"mode": "train", "exp_name": "ambiguous_input"},
+                "routing": {"data_subfolder": "preprocess/recon"},
+                "data": {"dataset_name": "ambiguous"},
                 "model": {"architecture": "unet", "parameters": {}},
             }
         )

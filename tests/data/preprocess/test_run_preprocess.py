@@ -162,6 +162,18 @@ def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path):
     PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
 
     registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["outputs"]["recon"] == [
+        {"key": "inp_mltpl_snr", "path": "inp_mltpl_snr", "role": "inp", "axes": "TYX"},
+        {
+            "key": "inp_single",
+            "path": "inp_single",
+            "role": "inp",
+            "axes": "YX",
+            "data_format_override": "single",
+        },
+        {"key": "gt_snr0", "path": "gt_snr0", "role": "gt", "axes": "YX"},
+        {"key": "gt_avg", "path": "gt_avg", "role": "gt", "axes": "YX"},
+    ]
     assert registry[dataset_name]["defaults"]["recon"] == {
         "input": "inp_mltpl_snr",
         "target": None,

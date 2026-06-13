@@ -31,9 +31,16 @@ def test_resolved_allows_explicit_runtime_overrides():
     assert cfg.data_dir == Path(".")
 
 
-def test_resolved_data_format_priority():
+def test_resolved_data_format_prefers_config_value_over_registry_fallback():
     cfg = DataSection.model_validate(
         {"dataset_name": "ds", "input": "inp_single", "paired": False, "data_format": "single"},
+    ).resolved(data_dir=Path("."), dataset_info={"data_format": "timelapse"})
+    assert cfg.resolved_data_format == "single"
+
+
+def test_resolved_data_format_uses_registry_when_config_missing():
+    cfg = DataSection.model_validate(
+        {"dataset_name": "ds", "input": "inp_timelapse", "paired": False},
     ).resolved(data_dir=Path("."), dataset_info={"data_format": "timelapse"})
     assert cfg.resolved_data_format == "timelapse"
 
@@ -46,9 +53,11 @@ def test_resolved_data_format_defaults_to_single_with_warning():
         assert cfg.resolved_data_format == "single"
 
 
-def test_validation_requires_target_for_paired():
-    with pytest.raises(ValueError, match="target"):
-        DataSection.model_validate({"dataset_name": "ds", "input": "inp_single", "paired": True})
+def test_data_section_allows_paired_target_to_be_resolved_later():
+    cfg = DataSection.model_validate({"dataset_name": "ds", "input": "inp_single", "paired": True})
+
+    assert cfg.paired is True
+    assert cfg.target is None
 
 
 def test_resolved_sets_norm_and_dataset_info():

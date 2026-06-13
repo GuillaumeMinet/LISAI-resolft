@@ -1,7 +1,15 @@
 from __future__ import annotations
 
 import warnings
+from collections.abc import Mapping
 from typing import Any
+
+from lisai.data.dataset_registry import (
+    registry_data_format_for_output,
+    registry_data_types,
+    registry_mapping_for_data_type,
+    registry_paths_for_data_type,
+)
 
 from .tasks import (
     DenoisingCARETaskSection,
@@ -19,11 +27,150 @@ def _timelapse_context_length(data: Any) -> int | None:
 
 
 def _resolved_data_format(data: Any) -> str | None:
+    value = getattr(data, "data_format", None)
+    if value is not None:
+        return str(value)
     dataset_info = getattr(data, "dataset_info", None)
     if isinstance(dataset_info, dict) and dataset_info.get("data_format") is not None:
         return str(dataset_info["data_format"])
-    value = getattr(data, "data_format", None)
+    return None
+
+
+def _data_value(data: Any, *names: str) -> Any:
+    for name in names:
+        value = getattr(data, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _registry_default_value(dataset_info: Mapping[str, Any], data_type: str | None, name: str) -> str | None:
+    defaults = registry_mapping_for_data_type(dataset_info, "defaults", data_type)
+    if not isinstance(defaults, Mapping):
+        return None
+    value = defaults.get(name)
     return str(value) if value is not None else None
+
+
+def _is_evaluation_only_dataset(dataset_info: Mapping[str, Any]) -> bool:
+    if dataset_info.get("for_training") is False:
+        return True
+    usage = dataset_info.get("usage")
+    return isinstance(usage, str) and usage.lower() in {"eval", "evaluation", "test"}
+
+
+def _validate_registry_member(
+    *,
+    dataset_info: Mapping[str, Any],
+    data_type: str | None,
+    field_name: str,
+    value: Any,
+) -> None:
+    if value is None:
+        return
+
+    paths = registry_paths_for_data_type(dataset_info, data_type)
+    if not paths:
+        return
+
+    text = str(value)
+    if text not in paths:
+        dataset_name = dataset_info.get("name")
+        suffix = f" for dataset {dataset_name!r}" if dataset_name else ""
+        allowed = ", ".join(repr(path) for path in sorted(paths))
+        raise ValueError(
+            f"`{field_name}`={text!r} is not registered{suffix}; expected one of: {allowed}."
+        )
+
+
+def _validate_registry_consistency(data: Any) -> None:
+    if not bool(getattr(data, "registry_checked", False)):
+        return
+
+    dataset_name = getattr(data, "dataset_name", None)
+    dataset_info = getattr(data, "dataset_info", None)
+    prep_before = bool(getattr(data, "prep_before", True))
+
+    if not isinstance(dataset_info, Mapping):
+        if prep_before:
+            raise ValueError(
+                f"Dataset {dataset_name!r} is not registered; set `data.prep_before=false` "
+                "for unprepared training or preprocess/register the dataset first."
+            )
+        return
+
+    if _is_evaluation_only_dataset(dataset_info):
+        raise ValueError(f"Dataset {dataset_name!r} is marked as evaluation-only and cannot be used for training.")
+
+    data_type = getattr(data, "registry_data_type", None)
+    known_data_types = registry_data_types(dataset_info)
+    if data_type is not None and known_data_types and str(data_type) not in known_data_types:
+        allowed = ", ".join(repr(value) for value in sorted(known_data_types))
+        raise ValueError(
+            f"Registry data type {data_type!r} is not available for dataset {dataset_name!r}; "
+            f"expected one of: {allowed}."
+        )
+
+    if not prep_before:
+        return
+
+    input_value = _data_value(data, "input", "inp")
+    if input_value is None:
+        default_input = _registry_default_value(dataset_info, data_type, "input")
+        hint = (
+            f"registry default is {default_input!r}; add it explicitly to the config."
+            if default_input is not None
+            else "set `data.input` explicitly in the config."
+        )
+        raise ValueError(
+            f"`data.input` is required for prepared training on dataset {dataset_name!r}; "
+            f"{hint}"
+        )
+
+    registry_format = dataset_info.get("data_format")
+    explicit_format = getattr(data, "data_format", None)
+    if explicit_format is not None:
+        allowed_formats = {
+            str(value)
+            for value in (
+                registry_format,
+                registry_data_format_for_output(dataset_info, data_type, input_value),
+            )
+            if value is not None
+        }
+        if allowed_formats and str(explicit_format) not in allowed_formats:
+            allowed = ", ".join(repr(value) for value in sorted(allowed_formats))
+            raise ValueError(
+                f"`data.data_format`={explicit_format!r} is not compatible with registry metadata "
+                f"for dataset {dataset_name!r}; expected one of: {allowed}."
+            )
+
+    target_value = _data_value(data, "target", "gt")
+    if bool(getattr(data, "paired", False)) and target_value is None:
+        default_target = _registry_default_value(dataset_info, data_type, "target")
+        hint = (
+            f"registry default is {default_target!r}; add it explicitly to the config."
+            if default_target is not None
+            else "set `data.target` explicitly in the config."
+        )
+        raise ValueError(
+            f"`data.target` is required for paired training on dataset {dataset_name!r}; "
+            f"{hint}"
+        )
+
+    _validate_registry_member(
+        dataset_info=dataset_info,
+        data_type=data_type,
+        field_name="data.input",
+        value=input_value,
+    )
+    if target_value is not None:
+        _validate_registry_member(
+            dataset_info=dataset_info,
+            data_type=data_type,
+            field_name="data.target",
+            value=target_value,
+        )
 
 
 def _expected_input_channels(data: Any) -> tuple[int | None, str]:
@@ -140,11 +287,14 @@ def _validate_supervised_denoising_task(
 
 
 def validate_cross_section_consistency(cfg: Any, *, emit_warnings: bool) -> Any:
+    data = getattr(cfg, "data", None)
+    if data is not None:
+        _validate_registry_consistency(data)
+
     model = getattr(cfg, "model", None)
     if model is None:
         return cfg
 
-    data = cfg.data
     architecture = model.architecture
     params = model.parameters
     context_length = _timelapse_context_length(data)

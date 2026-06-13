@@ -111,7 +111,7 @@ class ReconMltplSnrPipeline(BasePipeline[ReconMltplSnrConfig]):
             OutputDecl(key="inp_mltpl_snr", axes="TYX", role="inp"),
         ]
         if self.cfg.first_low_inp:
-            outs.append(OutputDecl(key="inp_single", axes="YX", role="inp"))
+            outs.append(OutputDecl(key="inp_single", axes="YX", role="inp", data_format_override="single"))
 
         gt_types = self.cfg.gt_types or []
         if "snr0" in gt_types:

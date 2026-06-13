@@ -9,6 +9,7 @@ from lisai.data.dataset_registry import (
     DatasetRegistryError,
     load_dataset_info,
     load_dataset_registry,
+    registry_data_format_for_output,
     save_dataset_registry,
 )
 
@@ -60,6 +61,40 @@ def test_load_dataset_registry_rejects_nested_datasets_layout(tmp_path: Path):
 
 def test_load_dataset_registry_returns_empty_for_missing_file(tmp_path: Path):
     assert load_dataset_registry(tmp_path / "missing.yml") == {}
+
+
+def test_registry_data_format_for_output_uses_override_or_dataset_format():
+    info = {
+        "data_format": "mltpl_snr",
+        "outputs": {
+            "recon": [
+                {"key": "inp_mltpl_snr", "path": "inp_mltpl_snr", "role": "inp", "axes": "TYX"},
+                {
+                    "key": "inp_single",
+                    "path": "inp_single",
+                    "role": "inp",
+                    "axes": "YX",
+                    "data_format_override": "single",
+                },
+            ]
+        },
+    }
+
+    assert registry_data_format_for_output(info, "recon", "inp_mltpl_snr") == "mltpl_snr"
+    assert registry_data_format_for_output(info, "recon", "inp_single") == "single"
+
+
+def test_registry_data_format_for_output_does_not_infer_from_axes_without_override():
+    info = {
+        "data_format": "mltpl_snr",
+        "outputs": {
+            "recon": [
+                {"key": "inp_single", "path": "inp_single", "role": "inp", "axes": "YX"},
+            ]
+        },
+    }
+
+    assert registry_data_format_for_output(info, "recon", "inp_single") == "mltpl_snr"
 
 
 def test_save_dataset_registry_compacts_numeric_size_ranges(tmp_path: Path):

@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 import lisai.cli as root_cli
+import lisai.config.io.resolver as resolver_mod
 from lisai.config import cli as config_cli
 from lisai.config.catalog import validate_training_config_dict, validate_training_template_dict
 from lisai.config.io.yaml import load_yaml
@@ -199,7 +200,29 @@ def test_configs_validate_rejects_scaffolded_changeme_config(
     assert "data.dataset_name" in captured.err
 
 
-def test_configs_resolve_strips_metadata(capsys: pytest.CaptureFixture[str]):
+def test_configs_resolve_strips_metadata(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        resolver_mod,
+        "load_dataset_registry",
+        lambda path: {
+            "replace_me_dataset": {
+                "data_format": "single",
+                "usage": "training",
+                "for_training": True,
+                "structure": {"recon": ["replace_me_input"]},
+                "outputs": {
+                    "recon": [
+                        {"key": "replace_me_input", "path": "replace_me_input", "role": "inp", "axes": "YX"}
+                    ]
+                },
+                "defaults": {"recon": {"input": "replace_me_input", "target": None, "eval_gt": None}},
+            }
+        },
+    )
+
     exit_code = config_cli.main(["resolve", "presets/denoising_hdn_unsup"])
 
     captured = capsys.readouterr()
