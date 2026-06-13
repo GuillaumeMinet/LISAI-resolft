@@ -4,6 +4,7 @@ import argparse
 from typing import Sequence
 
 from lisai.config.cli import add_configs_subparser
+from lisai.data.cli import add_datasets_subparser
 from lisai.evaluation.cli import add_apply_subparser, add_evaluate_subparser
 from lisai.preprocess.cli import add_preprocess_subparser
 from lisai.runs.cli import add_runs_subparser
@@ -19,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_train_subparser(subparsers)
     add_continue_subparser(subparsers)
     add_configs_subparser(subparsers)
+    add_datasets_subparser(subparsers)
     add_runs_subparser(subparsers)
     add_preprocess_subparser(subparsers)
     add_apply_subparser(subparsers)
