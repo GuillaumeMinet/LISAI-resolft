@@ -102,6 +102,7 @@ def _run_single_evaluation(*, run_dir: Path, saved_run: SavedTrainingRun, option
     upsamp = saved_run.upsampling_factor
     print(f"Found upsampling factor to be: {upsamp}\n")
     tiling_size = runtime.tiling_size
+    print(f"Tiling size: {tiling_size}\n")
 
     sample_source = build_eval_source(
         saved_run,

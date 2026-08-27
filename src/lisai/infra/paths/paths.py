@@ -14,6 +14,9 @@ class TemplateKeys:
     tensorboard_runs_dir: str = "tensorboard_runs_dir"
     predictreal_saving: str = "predictreal_saving"
     noise_model: str = "noise_model"
+    promoted_model_registry: str = "promoted_model_registry"
+    promoted_model_dir: str = "promoted_model_dir"
+    promoted_model_exports_dir: str = "promoted_model_exports_dir"
 
 
 class Paths:
@@ -52,6 +55,23 @@ class Paths:
 
     def dataset_registry_path(self) -> Path:
         return self.settings.get_template_path(self.keys.dataset_registry)
+
+    def promoted_models_root(self) -> Path:
+        roots = self.settings.project_cfg.paths.roots or {}
+        template = roots.get("promoted_models_dir", "{data_root}/promoted_models")
+        return Path(self.settings.resolve_path(template)).resolve()
+
+    def promoted_model_registry_path(self) -> Path:
+        return self.settings.get_template_path(self.keys.promoted_model_registry)
+
+    def promoted_model_dir(self, *, model_name: str) -> Path:
+        return self.settings.get_template_path(
+            self.keys.promoted_model_dir,
+            model_name=model_name,
+        )
+
+    def promoted_model_exports_dir(self) -> Path:
+        return self.settings.get_template_path(self.keys.promoted_model_exports_dir)
 
     def dataset_dir(self, *, dataset_name: str, data_subfolder: str = "") -> Path:
         return self.settings.get_template_path(

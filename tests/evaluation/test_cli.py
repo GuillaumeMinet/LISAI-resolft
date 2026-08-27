@@ -368,3 +368,19 @@ def test_evaluate_cli_rejects_split_run_name_and_index_selector():
     with pytest.raises(SystemExit) as exc_info:
         parser.parse_args(["evaluate", "resume_me", "0"])
     assert exc_info.value.code == 2
+
+
+def test_apply_cli_accepts_promoted_model_without_run_selector(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(["apply", "--model", "hdn-vimentin", "/data/images"])
+    result = args.handler(args)
+
+    assert result == 0
+    assert args.run is None
+    assert captured["promoted_model_name"] == "hdn-vimentin"
+    assert captured["model_name"] == "hdn-vimentin"
+    assert captured["model_subfolder"] == "promoted"
+    assert captured["data_path"] == Path("/data/images")

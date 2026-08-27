@@ -14,11 +14,14 @@ from lisai.runs.scanner import scan_runs
 from lisai.runs.schema import RunMetadata
 
 
-def _write_metadata(run_dir, *, dataset, model_subfolder, group_path, path, status="running"):
+def _write_metadata(
+    run_dir, *, dataset, model_subfolder, group_path, path, status="running",
+    run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+):
     run_name, run_index = parse_run_dir_name(run_dir.name)
     payload = {
         "schema_version": 2,
-        "run_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "run_id": run_id,
         "run_name": run_name,
         "run_index": run_index,
         "dataset": dataset,
@@ -521,3 +524,41 @@ def test_runs_list_namespace_remains_available_with_top_level_list(monkeypatch, 
     assert exit_code == 0
     assert "LISAI runs listing - Status: 'running'" in captured.out
     assert "run_namespace" in captured.out
+
+
+def test_runs_list_promoted_filters_by_source_run_id(monkeypatch, tmp_path, capsys):
+    import lisai.promoted_models.registry as promoted_registry
+
+    datasets_root = tmp_path / "datasets"
+    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_b = datasets_root / "Gag" / "models" / "HDN" / "run_b_00"
+    promoted_id = "01ARZ3NDEKTSV4RRFFQ69G5FAA"
+    other_id = "01ARZ3NDEKTSV4RRFFQ69G5FAB"
+    _write_metadata(
+        run_a,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/run_a_00",
+        status="completed",
+        run_id=promoted_id,
+    )
+    _write_metadata(
+        run_b,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/run_b_00",
+        status="completed",
+        run_id=other_id,
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(promoted_registry, "promoted_source_run_ids", lambda: {promoted_id})
+
+    exit_code = root_main(["runs", "list", "--promoted"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Promoted only" in captured.out
+    assert "run_a_00" in captured.out
+    assert "run_b_00" not in captured.out

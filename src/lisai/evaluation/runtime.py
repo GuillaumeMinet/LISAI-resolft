@@ -17,7 +17,7 @@ import torch
 
 from lisai.config import settings
 from lisai.infra.paths import Paths
-from lisai.models import load_noise_model
+from lisai.models import load_noise_model, load_noise_model_from_paths
 from lisai.models.loader import init_model
 
 from .saved_run import CheckpointMethod, SavedTrainingRun
@@ -125,6 +125,9 @@ def _load_state_dict_model(
     checkpoint_path: Path,
     device: torch.device,
     paths: Paths,
+    *,
+    noise_model_path: Path | None = None,
+    noise_model_norm_prm_path: Path | None = None,
 ) -> tuple[Any, int | None]:
     """Instantiate the model structure and load weights from a state-dict checkpoint."""
     model_norm_prm = dict(saved_run.model_norm_prm) if saved_run.model_norm_prm is not None else None
@@ -133,7 +136,12 @@ def _load_state_dict_model(
     if saved_run.is_lvae:
         if not saved_run.noise_model_name:
             raise ValueError("Saved LVAE run is missing noise_model.name.")
-        noise_model, nm_norm_prm = load_noise_model(saved_run.noise_model_name, device, paths)
+        if noise_model_path is not None:
+            noise_model, nm_norm_prm = load_noise_model_from_paths(
+                noise_model_path, noise_model_norm_prm_path, device
+            )
+        else:
+            noise_model, nm_norm_prm = load_noise_model(saved_run.noise_model_name, device, paths)
         if model_norm_prm is None and nm_norm_prm is not None:
             model_norm_prm = dict(nm_norm_prm)
         if model_norm_prm is None and saved_run.data_norm_prm is not None:
@@ -177,29 +185,57 @@ def initialize_runtime(
     best_or_last: str = "best",
     epoch_number: int | None = None,
     tiling_size: int | None = None,
+    checkpoint_path: str | Path | None = None,
+    noise_model_path: str | Path | None = None,
+    noise_model_norm_prm_path: str | Path | None = None,
 ) -> InferenceRuntime:
     """Load the requested checkpoint and build the live inference runtime."""
     paths = Paths(settings)
     resolved_device = _default_device() if device is None else torch.device(device)
-    load_method, checkpoint_path = _resolve_checkpoint_path(
-        saved_run,
-        best_or_last=best_or_last,
-        epoch_number=epoch_number,
-        paths=paths,
-    )
+    if checkpoint_path is None:
+        load_method, resolved_checkpoint_path = _resolve_checkpoint_path(
+            saved_run,
+            best_or_last=best_or_last,
+            epoch_number=epoch_number,
+            paths=paths,
+        )
+    else:
+        load_method = "state_dict"
+        resolved_checkpoint_path = Path(checkpoint_path)
+        if not resolved_checkpoint_path.exists():
+            raise FileNotFoundError(f"Model checkpoint not found: {resolved_checkpoint_path}")
 
     if load_method == "full_model":
-        model = torch.load(checkpoint_path, map_location=resolved_device)
+        model = torch.load(resolved_checkpoint_path, map_location=resolved_device)
         model.eval()
-        resolved_epoch = _epoch_from_checkpoint_path(checkpoint_path)
+        resolved_epoch = _epoch_from_checkpoint_path(resolved_checkpoint_path)
     else:
-        model, resolved_epoch = _load_state_dict_model(saved_run, checkpoint_path, resolved_device, paths)
+        if noise_model_path is None and noise_model_norm_prm_path is None:
+            model, resolved_epoch = _load_state_dict_model(
+                saved_run,
+                resolved_checkpoint_path,
+                resolved_device,
+                paths,
+            )
+        else:
+            model, resolved_epoch = _load_state_dict_model(
+                saved_run,
+                resolved_checkpoint_path,
+                resolved_device,
+                paths,
+                noise_model_path=Path(noise_model_path) if noise_model_path is not None else None,
+                noise_model_norm_prm_path=(
+                    Path(noise_model_norm_prm_path)
+                    if noise_model_norm_prm_path is not None
+                    else None
+                ),
+            )
 
     effective_tiling_size = tiling_size if tiling_size is not None else saved_run.default_tiling_size
     return InferenceRuntime(
         model=model,
         device=resolved_device,
-        checkpoint_path=checkpoint_path,
+        checkpoint_path=resolved_checkpoint_path,
         load_method=load_method,
         tiling_size=effective_tiling_size,
         resolved_epoch=resolved_epoch,

@@ -9,11 +9,15 @@ paths:
   roots:
     data_dir: "{data_root}/datasets"
     noise_models_dir: "{data_root}/noise_models"
+    promoted_models_dir: "{data_root}/promoted_models"
     run_container_dirname: "models"
     # code_dir is injected automatically by Settings (project root)
 
   templates:
     dataset_registry: "{paths.roots.data_dir}/dataset_registry.yml"
+    promoted_model_registry: "{paths.roots.promoted_models_dir}/model_registry.yml"
+    promoted_model_dir: "{paths.roots.promoted_models_dir}/{model_name}"
+    promoted_model_exports_dir: "{paths.roots.promoted_models_dir}/exports"
 
     dataset_loading: "{paths.roots.data_dir}/{dataset_name}/{data_subfolder}"
 

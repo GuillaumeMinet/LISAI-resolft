@@ -31,7 +31,7 @@ evaluate:
   split: test
   best_or_last: best
   epoch_number: null
-  tiling_size: null
+  tiling_size: 2000
   crop_size: null
   metrics_list: null
   lvae_num_samples: 20

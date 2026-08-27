@@ -98,7 +98,8 @@ def run_apply_model(model_dataset: str,
                 apply_color_code: bool | UnsetType = UNSET,
                 color_code_prm: dict | None | UnsetType = UNSET,
                 dark_frame_context_length: bool | UnsetType = UNSET,
-                config: str | Path | None = None):
+                config: str | Path | None = None,
+                promoted_model_name: str | None = None):
     """Apply a saved model checkpoint to one file or a directory of files.
 
     Any omitted optional argument is resolved from `configs/inference/defaults.yml`
@@ -130,14 +131,30 @@ def run_apply_model(model_dataset: str,
     color_code_prm = options["color_code_prm"] or {}
 
     data_path = Path(data_path)
-    run_dir = resolve_run_dir(dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name)
-    saved_run = load_saved_run(run_dir)
-    runtime = initialize_runtime(
-        saved_run=saved_run,
-        best_or_last=options["best_or_last"],
-        epoch_number=options["epoch_number"],
-        tiling_size=options["tiling_size"],
-    )
+    if promoted_model_name is not None:
+        from lisai.promoted_models import load_promoted_model
+
+        promoted = load_promoted_model(promoted_model_name)
+        saved_run = promoted.saved_run
+        model_dataset = saved_run.dataset_name
+        model_subfolder = "promoted"
+        model_name = promoted.manifest.name
+        runtime = initialize_runtime(
+            saved_run=saved_run,
+            tiling_size=options["tiling_size"],
+            checkpoint_path=promoted.weights_path,
+            noise_model_path=promoted.noise_model_path,
+            noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
+        )
+    else:
+        run_dir = resolve_run_dir(dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name)
+        saved_run = load_saved_run(run_dir)
+        runtime = initialize_runtime(
+            saved_run=saved_run,
+            best_or_last=options["best_or_last"],
+            epoch_number=options["epoch_number"],
+            tiling_size=options["tiling_size"],
+        )
     if saved_run.is_lvae:
         assert options["lvae_num_samples"] is not None, (
             "for LVAE prediction, number of samples needs to be specified"

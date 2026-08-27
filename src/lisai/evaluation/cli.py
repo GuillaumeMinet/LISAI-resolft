@@ -63,6 +63,7 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     parser.add_argument("data_path", help="Input file or directory to process.")
     parser.add_argument("--run-id", help="Stable run identifier to apply.")
+    parser.add_argument("--model", help="Use a locally promoted model by public name instead of a training run.")
     add_run_filter_arguments(parser, include_identity=False, include_status=False)
     parser.add_argument(
         "-c",
@@ -168,14 +169,27 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
 
 
 def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    selected = _resolve_run_selector(args)
-    if selected is None:
-        return 1
+    promoted_model_name = args.model
+    if promoted_model_name is not None:
+        if any((args.run, args.run_id, args.dataset, args.model_subfolder)):
+            parser.error("--model cannot be combined with a run selector or run filters.")
+        if args.epoch_number is not None or args.best_or_last is not None:
+            parser.error("--epoch-number/--best-or-last do not apply to promoted models; promotion already fixes the checkpoint.")
+        model_dataset = ""
+        model_subfolder = "promoted"
+        model_name = promoted_model_name
+    else:
+        selected = _resolve_run_selector(args)
+        if selected is None:
+            return 1
+        model_dataset = selected.dataset
+        model_subfolder = selected.model_subfolder
+        model_name = selected.run_dir.name
 
     run_apply_model(
-        model_dataset=selected.dataset,
-        model_subfolder=selected.model_subfolder,
-        model_name=selected.run_dir.name,
+        model_dataset=model_dataset,
+        model_subfolder=model_subfolder,
+        model_name=model_name,
         data_path=Path(args.data_path),
         config=args.config,
         save_folder=_maybe_unset(args.save_folder),
@@ -197,6 +211,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         apply_color_code=_maybe_unset(args.apply_color_code),
         color_code_prm=_parse_key_value_overrides(args.color_code_option, parser),
         dark_frame_context_length=_maybe_unset(args.dark_frame_context_length),
+        promoted_model_name=promoted_model_name,
     )
     return 0
 

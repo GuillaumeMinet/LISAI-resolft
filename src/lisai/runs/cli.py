@@ -33,6 +33,7 @@ def list_runs(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     status: str | None = None,
+    promoted: bool = False,
     full: bool = False,
     live: bool = False,
     interval_seconds: float = 2.0,
@@ -71,6 +72,7 @@ def list_runs(
                     dataset=dataset,
                     model_subfolder=model_subfolder,
                     status=status,
+                    promoted=promoted,
                     full=full,
                     stdout=out,
                     stderr=err,
@@ -92,6 +94,7 @@ def list_runs(
         dataset=dataset,
         model_subfolder=model_subfolder,
         status=status,
+        promoted=promoted,
         full=full,
         stdout=out,
         stderr=err,
@@ -111,6 +114,7 @@ def _render_runs_snapshot(
     dataset: str | None,
     model_subfolder: str | None,
     status: str | None,
+    promoted: bool,
     full: bool,
     stdout,
     stderr,
@@ -130,6 +134,12 @@ def _render_runs_snapshot(
         status=status,
     )
 
+    if promoted:
+        from lisai.promoted_models.registry import promoted_source_run_ids
+
+        promoted_ids = promoted_source_run_ids()
+        filtered_runs = [run for run in filtered_runs if run.metadata.run_id in promoted_ids]
+
     snapshot_lines: list[str] = []
     if top_notice is not None:
         snapshot_lines.append(top_notice)
@@ -141,6 +151,7 @@ def _render_runs_snapshot(
             dataset=dataset,
             model_subfolder=model_subfolder,
             status=status,
+            promoted=promoted,
             live=live,
             refresh_interval_seconds=refresh_interval_seconds,
         )
@@ -183,6 +194,7 @@ def _format_listing_title(
     dataset: str | None,
     model_subfolder: str | None,
     status: str | None,
+    promoted: bool,
     live: bool,
     refresh_interval_seconds: float,
 ) -> str:
@@ -193,6 +205,8 @@ def _format_listing_title(
         filter_parts.append(f"Subfolder: '{model_subfolder}'")
     if status:
         filter_parts.append(f"Status: '{status}'")
+    if promoted:
+        filter_parts.append("Promoted only")
     if run_dir_name:
         filter_parts.append(f"run_dir='{run_dir_name}'")
     if exp_name:
@@ -255,6 +269,7 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         dataset=args.dataset,
         model_subfolder=args.model_subfolder,
         status=args.status,
+        promoted=args.promoted,
         full=args.full,
         live=args.live,
         interval_seconds=args.interval,
@@ -348,6 +363,29 @@ def run_plot_from_args(args: argparse.Namespace) -> int:
     )
 
 
+def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    selected = _resolve_run_from_args(args)
+    if selected is None:
+        return 1
+
+    from lisai.promoted_models import promote_run
+
+    try:
+        promoted = promote_run(
+            selected.run_dir,
+            name=args.name,
+            checkpoint=args.checkpoint,
+            overwrite=args.overwrite,
+        )
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    print(f"Promoted model: {promoted.manifest.name}")
+    print(f"Model directory: {promoted.model_dir}")
+    print(f"Source run: {promoted.manifest.source.run_id}")
+    return 0
+
+
 def add_run_filter_arguments(
     parser: argparse.ArgumentParser,
     *,
@@ -383,6 +421,11 @@ def add_run_filter_arguments(
 
 def _add_runs_list_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     add_run_filter_arguments(parser, include_status=True)
+    parser.add_argument(
+        "--promoted",
+        action="store_true",
+        help="Show only runs that are the source of a locally promoted model.",
+    )
     parser.add_argument(
         "--full",
         action="store_true",
@@ -437,6 +480,37 @@ def _add_runs_open_arguments(parser: argparse.ArgumentParser) -> argparse.Argume
     return parser
 
 
+def _add_runs_promote_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "run",
+        nargs="?",
+        help=(
+            "Run selector: run_dir_name, partial exp_name, or dataset[/subfolder]/run_dir_name. "
+            "Use --run-id as an alternative."
+        ),
+    )
+    parser.add_argument("--run-id", help="Stable run identifier to promote.")
+    add_run_filter_arguments(parser, include_identity=False, include_status=False)
+    parser.add_argument(
+        "--name",
+        required=True,
+        help="Unique public name for the locally promoted model.",
+    )
+    parser.add_argument(
+        "--checkpoint",
+        choices=["best", "last"],
+        default="best",
+        help="State-dict checkpoint to promote (default: best).",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing locally promoted model with the same name.",
+    )
+    parser.set_defaults(handler=lambda args, p=parser: run_promote_from_args(args, p))
+    return parser
+
+
 def add_runs_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]):
     parser = subparsers.add_parser(
         "runs",
@@ -466,6 +540,13 @@ def add_runs_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
         description="Open a selected run folder in file explorer.",
     )
     _add_runs_open_arguments(open_parser)
+
+    promote_parser = runs_subparsers.add_parser(
+        "promote",
+        help="Promote a training run into the local reusable model library.",
+        description="Promote a completed or stopped run into the local reusable model library.",
+    )
+    _add_runs_promote_arguments(promote_parser)
     return parser
 
 
@@ -494,6 +575,13 @@ def build_parser(*, prog: str = "lisai runs") -> argparse.ArgumentParser:
         description="Open a selected run folder in file explorer.",
     )
     _add_runs_open_arguments(open_parser)
+
+    promote_parser = subparsers.add_parser(
+        "promote",
+        help="Promote a training run into the local reusable model library.",
+        description="Promote a completed or stopped run into the local reusable model library.",
+    )
+    _add_runs_promote_arguments(promote_parser)
     return parser
 
 
