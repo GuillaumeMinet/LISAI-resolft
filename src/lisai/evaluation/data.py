@@ -432,11 +432,32 @@ def _resolve_eval_gt(
     return EvalGtResolution(target=None, force_no_gt=True)
 
 
-def _ensure_gt_normalization_defaults(model_norm_prm: dict[str, Any] | None) -> dict[str, Any]:
+def _ensure_gt_normalization_defaults(
+    model_norm_prm: dict[str, Any] | None,
+    *,
+    use_input_stats_for_gt: bool = False,
+) -> dict[str, Any]:
     if model_norm_prm is None:
         model_norm_prm = {}
-    model_norm_prm.setdefault("data_mean_gt", 0)
-    model_norm_prm.setdefault("data_std_gt", 1)
+
+    default_gt_mean = 0
+    default_gt_std = 1
+    if use_input_stats_for_gt:
+        default_gt_mean = model_norm_prm.get("data_mean")
+        default_gt_std = model_norm_prm.get("data_std")
+        if default_gt_mean is None:
+            default_gt_mean = 0
+        if default_gt_std is None:
+            default_gt_std = 1
+
+    if model_norm_prm.get("data_mean_gt") is None:
+        model_norm_prm["data_mean_gt"] = default_gt_mean
+    if model_norm_prm.get("data_std_gt") is None:
+        model_norm_prm["data_std_gt"] = default_gt_std
+    if model_norm_prm["data_std_gt"] == 0:
+        raise ValueError(
+            "`model_norm_prm.data_std_gt` must not be zero for evaluation with ground truth."
+        )
     return model_norm_prm
 
 
@@ -657,9 +678,13 @@ def build_eval_source(
         data_cfg["target"] = None
         data_cfg["gt"] = None
     elif eval_gt_resolution.target is not None:
+        training_was_paired = bool(data_cfg.get("paired"))
         data_cfg["paired"] = True
         data_cfg["target"] = eval_gt_resolution.target
-        model_norm_prm = _ensure_gt_normalization_defaults(model_norm_prm)
+        model_norm_prm = _ensure_gt_normalization_defaults(
+            model_norm_prm,
+            use_input_stats_for_gt=saved_run.is_lvae and not training_was_paired,
+        )
 
     if evaluation_dataset is not None and not data_cfg.get("data_dir"):
         data_cfg["data_dir"] = str(evaluation_dataset.data_dir)

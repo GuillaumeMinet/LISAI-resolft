@@ -9,7 +9,7 @@ from tifffile import imwrite
 import lisai.evaluation.data as data_mod
 from lisai.config.io.yaml import save_yaml
 from lisai.evaluation.saved_run import SavedTrainingRun
-from lisai.models.params import UNetParams
+from lisai.models.params import LVAEParams, UNetParams
 from lisai.preprocess.core.dataset_registry import DatasetRegistry
 
 
@@ -69,7 +69,14 @@ def _write_eval_split(data_dir: Path, *, input_name: str = 'inp', target_names: 
         imwrite(target_dir / 'img_a.tif', np.ones((4, 5), dtype=np.float32))
 
 
-def _make_saved_run(data_cfg: dict | None = None, split_manifest: dict | None = None) -> SavedTrainingRun:
+def _make_saved_run(
+    data_cfg: dict | None = None,
+    split_manifest: dict | None = None,
+    *,
+    model_architecture: str = 'unet',
+    model_parameters=None,
+    model_norm_prm: dict | None = None,
+) -> SavedTrainingRun:
     resolved_data_cfg = {
         'dataset_name': 'dataset_a',
         'canonical_load': True,
@@ -80,16 +87,21 @@ def _make_saved_run(data_cfg: dict | None = None, split_manifest: dict | None = 
     if data_cfg is not None:
         resolved_data_cfg.update(data_cfg)
 
+    if model_parameters is None:
+        model_parameters = LVAEParams() if model_architecture == 'lvae' else UNetParams()
+    if model_norm_prm is None:
+        model_norm_prm = {'data_mean': 1.0, 'data_std': 2.0}
+
     return SavedTrainingRun(
         run_dir=Path('/runs/dataset_a/exp_a'),
         experiment_name='exp_a',
         dataset_name='dataset_a',
         data_subfolder='raw',
         data_cfg=resolved_data_cfg,
-        model_architecture='unet',
-        model_parameters=UNetParams(),
+        model_architecture=model_architecture,
+        model_parameters=model_parameters,
         data_norm_prm={'clip': 0},
-        model_norm_prm={'data_mean': 1.0, 'data_std': 2.0},
+        model_norm_prm=model_norm_prm,
         noise_model_name=None,
         checkpoint_methods=('state_dict',),
         patch_size=64,
@@ -164,6 +176,102 @@ def test_build_eval_source_uses_registry_eval_gt_when_omitted(monkeypatch, tmp_p
     assert source.config.paired is True
     assert source.config.model_norm_prm['data_mean_gt'] == 0
     assert source.config.model_norm_prm['data_std_gt'] == 1
+    assert next(iter(source)).y is not None
+
+
+def test_build_eval_source_replaces_null_gt_norm_with_identity_for_non_lvae(
+    monkeypatch,
+    tmp_path: Path,
+):
+    saved_run = _make_saved_run(
+        model_norm_prm={
+            'data_mean': 1.0,
+            'data_std': 2.0,
+            'data_mean_gt': None,
+            'data_std_gt': None,
+        },
+    )
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('registry_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test')
+
+    assert source.config.model_norm_prm['data_mean_gt'] == 0
+    assert source.config.model_norm_prm['data_std_gt'] == 1
+    assert next(iter(source)).y is not None
+
+
+def test_build_eval_source_uses_input_norm_for_unpaired_lvae_injected_eval_gt(
+    monkeypatch,
+    tmp_path: Path,
+):
+    saved_run = _make_saved_run(
+        model_architecture='lvae',
+        model_parameters=LVAEParams(),
+        model_norm_prm={
+            'data_mean': 0.07035854364676693,
+            'data_std': 1.118182888310137,
+            'data_mean_gt': None,
+            'data_std_gt': None,
+        },
+    )
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('registry_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test')
+
+    assert source.config.paired is True
+    assert source.config.model_norm_prm['data_mean_gt'] == saved_run.model_norm_prm[
+        'data_mean'
+    ]
+    assert source.config.model_norm_prm['data_std_gt'] == saved_run.model_norm_prm[
+        'data_std'
+    ]
+    assert next(iter(source)).y is not None
+
+
+def test_build_eval_source_preserves_explicit_gt_norm_when_eval_gt_is_injected(
+    monkeypatch,
+    tmp_path: Path,
+):
+    saved_run = _make_saved_run(
+        model_architecture='lvae',
+        model_parameters=LVAEParams(),
+        model_norm_prm={
+            'data_mean': 1.0,
+            'data_std': 2.0,
+            'data_mean_gt': 10.0,
+            'data_std_gt': 5.0,
+        },
+    )
+    data_root = tmp_path / 'data'
+    data_dir = data_root / 'dataset_a' / 'raw'
+    _write_eval_split(data_dir, target_names=('registry_gt',))
+    _write_registry_eval_gt(
+        data_root / 'dataset_registry.yml',
+        dataset_name='dataset_a',
+        eval_gt='registry_gt',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    source = data_mod.build_eval_source(saved_run, split='test')
+
+    assert source.config.model_norm_prm['data_mean_gt'] == 10.0
+    assert source.config.model_norm_prm['data_std_gt'] == 5.0
     assert next(iter(source)).y is not None
 
 
