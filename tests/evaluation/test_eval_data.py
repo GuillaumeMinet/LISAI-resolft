@@ -23,6 +23,9 @@ class FakePaths:
     def dataset_registry_path(self):
         return self.root / 'dataset_registry.yml'
 
+    def dataset_preprocess_dir(self, *, dataset_name, data_type=''):
+        return self.root / dataset_name / 'preprocess' / data_type
+
 
 def _write_preprocess_registry_entry(registry_path: Path, *, dataset_name: str, data_format: str) -> None:
     registry = DatasetRegistry(registry_path)
@@ -358,3 +361,126 @@ def test_eval_source_keeps_timelapse_item_and_time_indices(monkeypatch, tmp_path
         'stack_a_3',
     ]
     assert [tuple(sample.x.shape) for _, sample in indexed_samples] == [(3, 4, 5)] * 3
+
+
+def _write_evaluation_registry_entry(
+    registry_path: Path,
+    *,
+    dataset_name: str,
+    eval_gt: str | None = 'gt',
+) -> None:
+    save_yaml(
+        {
+            dataset_name: {
+                'data_format': 'single',
+                'usage': 'evaluation',
+                'for_training': False,
+                'defaults': {
+                    'recon': {
+                        'input': 'inp',
+                        'target': None,
+                        'eval_gt': eval_gt,
+                    }
+                },
+                'outputs': {
+                    'recon': [
+                        {'key': 'inp', 'path': 'inp', 'role': 'inp', 'axes': 'YX'},
+                        {'key': 'gt', 'path': 'gt', 'role': 'gt', 'axes': 'YX'},
+                    ]
+                },
+                'split': {'recon': {'enabled': False}},
+            }
+        },
+        registry_path,
+    )
+
+
+def test_resolve_and_build_independent_evaluation_dataset_uses_all_root_files(
+    monkeypatch, tmp_path: Path
+):
+    saved_run = _make_saved_run(
+        data_cfg={'paired': True, 'target': 'training_gt'},
+        split_manifest={
+            'version': 1,
+            'splits': {'test': [{'input': 'must_not_be_used.tif', 'target': None}]},
+        },
+    )
+    data_root = tmp_path / 'data'
+    eval_dir = data_root / 'eval_dataset' / 'preprocess' / 'recon'
+    (eval_dir / 'inp').mkdir(parents=True)
+    (eval_dir / 'gt').mkdir(parents=True)
+    imwrite(eval_dir / 'inp' / 'img_a.tif', np.ones((4, 5), dtype=np.float32) * 3)
+    imwrite(eval_dir / 'gt' / 'img_a.tif', np.ones((4, 5), dtype=np.float32))
+    _write_evaluation_registry_entry(
+        data_root / 'dataset_registry.yml',
+        dataset_name='eval_dataset',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    eval_dataset = data_mod.resolve_evaluation_dataset(saved_run, 'eval_dataset')
+    source = data_mod.build_eval_source(
+        saved_run,
+        split='test',
+        evaluation_dataset=eval_dataset,
+    )
+
+    assert eval_dataset.data_type == 'recon'
+    assert eval_dataset.data_dir == eval_dir
+    assert source.use_split is False
+    assert source.split_manifest is None
+    assert source.config.dataset_name == 'eval_dataset'
+    assert source.config.data_dir == eval_dir
+    assert source.config.input == 'inp'
+    assert source.config.target == 'gt'
+    assert len(source.items) == 1
+    assert source.items[0].split is None
+    assert source.items[0].inp_path == eval_dir / 'inp' / 'img_a.tif'
+    assert source.items[0].gt_path == eval_dir / 'gt' / 'img_a.tif'
+
+
+def test_independent_evaluation_dataset_without_eval_gt_does_not_fall_back_to_training_target(
+    monkeypatch, tmp_path: Path
+):
+    saved_run = _make_saved_run(data_cfg={'paired': True, 'target': 'training_gt'})
+    data_root = tmp_path / 'data'
+    eval_dir = data_root / 'eval_dataset' / 'preprocess' / 'recon'
+    (eval_dir / 'inp').mkdir(parents=True)
+    imwrite(eval_dir / 'inp' / 'img_a.tif', np.ones((4, 5), dtype=np.float32))
+    _write_evaluation_registry_entry(
+        data_root / 'dataset_registry.yml',
+        dataset_name='eval_dataset',
+        eval_gt=None,
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    eval_dataset = data_mod.resolve_evaluation_dataset(saved_run, 'eval_dataset')
+    source = data_mod.build_eval_source(saved_run, evaluation_dataset=eval_dataset)
+
+    assert source.config.paired is False
+    assert source.config.target is None
+    assert source.items[0].gt_path is None
+
+
+def test_resolve_evaluation_dataset_rejects_training_dataset(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run()
+    data_root = tmp_path / 'data'
+    data_root.mkdir(parents=True)
+    save_yaml(
+        {
+            'training_dataset': {
+                'data_format': 'single',
+                'usage': 'training',
+                'for_training': True,
+                'defaults': {'recon': {'input': 'inp', 'target': None, 'eval_gt': None}},
+            }
+        },
+        data_root / 'dataset_registry.yml',
+    )
+    monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
+
+    try:
+        data_mod.resolve_evaluation_dataset(saved_run, 'training_dataset')
+    except ValueError as exc:
+        assert 'usage: evaluation' in str(exc)
+    else:
+        raise AssertionError('Expected training dataset to be rejected by --on resolution.')

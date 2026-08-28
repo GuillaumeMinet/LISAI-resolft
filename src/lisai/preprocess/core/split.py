@@ -173,6 +173,9 @@ def summarize_processed_splits(
     split_plan: SplitPlan | None,
     include_names: bool,
 ) -> dict[str, Any]:
+    if split_plan is None and all(item.get("split") is None for item in processed_items):
+        return {"enabled": False}
+
     buckets = {split_name: _empty_split_bucket() for split_name in VALID_SPLITS}
 
     for processed_item in processed_items:

@@ -171,6 +171,7 @@ class PreprocessRun:
             pipeline_name=self.pipeline_name,
             data_type=self.data_type,
             fmt=self.fmt,
+            usage=self.usage,
             pipeline_cfg=self.pipeline_cfg,
             log_cfg=self.log_cfg.model_dump(exclude_none=True),
             split_cfg=self.split_cfg.model_dump(exclude_none=True),
@@ -217,13 +218,17 @@ class PreprocessRun:
         split_summary: dict[str, Any],
         error: Exception | None = None,
     ) -> PreprocessFinishReport:
+        empty_bucket = {"count": 0, "source_names": [], "output_names": []}
+        val = split_summary.get("val", empty_bucket)
+        test = split_summary.get("test", empty_bucket)
         return PreprocessFinishReport(
             status=status,
             preprocess_dir=str(preprocess_dir.resolve()),
             n_files_written=n_files_written,
-            n_files_moved=int(split_summary["val"]["count"]) + int(split_summary["test"]["count"]),
-            val=split_summary["val"],
-            test=split_summary["test"],
+            n_files_moved=int(val["count"]) + int(test["count"]),
+            split_enabled=bool(split_summary.get("enabled", False)),
+            val=val,
+            test=test,
             error_type=type(error).__name__ if error is not None else None,
             error_message=str(error) if error is not None else None,
         )
@@ -256,7 +261,7 @@ class PreprocessRun:
         total_items: int | None = None
         n_files = 0
         stats = pipeline.init_stats()
-        processed_items: list[dict[str, str]] = []
+        processed_items: list[dict[str, Any]] = []
 
         try:
             saver = PreprocessSaver(
@@ -286,7 +291,16 @@ class PreprocessRun:
             for index, item in item_iterable:
                 sample_id = saver.sample_id(index)
                 save_split = split_plan.split_for(index) if split_plan is not None else None
-                recorded_split = save_split or "train"
+                if split_plan is not None:
+                    recorded_split = save_split
+                elif self.usage == "training":
+                    # Preserve the historical meaning of an unsplit training dataset: all
+                    # samples are available to the training loader as the training pool.
+                    recorded_split = "train"
+                else:
+                    # Evaluation-only datasets are whole-dataset resources, not a synthetic
+                    # train split. Their files remain at the output root.
+                    recorded_split = None
                 outputs = pipeline.process_item(item=item)
                 template_kwargs = pipeline.template_kwargs(item=item, outputs=outputs)
 

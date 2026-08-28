@@ -114,11 +114,19 @@ Plot losses:
 lisai runs plot my_model_00
 ```
 
-Evaluate a run on a split:
+Evaluate a run on one of its own dataset splits:
 
 ```powershell
 lisai evaluate my_model_00 --split val --metrics psnr,ssim
 ```
+
+Evaluate the same run on the complete contents of a registered evaluation-only dataset:
+
+```powershell
+lisai evaluate my_model_00 --on gag_independent --metrics psnr,ssim
+```
+
+`--on` expects a dataset registered with `usage: evaluation` and cannot be combined with `--split`. Default outputs are grouped under `run/evaluations/training_<split>/...` for self-evaluation or `run/evaluations/<evaluation_dataset>/...` for independent evaluation.
 
 Apply a run to files:
 

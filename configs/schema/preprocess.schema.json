@@ -39,7 +39,7 @@
     },
     "usage": {
       "default": "training",
-      "description": "Intended dataset usage in the registry: training datasets may also be evaluated, evaluation datasets are test-only.",
+      "description": "Intended dataset usage in the registry: training datasets may also be evaluated, evaluation datasets are whole-dataset evaluation-only resources.",
       "enum": [
         "training",
         "evaluation"
@@ -63,7 +63,7 @@
     },
     "split": {
       "$ref": "#/$defs/PreprocessSplitConfig",
-      "description": "Options controlling optional train, validation, and test split assignment."
+      "description": "Options controlling optional train, validation, and test split assignment for training datasets."
     }
   },
   "required": [

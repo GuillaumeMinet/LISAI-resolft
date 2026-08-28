@@ -10,8 +10,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from lisai.config import save_yaml
 from lisai.evaluation.defaults import UNSET, UnsetType, resolve_evaluate_options
-from lisai.evaluation.data import build_eval_source
+from lisai.evaluation.data import (
+    EvaluationDatasetSpec,
+    build_eval_source,
+    resolve_evaluation_dataset,
+)
 from lisai.evaluation.inference.stack import infer_batch
 from lisai.evaluation.io import (
     EvalItemOutputWriter,
@@ -29,19 +34,79 @@ def _build_evaluation_folder_name(
     best_or_last: str,
     requested_epoch: int | None,
     resolved_epoch: int | None,
+) -> str:
+    """Build the checkpoint-specific subfolder for one evaluation call."""
+    if requested_epoch is not None:
+        return f"epoch_{requested_epoch}"
+    if resolved_epoch is not None:
+        return f"{best_or_last}_epoch_{resolved_epoch}"
+    return best_or_last
+
+
+def _safe_evaluation_dataset_folder(name: str) -> str:
+    """Keep dataset names readable while preventing accidental nested paths."""
+    return str(name).replace("\\", "__").replace("/", "__")
+
+
+def _evaluation_dataset_folder(
+    *,
+    evaluation_dataset: EvaluationDatasetSpec | None,
     split: str,
 ) -> str:
-    """Build the default output folder name for one evaluation run."""
-    if requested_epoch is not None:
-        save_name = f"evaluation_epoch_{requested_epoch}"
-    elif resolved_epoch is not None:
-        save_name = f"evaluation_{best_or_last}_epoch_{resolved_epoch}"
-    else:
-        save_name = f"evaluation_{best_or_last}"
+    if evaluation_dataset is not None:
+        return _safe_evaluation_dataset_folder(evaluation_dataset.name)
+    return f"training_{split}"
 
-    if split != "test":
-        save_name = f"{save_name}_{split}"
-    return save_name
+
+def _evaluation_metadata(
+    *,
+    saved_run: SavedTrainingRun,
+    runtime,
+    sample_source,
+    options: dict[str, Any],
+    evaluation_dataset: EvaluationDatasetSpec | None,
+) -> dict[str, Any]:
+    """Build lightweight provenance for one persisted evaluation result."""
+    if evaluation_dataset is None:
+        dataset_name = saved_run.dataset_name
+        dataset_usage = "training"
+        data_type = None
+        split = options["split"]
+    else:
+        dataset_name = evaluation_dataset.name
+        dataset_usage = "evaluation"
+        data_type = evaluation_dataset.data_type
+        split = None
+
+    return {
+        "version": 1,
+        "model": {
+            "source": "training_run",
+            "run_dir": str(saved_run.run_dir),
+            "experiment_name": saved_run.experiment_name,
+            "training_dataset": saved_run.dataset_name,
+            "checkpoint": {
+                "selector": options["best_or_last"],
+                "requested_epoch": options["epoch_number"],
+                "resolved_epoch": runtime.resolved_epoch,
+                "load_method": runtime.load_method,
+                "path": str(runtime.checkpoint_path),
+            },
+        },
+        "dataset": {
+            "name": dataset_name,
+            "usage": dataset_usage,
+            "data_type": data_type,
+            "split": split,
+            "data_dir": str(sample_source.config.data_dir),
+            "input": sample_source.config.input,
+            "eval_gt": sample_source.config.target,
+            "data_format": sample_source.config.resolved_data_format,
+        },
+        "evaluation": {
+            "metrics": options["metrics_list"],
+        },
+    }
 
 
 def _expand_checkpoint_selection(options: dict[str, Any]) -> list[dict[str, Any]]:
@@ -70,7 +135,13 @@ def _format_eval_gt_for_display(eval_gt: str | None) -> str:
     return str(eval_gt)
 
 
-def _run_single_evaluation(*, run_dir: Path, saved_run: SavedTrainingRun, options: dict[str, Any]) -> None:
+def _run_single_evaluation(
+    *,
+    output_root: Path,
+    saved_run: SavedTrainingRun,
+    options: dict[str, Any],
+    evaluation_dataset: EvaluationDatasetSpec | None = None,
+) -> None:
     """Run one resolved checkpoint evaluation and save outputs/metrics."""
     runtime = initialize_runtime(
         saved_run=saved_run,
@@ -80,19 +151,24 @@ def _run_single_evaluation(*, run_dir: Path, saved_run: SavedTrainingRun, option
     )
 
     if options["save_folder"] is None:
-        save_name = _build_evaluation_folder_name(
+        dataset_folder = _evaluation_dataset_folder(
+            evaluation_dataset=evaluation_dataset,
+            split=options["split"],
+        )
+        checkpoint_folder = _build_evaluation_folder_name(
             best_or_last=options["best_or_last"],
             requested_epoch=options["epoch_number"],
             resolved_epoch=runtime.resolved_epoch,
-            split=options["split"],
         )
-        save_folder = create_save_folder(path=run_dir / save_name,
-                                         overwrite=options["overwrite"], parent_exists_check=True)
+        save_folder = create_save_folder(
+            path=Path(output_root) / dataset_folder / checkpoint_folder,
+            overwrite=options["overwrite"],
+        )
     else:
         save_folder = ensure_save_folder(Path(options["save_folder"]))
 
     if save_folder is None:
-        raise FileNotFoundError("Model folder not found.")
+        raise FileNotFoundError("Could not create evaluation output folder.")
 
     if saved_run.is_lvae:
         assert options["lvae_num_samples"] is not None, (
@@ -110,8 +186,19 @@ def _run_single_evaluation(*, run_dir: Path, saved_run: SavedTrainingRun, option
         crop_size=options["crop_size"],
         eval_gt=options["eval_gt"],
         data_prm_update=options["data_prm_update"],
+        evaluation_dataset=evaluation_dataset,
     )
     print(f"Evaluation GT: {_format_eval_gt_for_display(sample_source.config.target)}")
+    save_yaml(
+        _evaluation_metadata(
+            saved_run=saved_run,
+            runtime=runtime,
+            sample_source=sample_source,
+            options=options,
+            evaluation_dataset=evaluation_dataset,
+        ),
+        save_folder / "evaluation.yaml",
+    )
     results = options["results"]
 
     n_processed = 0
@@ -199,6 +286,7 @@ def run_evaluate(dataset_name:str,
              ch_out: int | None | UnsetType = UNSET,
              split: str | UnsetType = UNSET,
              limit_n_imgs: int | None | UnsetType = UNSET,
+             evaluation_dataset_name: str | None = None,
              config: str | Path | None = None
              ):
     """Evaluate a saved run on a dataset split and optionally compute metrics.
@@ -206,6 +294,9 @@ def run_evaluate(dataset_name:str,
     Any omitted optional argument is resolved from `configs/inference/defaults.yml`
     or from the named config passed via `config`.
     """
+    if evaluation_dataset_name is not None and split is not UNSET:
+        raise ValueError("`--on` evaluates the complete evaluation dataset and cannot be combined with `--split`.")
+
     options = resolve_evaluate_options(
         config=config,
         best_or_last=best_or_last,
@@ -225,11 +316,25 @@ def run_evaluate(dataset_name:str,
     )
     run_dir = resolve_run_dir(dataset_name=dataset_name, subfolder=model_subfolder, exp_name=model_name)
     saved_run = load_saved_run(run_dir)
+    evaluation_dataset = None
+    if evaluation_dataset_name is not None:
+        evaluation_dataset = resolve_evaluation_dataset(
+            saved_run,
+            evaluation_dataset_name,
+            data_prm_update=options["data_prm_update"],
+        )
+        print(f"Evaluation dataset: {evaluation_dataset.name} (all data)")
 
-    # build list of runs to evaluate (so that we can evaluate both best and last run for example)
+    # Build list of checkpoints to evaluate (for example both best and last).
     run_options_list = _expand_checkpoint_selection(options)
     if len(run_options_list) > 1:
         print("best_or_last='both': running evaluation for checkpoints ['best', 'last'].")
 
+    output_root = run_dir / "evaluations"
     for run_options in run_options_list:
-        _run_single_evaluation(run_dir=run_dir, saved_run=saved_run, options=run_options)
+        _run_single_evaluation(
+            output_root=output_root,
+            saved_run=saved_run,
+            options=run_options,
+            evaluation_dataset=evaluation_dataset,
+        )

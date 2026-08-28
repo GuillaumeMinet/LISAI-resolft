@@ -18,7 +18,7 @@ class PreprocessItemReport:
     total: int | None
     source_name: str
     output_name: str
-    split: str
+    split: str | None
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,7 @@ class PreprocessFinishReport:
     preprocess_dir: str
     n_files_written: int
     n_files_moved: int
+    split_enabled: bool
     val: Mapping[str, Any]
     test: Mapping[str, Any]
     error_type: str | None = None
@@ -71,8 +72,9 @@ class ConsolePreprocessReporter:
             progress = f"[{report.index}]"
         else:
             progress = f"[{report.index}/{report.total}]"
+        suffix = f" (split={report.split})" if report.split is not None else ""
         print(
-            f"{progress} {report.source_name} -> {report.output_name} (split={report.split})",
+            f"{progress} {report.source_name} -> {report.output_name}{suffix}",
             file=self.stream,
         )
 
@@ -80,16 +82,18 @@ class ConsolePreprocessReporter:
         print("Preprocess summary:", file=self.stream)
         print(f"  status: {report.status}", file=self.stream)
         print(f"  files written: {report.n_files_written}", file=self.stream)
-        print(f"  files moved to validation/test: {report.n_files_moved}", file=self.stream)
+        if report.split_enabled:
+            print(f"  files moved to validation/test: {report.n_files_moved}", file=self.stream)
         print(f"  preprocess location: {report.preprocess_dir}", file=self.stream)
-        print(
-            f"  validation images ({report.val.get('count', 0)}): {self._format_names(report.val)}",
-            file=self.stream,
-        )
-        print(
-            f"  test images ({report.test.get('count', 0)}): {self._format_names(report.test)}",
-            file=self.stream,
-        )
+        if report.split_enabled:
+            print(
+                f"  validation images ({report.val.get('count', 0)}): {self._format_names(report.val)}",
+                file=self.stream,
+            )
+            print(
+                f"  test images ({report.test.get('count', 0)}): {self._format_names(report.test)}",
+                file=self.stream,
+            )
         if report.error_type is not None or report.error_message is not None:
             print(
                 f"  error: {report.error_type or 'Error'}: {report.error_message or ''}".rstrip(),

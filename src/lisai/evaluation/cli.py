@@ -134,6 +134,12 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
         ),
     )
     parser.add_argument("--run-id", help="Stable run identifier to evaluate.")
+    parser.add_argument(
+        "--on",
+        dest="evaluation_dataset_name",
+        metavar="DATASET",
+        help="Evaluate on the complete registered evaluation-only dataset instead of the run's own split.",
+    )
     add_run_filter_arguments(parser, include_identity=False, include_status=False)
     parser.add_argument(
         "-c",
@@ -217,6 +223,9 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
 
 
 def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.evaluation_dataset_name is not None and args.split is not None:
+        parser.error("--on evaluates the complete evaluation dataset and cannot be combined with --split.")
+
     selected = _resolve_run_selector(args)
     if selected is None:
         return 1
@@ -239,6 +248,7 @@ def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
         ch_out=_maybe_unset(args.ch_out),
         split=_maybe_unset(args.split),
         limit_n_imgs=_maybe_unset(args.limit_n_imgs),
+        evaluation_dataset_name=args.evaluation_dataset_name,
     )
     return 0
 
@@ -271,8 +281,8 @@ def add_apply_subparser(subparsers: argparse._SubParsersAction[argparse.Argument
 def add_evaluate_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]):
     parser = subparsers.add_parser(
         "evaluate",
-        help="Evaluate a trained model on a dataset split.",
-        description="Evaluate a trained model on a dataset split",
+        help="Evaluate a trained model on its dataset split or a registered evaluation dataset.",
+        description="Evaluate a trained model on its dataset split or a registered evaluation dataset",
     )
     add_evaluate_arguments(parser)
     parser.set_defaults(handler=lambda args, p=parser: run_evaluate_from_args(args, p))

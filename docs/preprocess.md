@@ -51,9 +51,15 @@ The saver owns file naming, folder creation, and writing processed outputs to di
 
 Each preprocess run can write a YAML manifest under the preprocess folder, using the filenames configured in `configs/data_config.yml`. The manifest stores run metadata, source-to-output mappings, and split assignments.
 
+## Dataset Usage
+
+`usage: training` datasets may use the train/validation/test split machinery below.
+
+`usage: evaluation` datasets are whole-dataset evaluation resources. Splitting is disabled for them: outputs are written directly under `preprocess/<data_type>/...`, manifest items record no split, and the registry keeps only `split.enabled: false` rather than fabricating a training split.
+
 ## Split Modes
 
-The preprocess config supports three split modes:
+The preprocess config supports three split modes for training datasets:
 
 - `random`: deterministic random split using a seed and val/test fractions
 - `manual`: assign items explicitly by `source_name`, `source_relpath`, or `sample_id`

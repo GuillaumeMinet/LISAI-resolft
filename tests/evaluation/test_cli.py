@@ -384,3 +384,40 @@ def test_apply_cli_accepts_promoted_model_without_run_selector(monkeypatch):
     assert captured["model_name"] == "hdn-vimentin"
     assert captured["model_subfolder"] == "promoted"
     assert captured["data_path"] == Path("/data/images")
+
+
+def test_evaluate_cli_passes_independent_evaluation_dataset(monkeypatch, tmp_path):
+    captured = {}
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G7AAF",
+        dataset="Gag",
+        model_subfolder="Upsamp",
+    )
+
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "run_evaluate", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(
+        ["evaluate", "Gag/Upsamp/my_model_00", "--on", "gag_independent"]
+    )
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["evaluation_dataset_name"] == "gag_independent"
+    assert captured["split"] is evaluation_cli.UNSET
+
+
+def test_evaluate_cli_rejects_on_with_split():
+    parser = build_parser()
+    args = parser.parse_args(
+        ["evaluate", "some_run", "--on", "gag_independent", "--split", "test"]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        args.handler(args)
+
+    assert exc_info.value.code == 2

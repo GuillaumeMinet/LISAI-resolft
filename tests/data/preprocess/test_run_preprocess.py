@@ -370,3 +370,47 @@ def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path):
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "train" / "c00.tif").exists()
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "val" / "c01.tif").exists()
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "test" / "c02.tif").exists()
+
+
+def test_evaluation_preprocess_is_unsplit_and_records_no_fake_train_split(tmp_path: Path):
+    dataset_name = "EvaluationDataset"
+    _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif", "img_b.tif"])
+
+    cfg = _single_cfg(dataset_name)
+    cfg["usage"] = "evaluation"
+
+    stream = io.StringIO()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(
+        reporter=ConsolePreprocessReporter(stream=stream)
+    )
+
+    assert result.n_files == 2
+    preprocess_dir = tmp_path / dataset_name / "preprocess" / "recon"
+    assert (preprocess_dir / "c00.tif").exists()
+    assert (preprocess_dir / "c01.tif").exists()
+    assert not (preprocess_dir / "train").exists()
+    assert not (preprocess_dir / "test").exists()
+
+    manifest = load_yaml(preprocess_dir / settings.data_cfg.logs["recon_preprocess"])
+    assert manifest["usage"] == "evaluation"
+    assert [item["split"] for item in manifest["items"]] == [None, None]
+    assert manifest["summary"]["split"] == {"enabled": False}
+
+    registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["usage"] == "evaluation"
+    assert registry[dataset_name]["for_training"] is False
+    assert registry[dataset_name]["split"]["recon"] == {"enabled": False}
+
+    output = stream.getvalue()
+    assert "(split=" not in output
+    assert "validation images" not in output
+    assert "test images" not in output
+
+
+def test_evaluation_preprocess_rejects_enabled_split(tmp_path: Path):
+    cfg = _single_cfg("EvaluationDataset")
+    cfg["usage"] = "evaluation"
+    cfg["split"] = {"enabled": True}
+
+    with pytest.raises(ValueError, match="Evaluation datasets cannot be split"):
+        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path))

@@ -180,7 +180,7 @@ class PreprocessConfig(BaseModel):
     )
     usage: DatasetUsage = Field(
         default="training",
-        description="Intended dataset usage in the registry: training datasets may also be evaluated, evaluation datasets are test-only.",
+        description="Intended dataset usage in the registry: training datasets may also be evaluated, evaluation datasets are whole-dataset evaluation-only resources.",
     )
     pipeline_cfg: dict[str, Any] = Field(
         default_factory=dict,
@@ -196,5 +196,14 @@ class PreprocessConfig(BaseModel):
     )
     split: PreprocessSplitConfig = Field(
         default_factory=PreprocessSplitConfig,
-        description="Options controlling optional train, validation, and test split assignment.",
+        description="Options controlling optional train, validation, and test split assignment for training datasets.",
     )
+
+    @model_validator(mode="after")
+    def _validate_usage_split(self):
+        if self.usage == "evaluation" and self.split.enabled:
+            raise ValueError(
+                "Evaluation datasets cannot be split. Set `split.enabled=false`; "
+                "the complete dataset is used for evaluation."
+            )
+        return self

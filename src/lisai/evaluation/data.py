@@ -20,7 +20,12 @@ from lisai.config.models.training import DataSection
 from lisai.data.data_loaders.dataset_io import load_image
 from lisai.data.data_loaders.split_manifest import manifest_split_entries
 from lisai.data.data_loaders.transforms import apply_additional_transforms, apply_inp_transformations
-from lisai.data.dataset_registry import load_dataset_info
+from lisai.data.dataset_registry import (
+    load_dataset_info,
+    registry_data_format_for_output,
+    registry_data_types,
+    registry_mapping_for_data_type,
+)
 from lisai.data.utils import crop_center, make_pair_4d
 from lisai.infra.paths import Paths
 from lisai.lib.upsamp.artificial_movement import apply_movement
@@ -48,13 +53,26 @@ class EvalSample:
 
 
 @dataclass(frozen=True)
+class EvaluationDatasetSpec:
+    """Resolved registered dataset used as a whole-dataset evaluation source."""
+
+    name: str
+    data_type: str
+    data_dir: Path
+    dataset_info: Mapping[str, Any]
+    input: str
+    eval_gt: str | None
+    data_format: str | None
+
+
+@dataclass(frozen=True)
 class EvalItem:
     """File-backed evaluation unit that owns sample selection and naming."""
 
     name: str
     inp_path: Path
     gt_path: Path | None
-    split: str
+    split: str | None
     file_index: int
     data_format: str
     sample_count: int
@@ -129,11 +147,13 @@ class EvalSampleSource:
         items: Sequence[EvalItem],
         config: DataSection,
         split_manifest: Mapping[str, Any] | None = None,
+        use_split: bool = True,
     ):
         """Store file-level evaluation items and their resolved data config."""
         self.config = config
         self.items = tuple(items)
         self.split_manifest = dict(split_manifest) if split_manifest is not None else None
+        self.use_split = use_split
 
     @classmethod
     def from_config(
@@ -141,12 +161,14 @@ class EvalSampleSource:
         config: DataSection,
         *,
         split_manifest: Mapping[str, Any] | None = None,
+        use_split: bool = True,
     ) -> "EvalSampleSource":
         """Build an item source from a resolved evaluation data config."""
         return cls(
-            items=cls.build_items(config, split_manifest=split_manifest),
+            items=cls.build_items(config, split_manifest=split_manifest, use_split=use_split),
             config=config,
             split_manifest=split_manifest,
+            use_split=use_split,
         )
 
     @staticmethod
@@ -154,25 +176,32 @@ class EvalSampleSource:
         config: DataSection,
         *,
         split_manifest: Mapping[str, Any] | None = None,
+        use_split: bool = True,
     ) -> tuple[EvalItem, ...]:
         """Resolve one file-level evaluation item per input/GT pair."""
         if config.data_dir is None:
             raise ValueError("`data_dir` must be provided for evaluation data loading.")
         if config.input is None and split_manifest is None:
             raise ValueError("`input` must be provided for evaluation data loading.")
+        if split_manifest is not None and not use_split:
+            raise ValueError("A split manifest cannot be used for whole-dataset evaluation.")
 
-        split = getattr(config, "split", "test")
+        split = getattr(config, "split", "test") if use_split else None
         if split_manifest is not None:
             inp_files, gt_files = _manifest_eval_files(config, split_manifest, split)
         else:
-            inp_dir = config.data_dir / config.input / split
+            inp_dir = config.data_dir / config.input
+            if split is not None:
+                inp_dir = inp_dir / split
             inp_files = _collect_split_files(inp_dir, config.filters)
             if not inp_files:
                 raise FileNotFoundError(f"No input files found in {inp_dir} with filters={config.filters}.")
 
             gt_files: list[Path] | None = None
             if config.target is not None:
-                gt_dir = config.data_dir / config.target / split
+                gt_dir = config.data_dir / config.target
+                if split is not None:
+                    gt_dir = gt_dir / split
                 gt_files = _collect_split_files(gt_dir, config.filters)
                 if len(inp_files) != len(gt_files):
                     raise ValueError(f"Found #{len(inp_files)} inp_files and #{len(gt_files)} gt_files")
@@ -221,6 +250,102 @@ class EvalSampleSource:
 class EvalGtResolution:
     target: str | None
     force_no_gt: bool = False
+
+
+def _is_evaluation_dataset(dataset_info: Mapping[str, Any]) -> bool:
+    if dataset_info.get("for_training") is False:
+        return True
+    usage = dataset_info.get("usage")
+    return isinstance(usage, str) and usage.lower() in {"eval", "evaluation", "test"}
+
+
+def _last_path_component(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).replace("\\", "/").strip("/")
+    return text.rsplit("/", 1)[-1] if text else None
+
+
+def _resolve_evaluation_data_type(
+    *,
+    saved_run: SavedTrainingRun,
+    dataset_info: Mapping[str, Any],
+    requested_data_type: str | None = None,
+) -> str:
+    known = registry_data_types(dataset_info)
+    if requested_data_type is not None:
+        if known and requested_data_type not in known:
+            allowed = ", ".join(sorted(known))
+            raise ValueError(
+                f"Evaluation data type {requested_data_type!r} is not registered; available: {allowed}."
+            )
+        return requested_data_type
+
+    candidates = [
+        saved_run.data_cfg.get("data_type"),
+        _last_path_component(saved_run.data_subfolder),
+    ]
+    for candidate in candidates:
+        if candidate is not None and str(candidate) in known:
+            return str(candidate)
+
+    if len(known) == 1:
+        return next(iter(known))
+    if not known:
+        raise ValueError("Evaluation dataset registry entry does not define any data type metadata.")
+    allowed = ", ".join(sorted(known))
+    raise ValueError(
+        "Could not choose an evaluation data type unambiguously. "
+        f"Registered data types: {allowed}. Pass `--data-option data_type=<type>`."
+    )
+
+
+def resolve_evaluation_dataset(
+    saved_run: SavedTrainingRun,
+    dataset_name: str,
+    *,
+    data_prm_update: Mapping[str, Any] | None = None,
+) -> EvaluationDatasetSpec:
+    """Resolve one registered evaluation-only dataset for whole-dataset evaluation."""
+    paths = Paths(settings)
+    dataset_info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
+    if not isinstance(dataset_info, Mapping):
+        raise ValueError(f"Evaluation dataset {dataset_name!r} is not registered.")
+    if not _is_evaluation_dataset(dataset_info):
+        raise ValueError(
+            f"Dataset {dataset_name!r} is not marked as evaluation-only. "
+            "`--on` currently accepts only datasets with `usage: evaluation`."
+        )
+
+    requested_data_type = None
+    if isinstance(data_prm_update, Mapping) and data_prm_update.get("data_type") is not None:
+        requested_data_type = str(data_prm_update["data_type"])
+    data_type = _resolve_evaluation_data_type(
+        saved_run=saved_run,
+        dataset_info=dataset_info,
+        requested_data_type=requested_data_type,
+    )
+    defaults = registry_mapping_for_data_type(dataset_info, "defaults", data_type) or {}
+    input_name = defaults.get("input")
+    if isinstance(data_prm_update, Mapping) and data_prm_update.get("input") is not None:
+        input_name = data_prm_update["input"]
+    if input_name is None:
+        raise ValueError(
+            f"Evaluation dataset {dataset_name!r} has no default input for data type {data_type!r}. "
+            "Set a registry default or pass `--data-option input=<path>`."
+        )
+    eval_gt = defaults.get("eval_gt")
+    data_format = registry_data_format_for_output(dataset_info, data_type, input_name)
+
+    return EvaluationDatasetSpec(
+        name=dataset_name,
+        data_type=data_type,
+        data_dir=paths.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type),
+        dataset_info=dict(dataset_info),
+        input=str(input_name),
+        eval_gt=str(eval_gt) if eval_gt is not None else None,
+        data_format=data_format,
+    )
 
 
 def resolve_dataset_info(dataset_name: str | None) -> dict[str, Any] | None:
@@ -290,6 +415,7 @@ def _resolve_eval_gt(
     eval_gt: str | None,
     data_cfg: Mapping[str, Any],
     dataset_info: Mapping[str, Any] | None,
+    fallback_to_training: bool = True,
 ) -> EvalGtResolution:
     if eval_gt == EVAL_GT_NONE:
         return EvalGtResolution(target=None, force_no_gt=True)
@@ -301,7 +427,9 @@ def _resolve_eval_gt(
     registry_target = _registry_eval_gt(dataset_info, data_cfg.get("data_type"))
     if registry_target is not None:
         return EvalGtResolution(target=registry_target)
-    return EvalGtResolution(target=_training_target(data_cfg))
+    if fallback_to_training:
+        return EvalGtResolution(target=_training_target(data_cfg))
+    return EvalGtResolution(target=None, force_no_gt=True)
 
 
 def _ensure_gt_normalization_defaults(model_norm_prm: dict[str, Any] | None) -> dict[str, Any]:
@@ -478,12 +606,26 @@ def build_eval_source(
     crop_size: int | tuple[int, int] | None = None,
     eval_gt=None,
     data_prm_update: Mapping[str, Any] | None = None,
+    evaluation_dataset: EvaluationDatasetSpec | None = None,
 ):
-    """Build the evaluation sample source for a saved run and eval overrides."""
+    """Build the evaluation sample source for a saved model and resolved dataset source."""
 
-    # load data preparation config from the trained model
+    # Model-derived data preparation remains the inference recipe. Dataset identity,
+    # location, input/GT paths and format can be replaced by an independent registered
+    # evaluation dataset without changing the model runtime itself.
     data_cfg = dict(saved_run.data_cfg)
+    training_target = _training_target(saved_run.data_cfg)
     model_norm_prm = dict(saved_run.model_norm_prm) if saved_run.model_norm_prm is not None else None
+
+    if evaluation_dataset is not None:
+        data_cfg["dataset_name"] = evaluation_dataset.name
+        data_cfg["data_type"] = evaluation_dataset.data_type
+        data_cfg["input"] = evaluation_dataset.input
+        data_cfg["target"] = None
+        data_cfg["gt"] = None
+        data_cfg["data_dir"] = str(evaluation_dataset.data_dir)
+        if evaluation_dataset.data_format is not None:
+            data_cfg["data_format"] = evaluation_dataset.data_format
 
     if crop_size is not None:
         data_cfg["initial_crop"] = crop_size
@@ -491,8 +633,25 @@ def build_eval_source(
     if data_prm_update is not None:
         data_cfg = deep_merge(data_cfg, dict(data_prm_update))
 
-    dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
-    eval_gt_resolution = _resolve_eval_gt(eval_gt=eval_gt, data_cfg=data_cfg, dataset_info=dataset_info)
+    if evaluation_dataset is not None:
+        if eval_gt == EVAL_GT_TRAINING:
+            eval_gt = training_target
+        # `--on DATASET` owns the dataset identity even when expert data overrides are
+        # supplied. Other fields (e.g. input/data_dir) may still be overridden.
+        data_cfg["dataset_name"] = evaluation_dataset.name
+        data_cfg["data_type"] = evaluation_dataset.data_type
+        dataset_info = dict(evaluation_dataset.dataset_info)
+        if eval_gt is None and evaluation_dataset.eval_gt is not None:
+            eval_gt = evaluation_dataset.eval_gt
+    else:
+        dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
+
+    eval_gt_resolution = _resolve_eval_gt(
+        eval_gt=eval_gt,
+        data_cfg=data_cfg,
+        dataset_info=dataset_info,
+        fallback_to_training=evaluation_dataset is None,
+    )
     if eval_gt_resolution.force_no_gt:
         data_cfg["paired"] = False
         data_cfg["target"] = None
@@ -502,31 +661,40 @@ def build_eval_source(
         data_cfg["target"] = eval_gt_resolution.target
         model_norm_prm = _ensure_gt_normalization_defaults(model_norm_prm)
 
+    if evaluation_dataset is not None and not data_cfg.get("data_dir"):
+        data_cfg["data_dir"] = str(evaluation_dataset.data_dir)
+
     data_dir = resolve_eval_data_dir(saved_run, data_cfg)
     if data_dir is None:
         raise ValueError(
             "Could not resolve `data_dir` for evaluation. "
-            "Provide it through `data_prm_update={\'data_dir\': \'...path...\'}`."
+            "Provide it through `data_prm_update={'data_dir': '...path...'}`."
         )
 
-    # build data prep config with updated parameters
+    resolved_split = None if evaluation_dataset is not None else split
     prep_cfg = DataSection.model_validate(data_cfg).resolved(
         data_dir=Path(data_dir),
         norm_prm=saved_run.data_norm_prm,
         dataset_info=dataset_info,
         model_norm_prm=model_norm_prm,
-        split=split,
+        split=resolved_split,
     )
 
-    return EvalSampleSource.from_config(prep_cfg, split_manifest=saved_run.split_manifest)
+    return EvalSampleSource.from_config(
+        prep_cfg,
+        split_manifest=None if evaluation_dataset is not None else saved_run.split_manifest,
+        use_split=evaluation_dataset is None,
+    )
 
 
 
 __all__ = [
+    "EvaluationDatasetSpec",
     "EvalItem",
     "EvalSample",
     "EvalSampleSource",
     "build_eval_source",
     "resolve_dataset_info",
+    "resolve_evaluation_dataset",
     "resolve_eval_data_dir",
 ]
