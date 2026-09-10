@@ -117,13 +117,13 @@
               },
               "input_subfolder": {
                 "default": "low",
-                "description": "Folder containing the model input images, relative to base_subfolder.",
+                "description": "Folder containing the model input images, relative to base_subfolder. Its name is preserved as the processed input folder.",
                 "title": "Input Subfolder",
                 "type": "string"
               },
               "gt_subfolder": {
                 "default": "high",
-                "description": "Folder containing the paired evaluation ground-truth images, relative to base_subfolder.",
+                "description": "Folder containing the paired evaluation ground-truth images, relative to base_subfolder. Its name is preserved as the processed GT output folder.",
                 "title": "Gt Subfolder",
                 "type": "string"
               },
@@ -415,7 +415,7 @@
               },
               "input_subfolder": {
                 "default": "",
-                "description": "Optional folder containing the primary input images, relative to base_subfolder.",
+                "description": "Optional folder containing the primary input images, relative to base_subfolder. For new configs, this name is also used as the processed output folder unless output_subfolder overrides it.",
                 "title": "Input Subfolder",
                 "type": "string"
               },
@@ -424,6 +424,19 @@
                 "description": "Deprecated alias for input_subfolder. Kept for backward compatibility with existing single_recon configs.",
                 "title": "Dump Subfolder",
                 "type": "string"
+              },
+              "output_subfolder": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Processed-data destination for the primary input stream. If omitted, new input_subfolder configs mirror that stream name. Set explicitly to null to save at preprocess/<data_type>/ root, or provide another relative subfolder to override the mirrored name.",
+                "title": "Output Subfolder"
               },
               "combine_subfolders": {
                 "default": false,

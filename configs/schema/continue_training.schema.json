@@ -253,6 +253,35 @@
       "title": "HDNSafeResumeConfig",
       "type": "object"
     },
+    "InferenceSection": {
+      "additionalProperties": false,
+      "description": "Inference defaults saved with a training run.",
+      "properties": {
+        "default_tiling_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "enum": [
+                "auto",
+                "off"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional saved default for inference tiling. Use null or 'auto' to fall back to the architecture default, a positive integer to force a run-specific tile size, or 'off' to disable tiling by default.",
+          "title": "Default Tiling Size"
+        }
+      },
+      "title": "InferenceSection",
+      "type": "object"
+    },
     "RecoveryConfig": {
       "additionalProperties": false,
       "properties": {
@@ -492,6 +521,10 @@
     "recovery": {
       "$ref": "#/$defs/RecoveryConfig",
       "description": "Recovery behavior for safe resume on continue_training."
+    },
+    "inference": {
+      "$ref": "#/$defs/InferenceSection",
+      "description": "Optional inference default overrides saved with the resumed run."
     },
     "metadata": {
       "type": "object",

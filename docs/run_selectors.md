@@ -134,6 +134,9 @@ Apply a run to files:
 lisai apply my_model_00 /data/images --tiling-size 512
 ```
 
+Use `--tiling-size auto` to use the saved model default, pass a positive integer
+to force a tile size, or pass `--no-tiling` to run without tiling.
+
 Continue training in place:
 
 ```powershell

@@ -100,9 +100,11 @@ lisai apply --run-id 01ARZ3NDEKTSV4RRFFQ69G7ACD /data/images
 ```
 
 Both commands accept `--config <name>` to load settings from `configs/inference/<name>.yml`,
-and any CLI argument overrides the config value. Run selectors must refer to a discovered run
-folder, either by `--run-id`, `dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial
-experiment name when it can be resolved unambiguously.
+and any CLI argument overrides the config value. `tiling_size: auto` uses the saved model
+default, a positive integer forces a tile size, and `tiling_size: off` or `--no-tiling`
+disables tiling. Run selectors must refer to a discovered run folder, either by `--run-id`,
+`dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial experiment name when it can
+be resolved unambiguously.
 
 ## Preprocess
 

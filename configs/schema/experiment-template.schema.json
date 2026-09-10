@@ -826,6 +826,7 @@
                 "Gag_noisy_timelapses",
                 "Gag_timelapses",
                 "actin_fixed",
+                "gag_low_high_eval",
                 "mito_live",
                 "mito_live_noisy",
                 "vim_fixed",
@@ -849,6 +850,7 @@
             "Gag_noisy_timelapses",
             "Gag_timelapses",
             "actin_fixed",
+            "gag_low_high_eval",
             "mito_live",
             "mito_live_noisy",
             "vim_fixed",
@@ -1548,6 +1550,63 @@
         }
       },
       "title": "ExperimentDataSection",
+      "type": "object"
+    },
+    "InferenceSection": {
+      "additionalProperties": false,
+      "description": "Inference defaults saved with a training run.",
+      "properties": {
+        "default_tiling_size": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "auto",
+                    "off"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional saved default for inference tiling. Use null or 'auto' to fall back to the architecture default, a positive integer to force a run-specific tile size, or 'off' to disable tiling by default.",
+          "title": "Default Tiling Size"
+        }
+      },
+      "title": "InferenceSection",
       "type": "object"
     },
     "LVAEModelSection": {
@@ -4641,6 +4700,10 @@
     "tensorboard": {
       "$ref": "#/$defs/TensorboardSection"
     },
+    "inference": {
+      "$ref": "#/$defs/InferenceSection",
+      "description": "Inference defaults to save with the run."
+    },
     "metadata": {
       "type": "object",
       "title": "ConfigMetadata",
@@ -5468,6 +5531,205 @@
                           "type": "string",
                           "enum": [
                             "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "gag_low_high_eval"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "inp"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "inp"
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "single"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "paired": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "paired"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "target"
+                      ],
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "enum": [
+                            "gt"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "gt"
+                      ],
+                      "properties": {
+                        "gt": {
+                          "type": "string",
+                          "enum": [
+                            "gt"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
                           ]
                         },
                         {
@@ -6340,6 +6602,7 @@
                         "Gag_noisy_timelapses",
                         "Gag_timelapses",
                         "actin_fixed",
+                        "gag_low_high_eval",
                         "mito_live",
                         "mito_live_noisy",
                         "vim_fixed",

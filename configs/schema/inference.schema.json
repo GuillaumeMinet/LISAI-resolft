@@ -135,14 +135,22 @@
         "tiling_size": {
           "anyOf": [
             {
+              "exclusiveMinimum": 0,
               "type": "integer"
+            },
+            {
+              "enum": [
+                "auto",
+                "off"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Tile size used for patch-wise inference. Use null to fall back to the model/runtime default.",
+          "description": "Tile size used for patch-wise inference. Use 'auto' or null to fall back to the saved model default, use a positive integer to force a tile size, or use 'off' to disable tiling.",
           "title": "Tiling Size"
         },
         "stack_selection_idx": {
@@ -391,14 +399,22 @@
         "tiling_size": {
           "anyOf": [
             {
+              "exclusiveMinimum": 0,
               "type": "integer"
+            },
+            {
+              "enum": [
+                "auto",
+                "off"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Tile size used for patch-wise inference. Use null to fall back to the model/runtime default.",
+          "description": "Tile size used for patch-wise inference. Use 'auto' or null to fall back to the saved model default, use a positive integer to force a tile size, or use 'off' to disable tiling.",
           "title": "Tiling Size"
         },
         "crop_size": {
