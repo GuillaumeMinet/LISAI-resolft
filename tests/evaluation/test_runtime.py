@@ -58,6 +58,27 @@ def _make_saved_run(*, checkpoint_methods=('state_dict',), default_tiling_size=1
     )
 
 
+def test_resolve_tiling_size_uses_saved_default_for_auto_and_null():
+    saved_run = _make_saved_run(default_tiling_size=300)
+
+    assert runtime_mod.resolve_tiling_size(saved_run, "auto") == 300
+    assert runtime_mod.resolve_tiling_size(saved_run, None) == 300
+
+
+def test_resolve_tiling_size_supports_forced_size_and_off():
+    saved_run = _make_saved_run(default_tiling_size=300)
+
+    assert runtime_mod.resolve_tiling_size(saved_run, 2000) == 2000
+    assert runtime_mod.resolve_tiling_size(saved_run, "512") == 512
+    assert runtime_mod.resolve_tiling_size(saved_run, "off") is None
+
+
+@pytest.mark.parametrize("tiling_size", [0, -1, True, "small"])
+def test_resolve_tiling_size_rejects_invalid_values(tiling_size):
+    with pytest.raises(ValueError, match="tiling_size"):
+        runtime_mod.resolve_tiling_size(_make_saved_run(), tiling_size)
+
+
 
 def test_initialize_runtime_builds_inference_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     checkpoint_path = tmp_path / 'checkpoint.pt'

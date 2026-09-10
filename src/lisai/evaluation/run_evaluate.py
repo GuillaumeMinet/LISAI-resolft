@@ -11,12 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from lisai.config import save_yaml
-from lisai.evaluation.defaults import UNSET, UnsetType, resolve_evaluate_options
 from lisai.evaluation.data import (
     EvaluationDatasetSpec,
     build_eval_source,
     resolve_evaluation_dataset,
 )
+from lisai.evaluation.defaults import UNSET, UnsetType, resolve_evaluate_options
 from lisai.evaluation.inference.stack import infer_batch
 from lisai.evaluation.io import (
     EvalItemOutputWriter,
@@ -25,7 +25,7 @@ from lisai.evaluation.io import (
     save_metrics_json,
 )
 from lisai.evaluation.metrics import compute as metrics
-from lisai.evaluation.runtime import initialize_runtime
+from lisai.evaluation.runtime import TilingSizePolicy, initialize_runtime
 from lisai.evaluation.saved_run import SavedTrainingRun, load_saved_run, resolve_run_dir
 
 
@@ -105,6 +105,10 @@ def _evaluation_metadata(
         },
         "evaluation": {
             "metrics": options["metrics_list"],
+            "tiling_size": {
+                "requested": options["tiling_size"],
+                "effective": runtime.tiling_size,
+            },
         },
     }
 
@@ -133,6 +137,14 @@ def _format_eval_gt_for_display(eval_gt: str | None) -> str:
     if eval_gt == "":
         return "<root>"
     return str(eval_gt)
+
+
+def _format_tiling_size_for_display(requested: TilingSizePolicy, effective: int | None) -> str:
+    if effective is None:
+        return "off"
+    if requested is None or requested == "auto":
+        return f"{effective} (auto)"
+    return str(effective)
 
 
 def _run_single_evaluation(
@@ -178,7 +190,7 @@ def _run_single_evaluation(
     upsamp = saved_run.upsampling_factor
     print(f"Found upsampling factor to be: {upsamp}\n")
     tiling_size = runtime.tiling_size
-    print(f"Tiling size: {tiling_size}\n")
+    print(f"Tiling size: {_format_tiling_size_for_display(options['tiling_size'], tiling_size)}\n")
 
     sample_source = build_eval_source(
         saved_run,
@@ -274,7 +286,7 @@ def run_evaluate(dataset_name:str,
              model_subfolder:str="",
              best_or_last: str | UnsetType = UNSET,
              epoch_number: int | None | UnsetType = UNSET,
-             tiling_size: int | None | UnsetType = UNSET,
+             tiling_size: TilingSizePolicy | UnsetType = UNSET,
              crop_size: int | tuple[int, int] | None | UnsetType = UNSET,
              metrics_list: list[str] | None | UnsetType = UNSET,
              lvae_num_samples: int | None | UnsetType = UNSET,

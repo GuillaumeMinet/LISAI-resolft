@@ -18,17 +18,18 @@ from lisai.evaluation.inference.normalization import denormalize_pred, normalize
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
 from lisai.evaluation.io import create_save_folder, resolve_prediction_inputs, save_outputs
-from lisai.evaluation.runtime import initialize_runtime
+from lisai.evaluation.runtime import TilingSizePolicy, initialize_runtime
 from lisai.evaluation.saved_run import load_saved_run, resolve_run_dir
-from lisai.lib.upsamp.inp_generators import (
-    _deterministic_mltpl_sampling,
-    generate_downsamp_inp,
-)
 from lisai.evaluation.visualization.z_projection import (
     add_colorbar,
     create_color_coded_image,
     enhance_contrast,
 )
+from lisai.lib.upsamp.inp_generators import (
+    _deterministic_mltpl_sampling,
+    generate_downsamp_inp,
+)
+
 
 def _ensure_shape(img: np.ndarray, downsamp_factor: int) -> np.ndarray:
     """Pad spatial dimensions so they are divisible by `downsamp_factor`.
@@ -74,6 +75,14 @@ def _resolve_fill_factor_for_multiple_apply_downsampling(
     return resolved_fill_factor
 
 
+def _format_tiling_size_for_display(requested: TilingSizePolicy, effective: int | None) -> str:
+    if effective is None:
+        return "off"
+    if requested is None or requested == "auto":
+        return f"{effective} (auto)"
+    return str(effective)
+
+
 def run_apply_model(model_dataset: str,
                 model_subfolder: str,
                 model_name: str,
@@ -86,7 +95,7 @@ def run_apply_model(model_dataset: str,
                 skip_if_contain: list[str] | None | UnsetType = UNSET,
                 crop_size: Union[int, tuple[int, int], None, UnsetType] = UNSET,
                 keep_original_shape: bool | UnsetType = UNSET,
-                tiling_size: int | None | UnsetType = UNSET,
+                tiling_size: TilingSizePolicy | UnsetType = UNSET,
                 stack_selection_idx: int | None | UnsetType = UNSET,
                 timelapse_max: int | None | UnsetType = UNSET,
                 lvae_num_samples: int | None | UnsetType = UNSET,
@@ -171,6 +180,7 @@ def run_apply_model(model_dataset: str,
     tiling_size = runtime.tiling_size
     upsamp = saved_run.upsampling_factor
     print(f"Found upsampling factor to be: {upsamp}\n")
+    print(f"Tiling size: {_format_tiling_size_for_display(options['tiling_size'], tiling_size)}\n")
 
     context_length = saved_run.context_length
     if context_length is not None:

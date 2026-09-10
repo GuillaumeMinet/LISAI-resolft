@@ -29,10 +29,13 @@ from .normalization import DataNormalizationParams, NormalizationSection
 from .root import ResolvedExperiment
 from .sections import (
     ExperimentSection,
+    InferenceSection,
     Mode,
     NoiseModelSection,
+    PositiveTilingSize,
     ResolvedExperimentSection,
     RoutingSection,
+    RunDefaultTilingSize,
     SavingSection,
     TensorboardSection,
     TrainingSection,
@@ -52,6 +55,9 @@ __all__ = [
     "Mode",
     "CheckpointMethod",
     "ExperimentSection",
+    "InferenceSection",
+    "PositiveTilingSize",
+    "RunDefaultTilingSize",
     "TrainExperimentSection",
     "ContinueTrainingExperimentSection",
     "RetrainExperimentSection",

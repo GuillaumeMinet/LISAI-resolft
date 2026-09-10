@@ -11,6 +11,8 @@ from .sections import (
     ColorCodeOverrides,
     EvaluateDefaults,
     EvaluateOverrides,
+    PositiveTilingSize,
+    TilingSizePolicy,
 )
 
 __all__ = [
@@ -20,6 +22,8 @@ __all__ = [
     "ApplyOverrides",
     "EvaluateDefaults",
     "EvaluateOverrides",
+    "PositiveTilingSize",
+    "TilingSizePolicy",
     "InferenceOverrides",
     "ResolvedInferenceConfig",
     "InferenceConfig",

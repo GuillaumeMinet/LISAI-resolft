@@ -32,6 +32,21 @@ def _parse_crop_size(value: str) -> int | tuple[int, int]:
     raise argparse.ArgumentTypeError("crop_size must be 'N' or 'H,W'.")
 
 
+def _parse_tiling_size(value: str) -> int | str:
+    normalized = value.strip().lower()
+    if normalized == "auto":
+        return "auto"
+    if normalized in {"off", "none", "disable", "disabled"}:
+        return "off"
+    try:
+        parsed = int(normalized)
+    except ValueError:
+        raise argparse.ArgumentTypeError("tiling_size must be a positive integer, 'auto', or 'off'.") from None
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("tiling_size must be greater than 0.")
+    return parsed
+
+
 def _parse_key_value_overrides(values: list[str] | None, parser: argparse.ArgumentParser) -> dict | object:
     if not values:
         return UNSET
@@ -83,7 +98,8 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         dest="keep_original_shape",
         action=argparse.BooleanOptionalAction,
     )
-    parser.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=int)
+    parser.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=_parse_tiling_size)
+    parser.add_argument("--no-tiling", dest="tiling_size", action="store_const", const="off")
     parser.add_argument("--stack-selection-idx", "--stack_selection_idx", dest="stack_selection_idx", type=int)
     parser.add_argument("--timelapse-max", "--timelapse_max", dest="timelapse_max", type=int)
     parser.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)
@@ -148,7 +164,8 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
     )
     parser.add_argument("--best-or-last", "--best_or_last", dest="best_or_last", choices=["best", "last", "both"])
     parser.add_argument("--epoch-number", "--epoch_number", dest="epoch_number", type=int)
-    parser.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=int)
+    parser.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=_parse_tiling_size)
+    parser.add_argument("--no-tiling", dest="tiling_size", action="store_const", const="off")
     parser.add_argument("--crop-size", "--crop_size", dest="crop_size", type=_parse_crop_size)
     parser.add_argument("--metrics", type=_parse_csv_list)
     parser.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)

@@ -14,7 +14,9 @@ from .inference import (
     InferenceConfig,
     InferenceDefaults,
     InferenceOverrides,
+    PositiveTilingSize,
     ResolvedInferenceConfig,
+    TilingSizePolicy,
 )
 
 __all__ = [
@@ -24,6 +26,8 @@ __all__ = [
     "ApplyOverrides",
     "EvaluateDefaults",
     "EvaluateOverrides",
+    "PositiveTilingSize",
+    "TilingSizePolicy",
     "InferenceOverrides",
     "ResolvedInferenceConfig",
     "InferenceConfig",

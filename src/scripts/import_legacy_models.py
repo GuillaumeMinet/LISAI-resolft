@@ -238,6 +238,7 @@ def translate_legacy_config(
         training_cfg["progress_bar"] = training_cfg["pbar"]
 
     saving_cfg = dict(legacy_cfg.get("saving_prm") or {})
+    model_section = _legacy_model_section(legacy_cfg)
     current = {
         "experiment": {
             "mode": "train",
@@ -251,7 +252,7 @@ def translate_legacy_config(
             "inference_subfolder": target_model_subfolder,
         },
         "data": data_cfg,
-        "model": _legacy_model_section(legacy_cfg),
+        "model": model_section,
         "training": training_cfg,
         "normalization": dict(legacy_cfg.get("normalization") or {}),
         "model_norm_prm": legacy_cfg.get("model_norm_prm"),
@@ -267,6 +268,9 @@ def translate_legacy_config(
         },
         "tensorboard": {"enabled": False},
     }
+    inference_cfg = _legacy_inference_defaults(model_section)
+    if inference_cfg:
+        current["inference"] = inference_cfg
     current["data"]["dataset_name"] = target_dataset
     return current
 
@@ -334,6 +338,18 @@ def _translate_legacy_model_params(architecture: str, params: dict[str, Any]) ->
         return out
 
     raise ValueError(f"Unsupported legacy architecture: {architecture!r}")
+
+
+def _legacy_inference_defaults(model_section: dict[str, Any]) -> dict[str, Any]:
+    """Return saved inference defaults for imported legacy models."""
+    architecture = model_section["architecture"]
+    if architecture != "unet_rcan":
+        return {}
+
+    params = UNetRCANParams.model_validate(model_section["parameters"])
+    if params.effective_upsampling_factor() == 1:
+        return {"default_tiling_size": 2000}
+    return {}
 
 
 def build_model_spec(legacy_cfg: dict[str, Any]) -> LegacyModelSpec:

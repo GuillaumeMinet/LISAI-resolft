@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from lisai.config.io.config_paths import ConfigPathResolver
 import lisai.evaluation.defaults as defaults_mod
+from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.evaluation.defaults import (
     resolve_apply_options,
     resolve_evaluate_options,
@@ -99,6 +99,19 @@ apply:
 
     assert resolved["downsamp"] == 2
     assert resolved["fill_factor"] is None
+
+
+def test_resolve_evaluate_options_preserves_tiling_policy_values(inference_config_dir: Path):
+    defaults_path = inference_config_dir / "defaults.yml"
+    no_tiling_path = inference_config_dir / "no_tiling.yml"
+    _write(defaults_path, "evaluate:\n  tiling_size: auto\n")
+    _write(no_tiling_path, "evaluate:\n  tiling_size: off\n")
+
+    resolved = resolve_evaluate_options(config="no_tiling")
+    forced = resolve_evaluate_options(config="no_tiling", tiling_size=512)
+
+    assert resolved["tiling_size"] == "off"
+    assert forced["tiling_size"] == 512
 
 
 def test_resolve_evaluate_options_requires_requested_section_in_named_config(inference_config_dir: Path):

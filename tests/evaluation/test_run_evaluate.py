@@ -9,10 +9,11 @@ import pytest
 from lisai.evaluation.data import EvaluationDatasetSpec
 from lisai.evaluation.run_evaluate import (
     _build_evaluation_folder_name,
-    _expand_checkpoint_selection,
     _evaluation_dataset_folder,
     _evaluation_metadata,
+    _expand_checkpoint_selection,
     _format_eval_gt_for_display,
+    _format_tiling_size_for_display,
 )
 
 run_evaluate_mod = importlib.import_module("lisai.evaluation.run_evaluate")
@@ -93,7 +94,7 @@ def test_format_eval_gt_for_display_handles_special_values():
     assert _format_eval_gt_for_display("gt_avg") == "gt_avg"
 
 
-def test_run_evaluate_default_tiling_size_reaches_single_evaluation(monkeypatch, tmp_path: Path):
+def test_run_evaluate_default_tiling_policy_reaches_single_evaluation(monkeypatch, tmp_path: Path):
     captured = {}
     saved_run = object()
 
@@ -107,10 +108,17 @@ def test_run_evaluate_default_tiling_size_reaches_single_evaluation(monkeypatch,
 
     run_evaluate_mod.run_evaluate(dataset_name="dataset_a", model_name="model_a")
 
-    assert captured["tiling_size"] == 2000
+    assert captured["tiling_size"] == "auto"
 
 
-def test_run_single_evaluation_reports_runtime_tiling_size(monkeypatch, tmp_path: Path, capsys):
+def test_format_tiling_size_for_display_reports_policy_and_effective_size():
+    assert _format_tiling_size_for_display("auto", 300) == "300 (auto)"
+    assert _format_tiling_size_for_display(None, 512) == "512 (auto)"
+    assert _format_tiling_size_for_display(2000, 2000) == "2000"
+    assert _format_tiling_size_for_display("off", None) == "off"
+
+
+def test_run_single_evaluation_reports_effective_auto_tiling_size(monkeypatch, tmp_path: Path, capsys):
     captured = {}
     saved_run = SimpleNamespace(is_lvae=False, upsampling_factor=1)
 
@@ -119,14 +127,14 @@ def test_run_single_evaluation_reports_runtime_tiling_size(monkeypatch, tmp_path
         return SimpleNamespace(
             model=object(),
             device="cpu",
-            tiling_size=2000,
+            tiling_size=300,
             resolved_epoch=93,
         )
 
     options = {
         "best_or_last": "best",
         "epoch_number": None,
-        "tiling_size": 2000,
+        "tiling_size": "auto",
         "save_folder": tmp_path / "eval",
         "overwrite": False,
         "split": "test",
@@ -146,8 +154,8 @@ def test_run_single_evaluation_reports_runtime_tiling_size(monkeypatch, tmp_path
 
     run_evaluate_mod._run_single_evaluation(output_root=tmp_path, saved_run=saved_run, options=options)
 
-    assert captured["tiling_size"] == 2000
-    assert "Tiling size: 2000" in capsys.readouterr().out
+    assert captured["tiling_size"] == "auto"
+    assert "Tiling size: 300 (auto)" in capsys.readouterr().out
 
 
 def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(monkeypatch, tmp_path: Path):
@@ -207,6 +215,7 @@ def test_evaluation_metadata_records_independent_dataset_and_checkpoint(tmp_path
         resolved_epoch=42,
         load_method='state_dict',
         checkpoint_path=tmp_path / 'run' / 'model_epoch_42.pth',
+        tiling_size=300,
     )
     sample_source = SimpleNamespace(
         config=SimpleNamespace(
@@ -230,6 +239,7 @@ def test_evaluation_metadata_records_independent_dataset_and_checkpoint(tmp_path
         'epoch_number': None,
         'split': 'test',
         'metrics_list': ['psnr', 'ssim'],
+        'tiling_size': 'auto',
     }
 
     metadata = _evaluation_metadata(
@@ -247,3 +257,4 @@ def test_evaluation_metadata_records_independent_dataset_and_checkpoint(tmp_path
     assert metadata['dataset']['split'] is None
     assert metadata['dataset']['eval_gt'] == 'gt'
     assert metadata['evaluation']['metrics'] == ['psnr', 'ssim']
+    assert metadata['evaluation']['tiling_size'] == {'requested': 'auto', 'effective': 300}

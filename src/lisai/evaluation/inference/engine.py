@@ -32,7 +32,7 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
         be to not create issues when passing through model.
     tiling_size: int, default = None
         Size of the tiles. If tiling_size > size of inp, no tiling.
-        If tiling_size is None, default_tiling_size will be used.
+        If tiling_size is None, inference runs without tiling.
     tiling_overlap: int, default = 50
         Overlap size in pixel for the tiling.
     upsamp: int, default = 1

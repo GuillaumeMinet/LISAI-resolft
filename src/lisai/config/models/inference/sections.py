@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
-
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SAVE_FOLDER_DESC = (
     "Output folder for saved predictions or evaluation artifacts. "
@@ -20,7 +19,11 @@ FILTERS_DESC = "File extensions accepted when apply input points to a directory.
 SKIP_IF_CONTAIN_DESC = "Optional substrings; matching filenames are skipped during apply."
 CROP_SIZE_DESC = "Optional center crop used before inference. Use a single integer for a square crop or a height,width tuple."
 KEEP_ORIGINAL_SHAPE_DESC = "Whether outputs should be padded back to the original spatial size after cropped inference."
-TILING_SIZE_DESC = "Tile size used for patch-wise inference. Use null to fall back to the model/runtime default."
+TILING_SIZE_DESC = (
+    "Tile size used for patch-wise inference. Use 'auto' or null to fall back "
+    "to the saved model default, use a positive integer to force a tile size, "
+    "or use 'off' to disable tiling."
+)
 STACK_SELECTION_IDX_DESC = "Optional stack or channel index selected before converting the input to a 4D tensor."
 TIMELAPSE_MAX_DESC = "Optional maximum number of timelapse frames to process during apply."
 LVAE_NUM_SAMPLES_DESC = "Number of stochastic samples drawn when running LVAE models."
@@ -60,6 +63,23 @@ LIMIT_N_IMGS_DESC = "Optional cap on the number of images or batches evaluated."
 
 
 CheckpointSelector = Literal["best", "last", "both"]
+PositiveTilingSize: TypeAlias = Annotated[int, Field(gt=0)]
+TilingSizePolicy: TypeAlias = PositiveTilingSize | Literal["auto", "off"] | None
+
+
+def _normalize_tiling_size_policy(value):
+    if value is False:
+        return "off"
+    if value is True:
+        raise ValueError("tiling_size must be a positive integer, 'auto', 'off', or null.")
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"", "auto"}:
+            return "auto"
+        if normalized in {"off", "none", "disable", "disabled"}:
+            return "off"
+        return normalized
+    return value
 
 
 class ColorCodeDefaults(BaseModel):
@@ -97,7 +117,7 @@ class ApplyDefaults(BaseModel):
     skip_if_contain: list[str] | None = Field(default=None, description=SKIP_IF_CONTAIN_DESC)
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     keep_original_shape: bool = Field(default=True, description=KEEP_ORIGINAL_SHAPE_DESC)
-    tiling_size: int | None = Field(default=None, description=TILING_SIZE_DESC)
+    tiling_size: TilingSizePolicy = Field(default="auto", description=TILING_SIZE_DESC)
     stack_selection_idx: int | None = Field(default=None, description=STACK_SELECTION_IDX_DESC)
     timelapse_max: int | None = Field(default=None, description=TIMELAPSE_MAX_DESC)
     lvae_num_samples: int | None = Field(default=20, description=LVAE_NUM_SAMPLES_DESC)
@@ -109,6 +129,11 @@ class ApplyDefaults(BaseModel):
     apply_color_code: bool = Field(default=False, description=APPLY_COLOR_CODE_DESC)
     color_code_prm: ColorCodeDefaults = Field(default_factory=ColorCodeDefaults, description="Nested volumetric color-coding settings used when apply_color_code is true.")
     dark_frame_context_length: bool = Field(default=False, description=DARK_FRAME_CONTEXT_LENGTH_DESC)
+
+    @field_validator("tiling_size", mode="before")
+    @classmethod
+    def _normalize_tiling_size(cls, value):
+        return _normalize_tiling_size_policy(value)
 
 
 class ApplyOverrides(BaseModel):
@@ -124,7 +149,7 @@ class ApplyOverrides(BaseModel):
     skip_if_contain: list[str] | None = Field(default=None, description=SKIP_IF_CONTAIN_DESC)
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     keep_original_shape: bool | None = Field(default=None, description=KEEP_ORIGINAL_SHAPE_DESC)
-    tiling_size: int | None = Field(default=None, description=TILING_SIZE_DESC)
+    tiling_size: TilingSizePolicy = Field(default=None, description=TILING_SIZE_DESC)
     stack_selection_idx: int | None = Field(default=None, description=STACK_SELECTION_IDX_DESC)
     timelapse_max: int | None = Field(default=None, description=TIMELAPSE_MAX_DESC)
     lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
@@ -137,6 +162,11 @@ class ApplyOverrides(BaseModel):
     color_code_prm: ColorCodeOverrides | None = Field(default=None, description="Nested volumetric color-coding overrides used when apply_color_code is true.")
     dark_frame_context_length: bool | None = Field(default=None, description=DARK_FRAME_CONTEXT_LENGTH_DESC)
 
+    @field_validator("tiling_size", mode="before")
+    @classmethod
+    def _normalize_tiling_size(cls, value):
+        return _normalize_tiling_size_policy(value)
+
 
 class EvaluateDefaults(BaseModel):
     """Fully resolved defaults for the `evaluate` inference section."""
@@ -145,7 +175,7 @@ class EvaluateDefaults(BaseModel):
 
     best_or_last: CheckpointSelector = Field(default="best", description=BEST_OR_LAST_DESC)
     epoch_number: int | None = Field(default=None, description=EPOCH_NUMBER_DESC)
-    tiling_size: int | None = Field(default=None, description=TILING_SIZE_DESC)
+    tiling_size: TilingSizePolicy = Field(default="auto", description=TILING_SIZE_DESC)
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     metrics_list: list[str] | None = Field(default=None, description=METRICS_LIST_DESC)
     lvae_num_samples: int | None = Field(default=20, description=LVAE_NUM_SAMPLES_DESC)
@@ -158,6 +188,11 @@ class EvaluateDefaults(BaseModel):
     split: str = Field(default="test", description=SPLIT_DESC)
     limit_n_imgs: int | None = Field(default=None, description=LIMIT_N_IMGS_DESC)
 
+    @field_validator("tiling_size", mode="before")
+    @classmethod
+    def _normalize_tiling_size(cls, value):
+        return _normalize_tiling_size_policy(value)
+
 
 class EvaluateOverrides(BaseModel):
     """Sparse user-authored overrides for the `evaluate` section."""
@@ -166,7 +201,7 @@ class EvaluateOverrides(BaseModel):
 
     best_or_last: CheckpointSelector | None = Field(default=None, description=BEST_OR_LAST_DESC)
     epoch_number: int | None = Field(default=None, description=EPOCH_NUMBER_DESC)
-    tiling_size: int | None = Field(default=None, description=TILING_SIZE_DESC)
+    tiling_size: TilingSizePolicy = Field(default=None, description=TILING_SIZE_DESC)
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     metrics_list: list[str] | None = Field(default=None, description=METRICS_LIST_DESC)
     lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
@@ -178,10 +213,17 @@ class EvaluateOverrides(BaseModel):
     split: str | None = Field(default=None, description=SPLIT_DESC)
     limit_n_imgs: int | None = Field(default=None, description=LIMIT_N_IMGS_DESC)
 
+    @field_validator("tiling_size", mode="before")
+    @classmethod
+    def _normalize_tiling_size(cls, value):
+        return _normalize_tiling_size_policy(value)
+
 
 __all__ = [
     "ColorCodeDefaults",
     "ColorCodeOverrides",
+    "PositiveTilingSize",
+    "TilingSizePolicy",
     "ApplyDefaults",
     "ApplyOverrides",
     "CheckpointSelector",

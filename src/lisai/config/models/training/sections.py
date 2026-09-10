@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Annotated, Any, Literal, Optional, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .tasks import CustomTaskSection, ExperimentTaskSection, normalize_task_value
 
 Mode = Literal["train", "continue_training", "retrain"]
+PositiveTilingSize: TypeAlias = Annotated[int, Field(gt=0)]
+RunDefaultTilingSize: TypeAlias = PositiveTilingSize | Literal["auto", "off"] | None
 
 
 class ExperimentSection(BaseModel):
@@ -80,6 +82,39 @@ class RoutingSection(BaseModel):
         if self.tensorboard_subfolder is None:
             self.tensorboard_subfolder = self.models_subfolder
         return self
+
+
+class InferenceSection(BaseModel):
+    """Inference defaults saved with a training run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_tiling_size: RunDefaultTilingSize = Field(
+        default=None,
+        description=(
+            "Optional saved default for inference tiling. Use null or 'auto' to "
+            "fall back to the architecture default, a positive integer to force "
+            "a run-specific tile size, or 'off' to disable tiling by default."
+        ),
+    )
+
+    @field_validator("default_tiling_size", mode="before")
+    @classmethod
+    def _normalize_default_tiling_size(cls, value):
+        if value is False:
+            return "off"
+        if value is True:
+            raise ValueError(
+                "default_tiling_size must be a positive integer, 'auto', 'off', or null."
+            )
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"", "auto"}:
+                return "auto"
+            if normalized in {"off", "none", "disable", "disabled"}:
+                return "off"
+            return normalized
+        return value
 
 
 class TrainingSection(BaseModel):

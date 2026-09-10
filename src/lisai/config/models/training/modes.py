@@ -12,6 +12,7 @@ from .model import ModelSection
 from .normalization import NormalizationSection
 from .sections import (
     ExperimentSection,
+    InferenceSection,
     NoiseModelSection,
     RoutingSection,
     SavingSection,
@@ -138,6 +139,10 @@ class ExperimentConfig(BaseModel):
         default_factory=TensorboardSection,
         description="TensorBoard logging settings.",
     )
+    inference: InferenceSection = Field(
+        default_factory=InferenceSection,
+        description="Inference defaults to save with the run.",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -177,6 +182,10 @@ class ContinueTrainingConfig(BaseModel):
     recovery: RecoveryConfig = Field(
         default_factory=RecoveryConfig,
         description="Recovery behavior for safe resume on continue_training.",
+    )
+    inference: InferenceSection = Field(
+        default_factory=InferenceSection,
+        description="Optional inference default overrides saved with the resumed run.",
     )
 
 
@@ -224,6 +233,10 @@ class RetrainConfig(BaseModel):
     tensorboard: TensorboardSection = Field(
         default_factory=TensorboardSection,
         description="Optional TensorBoard logging overrides for the retrain run.",
+    )
+    inference: InferenceSection = Field(
+        default_factory=InferenceSection,
+        description="Optional inference defaults to save with the retrain run.",
     )
     load_model: ExperimentLoadModelSection = Field(
         ...,

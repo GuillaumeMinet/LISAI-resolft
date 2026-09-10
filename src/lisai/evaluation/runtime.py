@@ -8,10 +8,10 @@ entrypoints.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
-from typing import Any
+from typing import Any, Literal, TypeAlias
 
 import torch
 
@@ -21,6 +21,8 @@ from lisai.models import load_noise_model, load_noise_model_from_paths
 from lisai.models.loader import init_model
 
 from .saved_run import CheckpointMethod, SavedTrainingRun
+
+TilingSizePolicy: TypeAlias = int | Literal["auto", "off"] | None
 
 
 
@@ -178,13 +180,44 @@ def _load_state_dict_model(
 
 
 
+def resolve_tiling_size(
+    saved_run: SavedTrainingRun,
+    tiling_size: TilingSizePolicy = "auto",
+) -> int | None:
+    """Resolve a public tiling policy into the value consumed by inference."""
+    if tiling_size is None:
+        return saved_run.default_tiling_size
+
+    if isinstance(tiling_size, str):
+        normalized = tiling_size.strip().lower()
+        if normalized in {"", "auto"}:
+            return saved_run.default_tiling_size
+        if normalized in {"off", "none", "disable", "disabled"}:
+            return None
+        try:
+            tiling_size = int(normalized)
+        except ValueError:
+            raise ValueError(
+                "tiling_size must be a positive integer, 'auto', 'off', or null."
+            ) from None
+
+    if isinstance(tiling_size, bool):
+        raise ValueError("tiling_size must be a positive integer, 'auto', 'off', or null.")
+
+    resolved = int(tiling_size)
+    if resolved <= 0:
+        raise ValueError("tiling_size must be greater than 0.")
+    return resolved
+
+
+
 def initialize_runtime(
     *,
     saved_run: SavedTrainingRun,
     device: torch.device | str | None = None,
     best_or_last: str = "best",
     epoch_number: int | None = None,
-    tiling_size: int | None = None,
+    tiling_size: TilingSizePolicy = "auto",
     checkpoint_path: str | Path | None = None,
     noise_model_path: str | Path | None = None,
     noise_model_norm_prm_path: str | Path | None = None,
@@ -231,7 +264,7 @@ def initialize_runtime(
                 ),
             )
 
-    effective_tiling_size = tiling_size if tiling_size is not None else saved_run.default_tiling_size
+    effective_tiling_size = resolve_tiling_size(saved_run, tiling_size)
     return InferenceRuntime(
         model=model,
         device=resolved_device,
@@ -243,4 +276,4 @@ def initialize_runtime(
 
 
 
-__all__ = ["InferenceRuntime", "initialize_runtime"]
+__all__ = ["InferenceRuntime", "TilingSizePolicy", "initialize_runtime", "resolve_tiling_size"]

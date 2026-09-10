@@ -106,6 +106,34 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     assert captured["crop_size"] == 200
 
 
+def test_cli_parses_tiling_policy_values():
+    assert evaluation_cli._parse_tiling_size("auto") == "auto"
+    assert evaluation_cli._parse_tiling_size("off") == "off"
+    assert evaluation_cli._parse_tiling_size("2000") == 2000
+
+
+def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
+    captured = {}
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G7ACF",
+        dataset="Gag",
+        model_subfolder="Upsamp",
+    )
+
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(["apply", "my_model_00", "/data/images", "--no-tiling"])
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["tiling_size"] == "off"
+
+
 def test_apply_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
@@ -220,6 +248,8 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
             "val",
             "--metrics",
             "psnr,ssim",
+            "--tiling-size",
+            "auto",
         ]
     )
     result = args.handler(args)
@@ -231,6 +261,7 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
     assert captured["config"] == "benchmark"
     assert captured["split"] == "val"
     assert captured["metrics_list"] == ["psnr", "ssim"]
+    assert captured["tiling_size"] == "auto"
 
 
 def test_evaluate_cli_accepts_best_or_last_both(monkeypatch, tmp_path):

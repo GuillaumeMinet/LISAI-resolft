@@ -281,7 +281,15 @@ def _apply_mode_resolution(user_cfg: dict, mode: str, paths: Paths) -> dict:
 
     # logic: resume mode should only change minimal things, but retrain can have major changes
     override_roots_by_mode = {
-        "continue_training": ["experiment", "training", "saving", "tensorboard", "load_model", "recovery"],
+        "continue_training": [
+            "experiment",
+            "training",
+            "saving",
+            "tensorboard",
+            "load_model",
+            "recovery",
+            "inference",
+        ],
         "retrain": [
             "experiment",
             "routing",
@@ -294,6 +302,7 @@ def _apply_mode_resolution(user_cfg: dict, mode: str, paths: Paths) -> dict:
             "saving",
             "tensorboard",
             "load_model",
+            "inference",
         ],
     }
 
@@ -480,5 +489,8 @@ def prune_config_for_saving(cfg: ResolvedExperiment) -> dict:
 
     if not bool(cfg.tensorboard.enabled):
         out.pop("tensorboard", None)
+
+    if not out.get("inference"):
+        out.pop("inference", None)
 
     return out
