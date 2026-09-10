@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../schema/preprocess.schema.json
+
+dataset_name: "TestDataset_Gag_low_high"
+
+usage: "evaluation"
+
+pipeline: "paired_single_recon"
+data_type: "recon"
+fmt: "single"
+
+pipeline_cfg:
+  input_subfolder: "low"
+  gt_subfolder: "high"
+
+  auxiliary_subfolders:
+    conf:
+      matching: required
+      match_by: filename
+
+
+  crop_size: 1200
+
+log:
+  enabled: true
+
+split:
+  enabled: false

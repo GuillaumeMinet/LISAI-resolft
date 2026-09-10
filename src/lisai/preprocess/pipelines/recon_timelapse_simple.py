@@ -12,6 +12,7 @@ from lisai.config import settings
 from ..core import MAIN_OUTPUT_KEY, FolderSource, Item, OutputDecl, OutputSpec, Source
 from ..transformations import bleach_correct_simple_ratio, crop_center_stack, remove_first_frame
 from .base import BasePipeline, PipelineResult
+from .subfolders import resolve_source_subfolders
 
 if TYPE_CHECKING:
     from ..run_preprocess import PreprocessRun
@@ -31,10 +32,25 @@ class ReconTimelapseSimpleConfig:
       - clip negatives to 0
     """
 
+    base_subfolder: str = field(
+        default="",
+        metadata={
+            "description": "Optional common parent folder inside dataset dump/recon.",
+        },
+    )
+    input_subfolder: str = field(
+        default="",
+        metadata={
+            "description": "Optional folder containing the primary timelapse files, relative to base_subfolder.",
+        },
+    )
     dump_subfolder: str = field(
         default="",
         metadata={
-            "description": "Optional subfolder inside the dataset dump/recon directory to read source timelapses from.",
+            "description": (
+                "Deprecated alias for base_subfolder. Kept for backward compatibility with "
+                "existing recon_timelapse_simple configs."
+            ),
         },
     )
     combine_subfolders: bool = field(
@@ -68,6 +84,15 @@ class ReconTimelapseSimpleConfig:
         },
     )
 
+    def __post_init__(self) -> None:
+        resolve_source_subfolders(
+            pipeline_name="recon_timelapse_simple",
+            base_subfolder=self.base_subfolder,
+            input_subfolder=self.input_subfolder,
+            dump_subfolder=self.dump_subfolder,
+            legacy_dump_role="base",
+        )
+
 
 class ReconTimelapseSimplePipeline(BasePipeline[ReconTimelapseSimpleConfig]):
     Config = ReconTimelapseSimpleConfig
@@ -82,13 +107,21 @@ class ReconTimelapseSimplePipeline(BasePipeline[ReconTimelapseSimpleConfig]):
         )
 
     def build_source(self, *, run: PreprocessRun) -> Source:
-        dump_root = run.paths.dataset_dump_dir(
+        common_dump_root = run.paths.dataset_dump_dir(
             dataset_name=run.dataset_name,
             data_type=run.data_type,
-            additional_subfolder=self.cfg.dump_subfolder if self.cfg.dump_subfolder else "",
         )
+        base_subfolder, input_subfolder = resolve_source_subfolders(
+            pipeline_name=self.name,
+            base_subfolder=self.cfg.base_subfolder,
+            input_subfolder=self.cfg.input_subfolder,
+            dump_subfolder=self.cfg.dump_subfolder,
+            legacy_dump_role="base",
+        )
+        role_root = common_dump_root / base_subfolder if base_subfolder else common_dump_root
+        input_root = role_root / input_subfolder if input_subfolder else role_root
         exts = tuple(settings.data_cfg.data_types[run.data_type])
-        return FolderSource(root=dump_root, exts=exts, combine_subfolders=self.cfg.combine_subfolders)
+        return FolderSource(root=input_root, exts=exts, combine_subfolders=self.cfg.combine_subfolders)
 
     def process_item(self, *, item: Item) -> Dict[str, np.ndarray]:
         (p,) = item.paths

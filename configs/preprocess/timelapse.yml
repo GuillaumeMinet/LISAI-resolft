@@ -5,7 +5,8 @@ data_type: "recon"
 fmt: "timelapse"
 
 pipeline_cfg:
-  dump_subfolder: ""
+  base_subfolder: ""
+  input_subfolder: ""
   combine_subfolders: True
   crop_size: null
   remove_first: True

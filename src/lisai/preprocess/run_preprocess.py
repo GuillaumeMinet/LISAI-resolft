@@ -216,6 +216,7 @@ class PreprocessRun:
         preprocess_dir: Path,
         n_files_written: int,
         split_summary: dict[str, Any],
+        auxiliary_matches: dict[str, dict[str, int]],
         error: Exception | None = None,
     ) -> PreprocessFinishReport:
         empty_bucket = {"count": 0, "source_names": [], "output_names": []}
@@ -229,6 +230,7 @@ class PreprocessRun:
             split_enabled=bool(split_summary.get("enabled", False)),
             val=val,
             test=test,
+            auxiliary_matches=auxiliary_matches,
             error_type=type(error).__name__ if error is not None else None,
             error_message=str(error) if error is not None else None,
         )
@@ -262,6 +264,8 @@ class PreprocessRun:
         n_files = 0
         stats = pipeline.init_stats()
         processed_items: list[dict[str, Any]] = []
+        auxiliary_names = [output.key for output in spec.outputs if output.role == "aux"]
+        auxiliary_match_counts = {name: 0 for name in auxiliary_names}
 
         try:
             saver = PreprocessSaver(
@@ -302,6 +306,9 @@ class PreprocessRun:
                     # train split. Their files remain at the output root.
                     recorded_split = None
                 outputs = pipeline.process_item(item=item)
+                for name in auxiliary_names:
+                    if name in item.auxiliary_paths:
+                        auxiliary_match_counts[name] += 1
                 template_kwargs = pipeline.template_kwargs(item=item, outputs=outputs)
 
                 saved_outputs: dict[str, str] = {}
@@ -385,6 +392,10 @@ class PreprocessRun:
                     preprocess_dir=preprocess_dir,
                     n_files_written=result.n_files,
                     split_summary=manifest_split_summary,
+                    auxiliary_matches={
+                        name: {"matched": count, "total": result.n_files}
+                        for name, count in auxiliary_match_counts.items()
+                    },
                 )
             )
             return result
@@ -408,6 +419,10 @@ class PreprocessRun:
                     preprocess_dir=preprocess_dir,
                     n_files_written=n_files,
                     split_summary=manifest_split_summary,
+                    auxiliary_matches={
+                        name: {"matched": count, "total": n_files}
+                        for name, count in auxiliary_match_counts.items()
+                    },
                     error=exc,
                 )
             )

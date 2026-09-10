@@ -13,6 +13,7 @@
       "title": "Pipeline",
       "type": "string",
       "enum": [
+        "paired_single_recon",
         "recon_mltpl_snr",
         "recon_timelapse_simple",
         "single_recon"
@@ -77,6 +78,95 @@
       "if": {
         "properties": {
           "pipeline": {
+            "const": "paired_single_recon"
+          }
+        },
+        "required": [
+          "pipeline"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data_type": {
+            "description": "Dataset data type produced by preprocessing, typically raw or recon. Allowed for pipeline 'paired_single_recon': recon.",
+            "title": "Data Type",
+            "type": "string",
+            "const": "recon",
+            "default": "recon"
+          },
+          "fmt": {
+            "description": "Output data format used for canonical naming and saving templates. Allowed for pipeline 'paired_single_recon': single.",
+            "title": "Fmt",
+            "type": "string",
+            "const": "single",
+            "default": "single"
+          },
+          "pipeline_cfg": {
+            "properties": {
+              "base_subfolder": {
+                "default": "",
+                "description": "Optional common parent folder inside dataset dump/recon. Input, GT, and auxiliary folders are resolved beneath it.",
+                "title": "Base Subfolder",
+                "type": "string"
+              },
+              "dump_subfolder": {
+                "default": "",
+                "description": "Deprecated alias for base_subfolder. Kept for backward compatibility with existing paired_single_recon configs.",
+                "title": "Dump Subfolder",
+                "type": "string"
+              },
+              "input_subfolder": {
+                "default": "low",
+                "description": "Folder containing the model input images, relative to base_subfolder.",
+                "title": "Input Subfolder",
+                "type": "string"
+              },
+              "gt_subfolder": {
+                "default": "high",
+                "description": "Folder containing the paired evaluation ground-truth images, relative to base_subfolder.",
+                "title": "Gt Subfolder",
+                "type": "string"
+              },
+              "registration": {
+                "default": false,
+                "description": "If true, register each input image to its paired ground-truth image before saving.",
+                "title": "Registration",
+                "type": "boolean"
+              },
+              "crop_size": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Optional centered crop size applied identically to each paired input and ground-truth image.",
+                "title": "Crop Size"
+              },
+              "auxiliary_subfolders": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/AuxiliarySubfolderConfig"
+                },
+                "description": "Optional named auxiliary image folders relative to base_subfolder. Each auxiliary is saved as role 'aux' and must explicitly configure matching. Files can be matched by exact filename or by acquisition timestamp.",
+                "title": "Auxiliary Subfolders",
+                "type": "object"
+              }
+            },
+            "title": "PairedSingleReconConfig",
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Pipeline-specific configuration. Editor hints depend on the selected pipeline."
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "pipeline": {
             "const": "recon_mltpl_snr"
           }
         },
@@ -102,9 +192,21 @@
           },
           "pipeline_cfg": {
             "properties": {
+              "base_subfolder": {
+                "default": "",
+                "description": "Optional common parent folder inside dataset dump/recon.",
+                "title": "Base Subfolder",
+                "type": "string"
+              },
+              "input_subfolder": {
+                "default": "",
+                "description": "Optional folder containing the primary multiple-SNR stack files, relative to base_subfolder.",
+                "title": "Input Subfolder",
+                "type": "string"
+              },
               "dump_subfolder": {
                 "default": "",
-                "description": "Optional subfolder inside the dataset dump/recon directory to read source stacks from.",
+                "description": "Deprecated alias for base_subfolder. Kept for backward compatibility with existing recon_mltpl_snr configs.",
                 "title": "Dump Subfolder",
                 "type": "string"
               },
@@ -212,9 +314,21 @@
           },
           "pipeline_cfg": {
             "properties": {
+              "base_subfolder": {
+                "default": "",
+                "description": "Optional common parent folder inside dataset dump/recon.",
+                "title": "Base Subfolder",
+                "type": "string"
+              },
+              "input_subfolder": {
+                "default": "",
+                "description": "Optional folder containing the primary timelapse files, relative to base_subfolder.",
+                "title": "Input Subfolder",
+                "type": "string"
+              },
               "dump_subfolder": {
                 "default": "",
-                "description": "Optional subfolder inside the dataset dump/recon directory to read source timelapses from.",
+                "description": "Deprecated alias for base_subfolder. Kept for backward compatibility with existing recon_timelapse_simple configs.",
                 "title": "Dump Subfolder",
                 "type": "string"
               },
@@ -293,9 +407,21 @@
           },
           "pipeline_cfg": {
             "properties": {
+              "base_subfolder": {
+                "default": "",
+                "description": "Optional common parent folder inside dataset dump/recon. Role-specific input and auxiliary folders are resolved beneath it.",
+                "title": "Base Subfolder",
+                "type": "string"
+              },
+              "input_subfolder": {
+                "default": "",
+                "description": "Optional folder containing the primary input images, relative to base_subfolder.",
+                "title": "Input Subfolder",
+                "type": "string"
+              },
               "dump_subfolder": {
                 "default": "",
-                "description": "Optional subfolder inside the dataset dump/recon directory to read source images from.",
+                "description": "Deprecated alias for input_subfolder. Kept for backward compatibility with existing single_recon configs.",
                 "title": "Dump Subfolder",
                 "type": "string"
               },
@@ -317,6 +443,14 @@
                 "default": null,
                 "description": "Optional centered crop size applied to each 2D image before saving.",
                 "title": "Crop Size"
+              },
+              "auxiliary_subfolders": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/AuxiliarySubfolderConfig"
+                },
+                "description": "Optional named auxiliary image folders relative to base_subfolder. Each auxiliary is saved as role 'aux' and must explicitly configure matching. Files can be matched by exact filename or by acquisition timestamp.",
+                "title": "Auxiliary Subfolders",
+                "type": "object"
               }
             },
             "title": "SingleReconConfig",
@@ -561,6 +695,58 @@
         }
       },
       "title": "PreprocessSplitReuseConfig",
+      "type": "object"
+    },
+    "AuxiliarySubfolderConfig": {
+      "properties": {
+        "matching": {
+          "description": "Whether every primary sample requires an auxiliary match ('required') or unmatched primary samples are kept without that auxiliary ('optional').",
+          "enum": [
+            "required",
+            "optional"
+          ],
+          "title": "Matching",
+          "type": "string"
+        },
+        "match_by": {
+          "default": "filename",
+          "description": "How auxiliary files are matched to primary samples. Exact filename matching is the default; timestamp matching uses an HHhMMmSSs timestamp in filenames.",
+          "enum": [
+            "filename",
+            "timestamp"
+          ],
+          "title": "Match By",
+          "type": "string"
+        },
+        "max_time_delta_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum allowed timestamp difference in seconds. Required when match_by is 'timestamp'.",
+          "title": "Max Time Delta S"
+        },
+        "timestamp_relation": {
+          "default": "either",
+          "description": "For timestamp matching, restrict auxiliary acquisitions to before the primary, after the primary, or either side.",
+          "enum": [
+            "before_primary",
+            "after_primary",
+            "either"
+          ],
+          "title": "Timestamp Relation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "matching"
+      ],
+      "title": "AuxiliarySubfolderConfig",
       "type": "object"
     }
   }

@@ -65,17 +65,47 @@ The preprocess config supports three split modes for training datasets:
 - `manual`: assign items explicitly by `source_name`, `source_relpath`, or `sample_id`
 - `reuse`: copy assignments from a previous preprocess manifest
 
-Current pipeline names are registered in `src/lisai/preprocess/pipelines/__init__.py`: `single_recon`, `recon_mltpl_snr`, and `recon_timelapse_simple`.
+Current pipeline names are registered in `src/lisai/preprocess/pipelines/__init__.py`: `single_recon`, `paired_single_recon`, `recon_mltpl_snr`, and `recon_timelapse_simple`.
+
+### Source subfolders
+
+New preprocess configs use `base_subfolder` for an optional common parent under `dump/<data_type>/`, and `input_subfolder` / `gt_subfolder` / `auxiliary_subfolders` for role-specific collections beneath that base. For example, `base_subfolder: gag` with `input_subfolder: resolft` resolves to `dump/recon/gag/resolft`.
+
+`dump_subfolder` remains a deprecated compatibility alias. Its legacy meaning is preserved per pipeline: for `single_recon` it maps to `input_subfolder`; for `paired_single_recon`, `recon_timelapse_simple`, and `recon_mltpl_snr` it maps to `base_subfolder`. Supplying both the legacy field and its new equivalent is an error.
 
 ## Outputs
 
 Processed datasets are written under the preprocess area resolved by `Paths.dataset_preprocess_dir(...)`.
 
-If split mode is enabled, the layout matches the existing training loader expectations:
+For pipelines with a direct source-stream mapping, role-specific source names are preserved in the processed layout. `single_recon` mirrors a new `input_subfolder` by default, while `paired_single_recon` writes its input and GT under their configured `input_subfolder` and `gt_subfolder` names. `base_subfolder` is source organization only and is not mirrored into `preprocess/`.
 
-- root outputs: `preprocess/<data_type>/train/...`, `val/...`, `test/...`
-- named outputs: `preprocess/<data_type>/<output_key>/train/...`, `val/...`, `test/...`
+For `single_recon`, `output_subfolder` can override the primary processed destination. Omitting it mirrors `input_subfolder`; setting it explicitly to `null` saves the primary images directly at `preprocess/<data_type>/`. Legacy `dump_subfolder` configs retain the historical root-output behavior.
+
+If split mode is enabled, split folders are appended beneath the resolved output path, e.g. `preprocess/<data_type>/<output_subfolder>/train/...`, `val/...`, and `test/...`.
 
 ## Registry
 
 A successful preprocess run updates the dataset registry so the produced dataset can be discovered later by loading and evaluation code. Split summaries are also stored there.
+
+### Auxiliary matching
+
+`single_recon` and `paired_single_recon` can attach named auxiliary image folders. Each auxiliary must explicitly declare whether matching is required or optional. Exact filename matching remains the default:
+
+```yaml
+auxiliary_subfolders:
+  conf:
+    matching: required
+```
+
+Use `matching: optional` to keep primary samples that have no auxiliary counterpart. To match acquisitions whose filenames contain timestamps such as `00h22m40s`, use one-to-one timestamp matching with an explicit maximum time difference:
+
+```yaml
+auxiliary_subfolders:
+  conf:
+    matching: required
+    match_by: timestamp
+    max_time_delta_s: 30
+    timestamp_relation: before_primary  # before_primary | after_primary | either
+```
+
+`timestamp_relation` defaults to `either`. `max_time_delta_s` is mandatory for timestamp matching.

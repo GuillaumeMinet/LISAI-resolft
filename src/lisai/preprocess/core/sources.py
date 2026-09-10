@@ -1,7 +1,7 @@
 ﻿# lisai/data/preprocess/sources/folder.py
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Protocol
 
@@ -22,6 +22,7 @@ class Item:
     paths: tuple[Path, ...]
     source_name: str | None = None
     source_relpaths: tuple[str, ...] = ()
+    auxiliary_paths: dict[str, Path] = field(default_factory=dict)
 
 
 class Source(Protocol):

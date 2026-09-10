@@ -30,6 +30,7 @@ class PreprocessFinishReport:
     split_enabled: bool
     val: Mapping[str, Any]
     test: Mapping[str, Any]
+    auxiliary_matches: Mapping[str, Mapping[str, int]]
     error_type: str | None = None
     error_message: str | None = None
 
@@ -94,6 +95,12 @@ class ConsolePreprocessReporter:
                 f"  test images ({report.test.get('count', 0)}): {self._format_names(report.test)}",
                 file=self.stream,
             )
+        if report.status == "success":
+            for name, summary in report.auxiliary_matches.items():
+                print(
+                    f"  Auxiliary '{name}': matched {summary.get('matched', 0)}/{summary.get('total', 0)}",
+                    file=self.stream,
+                )
         if report.error_type is not None or report.error_message is not None:
             print(
                 f"  error: {report.error_type or 'Error'}: {report.error_message or ''}".rstrip(),

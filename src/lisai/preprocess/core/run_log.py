@@ -97,6 +97,15 @@ class PreprocessRunLog:
                 "source_name": _source_name(item),
                 "source_relpaths": _source_relpaths(item),
                 "source_paths": [str(path) for path in item.paths],
+                **(
+                    {
+                        "auxiliary_source_paths": {
+                            name: str(path) for name, path in item.auxiliary_paths.items()
+                        }
+                    }
+                    if item.auxiliary_paths
+                    else {}
+                ),
                 "saved_outputs": _serialize(dict(saved_outputs)),
             }
         )
