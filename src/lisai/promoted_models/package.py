@@ -11,7 +11,7 @@ from lisai.config import load_yaml, save_yaml, settings
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
 
-from .card import render_model_card
+from .card import render_model_card, update_model_card_overview
 from .checkpoint import extract_model_weights
 from .promotion import PromotionPlan, build_promotion_plan
 from .registry import load_promoted_model_registry, register_promoted_model, resolve_registered_model_dir
@@ -193,6 +193,7 @@ def promote_run(
             source_run_id=manifest.source.run_id,
             path=relative_path,
             created_at=manifest.created_at,
+            task=manifest.model.task,
         ),
         overwrite=overwrite,
         paths=resolved_paths,
@@ -242,6 +243,81 @@ def export_promoted_model(
         manifest=promoted.manifest,
     )
 
+def sync_promoted_model(
+        name: str,
+        *,
+        paths: Paths | None = None,
+) -> PromotedModel:
+    """ Synchronizes derived metadata from lisai_model.yaml"""
+    resolved_paths = paths or Paths(settings)
+    promoted = load_promoted_model(name,paths=resolved_paths)
+
+    # refresh model card (README.md)
+    card_path = promoted.model_dir / MODEL_CARD_FILENAME
+    if not card_path.is_file():
+        raise FileNotFoundError(f"Promoted model {name}'s card is missing.")
+
+    card_text = card_path.read_text(encoding="utf-8")
+    updated_card = update_model_card_overview(card_text,promoted.manifest)
+
+    # Refresh the lightweight registry metadata while preserving
+    # registry-specific fields such as origin and installed_at.
+    registry = load_promoted_model_registry(paths=resolved_paths)
+    entry = registry.models[name]
+    updated_entry = entry.model_copy(update={"task": promoted.manifest.model.task})
+    updated_entry = PromotedModelRegistryEntry.model_validate(
+        updated_entry.model_dump(mode="python")
+    )
+
+    card_path.write_text(updated_card, encoding="utf-8")
+
+    register_promoted_model(
+        name=name,
+        entry=updated_entry,
+        overwrite=True,
+        paths=resolved_paths
+    )
+
+    return promoted
+
+
+def set_promoted_model_task(
+        name: str,
+        task: str,
+        *,
+        paths:Paths | None = None,
+) -> PromotedModel:
+    """ Update the task of a promoted model and synchronize derived metadata
+    so that registry.task and README multiframes are up to date."""
+    resolved_paths=paths or Paths(settings)
+    promoted = load_promoted_model(name,paths=resolved_paths)
+
+    updated_model = promoted.manifest.model.model_copy(
+        update= {"task": task}
+    )
+    updated_manifest = promoted.manifest.model_copy(
+        update={"model": updated_model}
+    )
+    updated_manifest = PromotedModelManifest.model_validate(
+        updated_manifest.model_dump(mode="python")
+    )
+
+    # before commiting new manifest, check that model card (README.md)
+    # accepts the new manifest by doing a card update dry-run.
+    # This catches a badly formed manifest early.
+    card_path = promoted.model_dir / MODEL_CARD_FILENAME
+    if not card_path.is_file():
+        raise FileNotFoundError(f"Promoted-model card is missing: {card_path}")
+    card_text = card_path.read_text(encoding="utf-8")
+    update_model_card_overview(card_text,updated_manifest) # ignore return, dry-run
+
+    # now commit manifest
+    _write_manifest(promoted.model_dir,updated_manifest)
+
+    # sync derived metadata
+    sync = sync_promoted_model(name,paths=resolved_paths)
+
+    return sync
 
 __all__ = [
     "MODEL_CARD_FILENAME",
@@ -252,5 +328,7 @@ __all__ = [
     "load_promoted_model",
     "load_promoted_model_from_dir",
     "promote_run",
+    "set_promoted_model_task",
+    "sync_promoted_model",
     "sha256_file",
 ]

@@ -1,28 +1,38 @@
 from __future__ import annotations
 
 import argparse
-from typing import Sequence
+from typing import Sequence, get_args
+
+from lisai.config.models.training import TaskName
 
 from .install import install_model_archive
-from .package import export_promoted_model, load_promoted_model
+from .package import (
+    export_promoted_model,
+    load_promoted_model, 
+    set_promoted_model_task,
+    sync_promoted_model
+)
 from .remove import remove_promoted_model
 from .registry import load_promoted_model_registry
 
+VALID_TASK_NAMES  = ", ".join(get_args(TaskName))
 
 def _render_models_table() -> str:
     registry = load_promoted_model_registry()
     if not registry.models:
         return "No promoted models found."
 
-    rows: list[tuple[str, str, str, str]] = []
+    rows: list[tuple[str, str, str, str, str]] = []
     for name in sorted(registry.models):
         entry = registry.models[name]
-        rows.append((name, entry.origin, entry.source_run_id, entry.path))
-    headers = ("name", "origin", "source_run_id", "path")
-    widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(4)]
-    lines = ["  ".join(headers[i].ljust(widths[i]) for i in range(4))]
-    lines.append("  ".join("-" * widths[i] for i in range(4)))
-    lines.extend("  ".join(row[i].ljust(widths[i]) for i in range(4)) for row in rows)
+        task = entry.task or "-"
+        rows.append((name, task, entry.origin, entry.source_run_id, entry.path))
+    headers = ("name", "task", "origin", "source_run_id", "path")
+    widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) 
+              for i in range(len(headers))]
+    lines = ["  ".join(headers[i].ljust(widths[i]) for i in range(len(headers)))]
+    lines.append("  ".join("-" * widths[i] for i in range(len(headers))))
+    lines.extend("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))) for row in rows)
     return "\n".join(lines)
 
 
@@ -30,6 +40,34 @@ def run_list_from_args(args: argparse.Namespace) -> int:
     print(_render_models_table())
     return 0
 
+
+def run_set_task_from_args(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> int:
+    try: 
+        promoted = set_promoted_model_task(
+            args.name, args.task
+        )
+    except (KeyError, FileNotFoundError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    print(f"Updated model: {promoted.manifest.name}")
+    print(f"Task: {promoted.manifest.model.task}")
+    return 0
+
+def run_sync_from_args(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> int:
+    try:
+        promoted = sync_promoted_model(args.name)
+    except (KeyError, FileNotFoundError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    print(f"Synchronized model: {promoted.manifest.name}")
+    print(f"Task: {promoted.manifest.model.task}")
+    return 0
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     try:
@@ -125,6 +163,44 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     show_parser.add_argument("name", help="Public promoted-model name.")
     show_parser.set_defaults(handler=lambda args, p=show_parser: run_show_from_args(args, p))
+
+    set_task_parser = subparsers.add_parser(
+        "set-task",
+        help="Set the task metadata of a promoted model.",
+        description=(
+            "Update the canonical task metadata of a promoted model and "
+            "synchronize its registry entry and model card. Task should be "
+            f"a valid LISAI TaskName."
+        ),
+    )
+    set_task_parser.add_argument(
+        "name",
+        help="Public promoted-model name.",
+    )
+    set_task_parser.add_argument(
+        "task",
+        help=f"New promoted-model task. One of: {VALID_TASK_NAMES}",
+    )
+    set_task_parser.set_defaults(
+        handler=lambda args, p=set_task_parser: run_set_task_from_args(args, p)
+    )
+
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Synchronize derived metadata for a promoted model.",
+        description=(
+            "Synchronize the local registry and model card from "
+            "lisai_model.yaml."
+        ),
+    )
+    sync_parser.add_argument(
+        "name",
+        help="Public promoted-model name.",
+    )
+    sync_parser.set_defaults(
+        handler=lambda args, p=sync_parser: run_sync_from_args(args, p)
+    )
+
 
     install_parser = subparsers.add_parser(
         "install",

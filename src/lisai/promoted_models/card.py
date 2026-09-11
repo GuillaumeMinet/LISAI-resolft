@@ -5,6 +5,9 @@ from typing import Any, Mapping
 from .promotion import PromotionPlan
 from .schema import PromotedModelManifest
 
+AUTO_OVERVIEW_START = "<!-- lisai:auto:overview:start -->"
+AUTO_OVERVIEW_END = "<!-- lisai:auto:overview:end -->"
+
 
 def _format_value(value: Any) -> str:
     if value is None:
@@ -25,17 +28,10 @@ def _parameter_lines(parameters: Mapping[str, Any]) -> list[str]:
     return lines
 
 
-def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> str:
-    """Render a concise, mostly automatic model card for a promoted model."""
+def render_model_overview(manifest: PromotedModelManifest) -> str:
     code = manifest.source.code
-    params = plan.saved_run.model_parameters.model_dump(mode="json", exclude_none=True)
-    parameter_lines = _parameter_lines(params)
 
-    lines = [
-        f"# {manifest.name}",
-        "",
-        "LISAI promoted model.",
-        "",
+    lines=[
         "## Model overview",
         "",
         f"- Task: `{manifest.model.task}`",
@@ -56,7 +52,35 @@ def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> s
             ]
         )
 
-    lines.extend(["", "## Model parameters", ""])
+    return "\n".join(lines)
+
+def _render_auto_overview_block(manifest: PromotedModelManifest) -> str:
+    return "\n".join(
+        [
+            AUTO_OVERVIEW_START,
+            render_model_overview(manifest),
+            AUTO_OVERVIEW_END,
+        ]
+    )
+
+    
+def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> str:
+    """Render a concise, mostly automatic model card for a promoted model."""
+
+    params = plan.saved_run.model_parameters.model_dump(mode="json", exclude_none=True)
+    parameter_lines = _parameter_lines(params)
+
+    lines = [
+        f"# {manifest.name}",
+        "",
+        "LISAI promoted model.",
+        "",
+        _render_auto_overview_block(manifest),
+        "",
+        "## Model parameters",
+        "",
+    ]
+
     if parameter_lines:
         lines.extend(parameter_lines)
     else:
@@ -125,4 +149,49 @@ def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> s
     return "\n".join(lines)
 
 
-__all__ = ["render_model_card"]
+def update_model_card_overview(
+        card_text:str,
+        manifest: PromotedModelManifest,
+    ) -> str:
+    new_block = _render_auto_overview_block(manifest)
+
+    start=card_text.find(AUTO_OVERVIEW_START)
+    end=card_text.find(AUTO_OVERVIEW_END)
+
+    if (start == -1) != (end==-1):
+        raise ValueError(
+            "Model card contains an incomplete LISAI auto-generated overview block."
+        )
+
+    if start != -1:
+        end += len(AUTO_OVERVIEW_END)
+
+        return (
+            card_text[:start]
+            + new_block
+            + card_text[end:]
+        )
+
+    # legacy
+    legacy_start_marker = "## Model overview"
+    legacy_end_marker = "## Model parameters"
+
+    legacy_start = card_text.find(legacy_start_marker)
+    legacy_end = card_text.find(legacy_end_marker)
+    if legacy_start == -1 or legacy_end == -1 or legacy_end <= legacy_start:
+        raise ValueError(
+            "Could not locate the model overview in the model card."
+        )
+
+    return (
+        card_text[:legacy_start]
+        + new_block
+        + "\n\n"
+        + card_text[legacy_end:]
+    )
+
+__all__ = [
+    "render_model_card",
+    "render_model_overview",
+    "update_model_card_overview",
+]

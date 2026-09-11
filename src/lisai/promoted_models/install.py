@@ -190,6 +190,7 @@ def install_model_archive(
                     created_at=promoted.manifest.created_at,
                     origin="installed",
                     installed_at=_utc_now(),
+                    task=promoted.manifest.model.task,
                 ),
                 overwrite=overwrite or stale_registry_entry,
                 paths=resolved_paths,

@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from lisai.config.models.training import TaskName
+
 PROMOTED_MODEL_SCHEMA_VERSION = 1
 PROMOTED_MODEL_REGISTRY_SCHEMA_VERSION = 1
 
@@ -73,7 +75,7 @@ class PromotedModelSource(BaseModel):
 class PromotedModelDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    task: str
+    task: TaskName
     architecture: str
 
     @field_validator("task", "architecture")
@@ -207,6 +209,7 @@ class PromotedModelRegistryEntry(BaseModel):
     created_at: datetime
     origin: Literal["promoted", "installed"] = "promoted"
     installed_at: datetime | None = None
+    task: TaskName | None = None
 
     @field_validator("source_run_id")
     @classmethod
