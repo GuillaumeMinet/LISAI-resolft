@@ -192,6 +192,15 @@ def _run_single_evaluation(
     tiling_size = runtime.tiling_size
     print(f"Tiling size: {_format_tiling_size_for_display(options['tiling_size'], tiling_size)}\n")
 
+    # inject timelapse_max option into data_prm_update
+    timelapse_max = options.get("timelapse_max")
+    if timelapse_max is not None:
+        data_prm_update = deepcopy(options["data_prm_update"] or {})
+        timelapse_prm = dict(data_prm_update.get("timelapse_prm") or {})
+        timelapse_prm["timelapse_max_frames"] = options["timelapse_max"]
+        data_prm_update["timelapse_prm"] = timelapse_prm
+        options["data_prm_update"] = data_prm_update
+
     sample_source = build_eval_source(
         saved_run,
         split=options["split"],
@@ -213,14 +222,32 @@ def _run_single_evaluation(
     )
     results = options["results"]
 
+    limit_n_imgs = options["limit_n_imgs"]
+    if limit_n_imgs is not None:
+        n_total = min(len(sample_source),limit_n_imgs)
+        if n_total < len(sample_source):
+            print(f"Found {len(sample_source)} images, keeping only "
+                  f"{limit_n_imgs} because of args limit_n_imgs.")
+        else:
+            print(f"Found {len(sample_source)} images.")
+
     n_processed = 0
     stop_eval = False
     for item_id, item in enumerate(sample_source.iter_items()):
-        print(f"Item {item_id} / {len(sample_source.items)}: {item.name}")
-        writer = EvalItemOutputWriter(item=item, save_folder=save_folder)
+        if item.data_format == "timelapse":
+            n_timepoints = len(item)
+            print(f"Item {item_id} / {len(sample_source.items)} -"
+                  f" {n_timepoints} frames: {item.name}")
+        else:
+            print(f"Item {item_id} / {n_total}: {item.name}")
 
+        writer = EvalItemOutputWriter(item=item, save_folder=save_folder)
         for sample_index, sample in item.iter_samples(sample_source.config):
-            print(f"Image {n_processed} / {len(sample_source)}")
+            if item.data_format == "timelapse":
+                print(f"Item {item_id} - frame {sample_index}/{n_timepoints} "
+                      f"(total evaluation images: {n_processed}/{len(sample_source)})")
+            else:
+                print(f"Image {n_processed} / {len(sample_source)}")
 
             x = sample.x.unsqueeze(0)
             y = sample.y.unsqueeze(0) if sample.y is not None else None
@@ -298,6 +325,7 @@ def run_evaluate(dataset_name:str,
              ch_out: int | None | UnsetType = UNSET,
              split: str | UnsetType = UNSET,
              limit_n_imgs: int | None | UnsetType = UNSET,
+             timelapse_max: int | None | UnsetType = UNSET,
              evaluation_dataset_name: str | None = None,
              config: str | Path | None = None
              ):
@@ -325,7 +353,9 @@ def run_evaluate(dataset_name:str,
         ch_out=ch_out,
         split=split,
         limit_n_imgs=limit_n_imgs,
+        timelapse_max=timelapse_max,
     )
+    
     run_dir = resolve_run_dir(dataset_name=dataset_name, subfolder=model_subfolder, exp_name=model_name)
     saved_run = load_saved_run(run_dir)
     evaluation_dataset = None

@@ -447,6 +447,7 @@
         "limit_n_imgs": {
           "anyOf": [
             {
+              "exclusiveMinimum": 0,
               "type": "integer"
             },
             {
@@ -456,6 +457,20 @@
           "default": null,
           "description": "Optional cap on the number of images or batches evaluated.",
           "title": "Limit N Imgs"
+        },
+        "timelapse_max": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional maximum number of timelapse frames to process during apply.",
+          "title": "Timelapse Max"
         }
       },
       "title": "EvaluateDefaults",

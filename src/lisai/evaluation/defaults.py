@@ -109,7 +109,8 @@ def load_inference_defaults(path: str | Path | None = None) -> ResolvedInference
     resolved = ResolvedInferenceConfig().model_dump()
     cfg_path = Path(path) if path is not None else resolve_inference_config_path(None)
     if cfg_path is not None:
-        raw = InferenceOverrides.model_validate(load_yaml(cfg_path)).model_dump(exclude_unset=True)
+        cfg = load_yaml(cfg_path)
+        raw = InferenceOverrides.model_validate(cfg).model_dump(exclude_unset=True)
         resolved = deep_merge(resolved, raw)
     return ResolvedInferenceConfig.model_validate(resolved)
 

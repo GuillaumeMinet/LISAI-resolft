@@ -188,6 +188,7 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
     parser.add_argument("--ch-out", "--ch_out", dest="ch_out", type=int)
     parser.add_argument("--split")
     parser.add_argument("--limit-n-imgs", "--limit_n_imgs", dest="limit_n_imgs", type=int)
+    parser.add_argument("--timelapse-max", "--timelapse_max", dest="timelapse_max", type=int)
     return parser
 
 
@@ -265,6 +266,7 @@ def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
         ch_out=_maybe_unset(args.ch_out),
         split=_maybe_unset(args.split),
         limit_n_imgs=_maybe_unset(args.limit_n_imgs),
+        timelapse_max=_maybe_unset(args.timelapse_max),
         evaluation_dataset_name=args.evaluation_dataset_name,
     )
     return 0

@@ -186,7 +186,8 @@ class EvaluateDefaults(BaseModel):
     data_prm_update: dict[str, Any] | None = Field(default=None, description=DATA_PRM_UPDATE_DESC)
     ch_out: int | None = Field(default=1, description=CH_OUT_DESC)
     split: str = Field(default="test", description=SPLIT_DESC)
-    limit_n_imgs: int | None = Field(default=None, description=LIMIT_N_IMGS_DESC)
+    limit_n_imgs: int | None = Field(default=None, gt=0, description=LIMIT_N_IMGS_DESC)
+    timelapse_max: int | None = Field(default=None, gt=0, description=TIMELAPSE_MAX_DESC)
 
     @field_validator("tiling_size", mode="before")
     @classmethod
@@ -211,7 +212,8 @@ class EvaluateOverrides(BaseModel):
     data_prm_update: dict[str, Any] | None = Field(default=None, description=DATA_PRM_UPDATE_DESC)
     ch_out: int | None = Field(default=None, description=CH_OUT_DESC)
     split: str | None = Field(default=None, description=SPLIT_DESC)
-    limit_n_imgs: int | None = Field(default=None, description=LIMIT_N_IMGS_DESC)
+    limit_n_imgs: int | None = Field(default=None, gt=0, description=LIMIT_N_IMGS_DESC)
+    timelapse_max: int | None = Field(default=None, gt=0, description=TIMELAPSE_MAX_DESC)
 
     @field_validator("tiling_size", mode="before")
     @classmethod

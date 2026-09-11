@@ -136,16 +136,57 @@ class EvalItemOutputWriter:
 
 def _stack_timelapse_entries(item: Any, entries: list[tuple[int, dict]]) -> dict:
     """Stack buffered sample outputs in the item's timelapse order."""
-    entries = sorted(entries, key=lambda entry: item.sample_sort_key(entry[0]))
-    keys = {key for _, tosave in entries for key, value in tosave.items() if value is not None}
 
+    # Sorts frames back into timelapse order:
+    entries = sorted(
+        entries,
+        key=lambda entry: item.sample_sort_key(entry[0]),
+    )
+
+    # Finds which output types exist (e.g. {"inp", "pred", "samples"})
+    keys = set()
+    for _, tosave in entries:
+        for key, value in tosave.items():
+            if value is not None:
+                keys.add(key)
+
+    # Stack each output across the timelapse.
     stacked = {}
     for key in keys:
-        arrays = [tosave[key] for _, tosave in entries if tosave.get(key) is not None]
+        arrays = []
+
+        for _, tosave in entries:
+            value = tosave.get(key)
+            if value is not None:
+                arrays.append(value)
+
         if not arrays:
             continue
+
         if key == "samples":
             stacked[key] = np.stack(arrays, axis=1)
         else:
-            stacked[key] = np.concatenate(arrays, axis=0)
+            arrays = _normalize_ndim(arrays)
+            stacked[key] = np.stack(arrays, axis=0)
+
     return stacked
+
+def _normalize_ndim(arrays):
+    normalized = []
+
+    for arr in arrays:
+        arr = np.asarray(arr)
+
+        if arr.ndim >= 4:
+            if arr.shape[0] != 1:
+                raise ValueError(
+                    f"Expected singleton batch axis for timelapse output, got shape {arr.shape}."
+                )
+            arr = arr[0]
+
+        normalized.append(arr)
+    shapes = {arr.shape for arr in normalized}
+    if len(shapes) != 1:
+        raise ValueError(f"Cannot stack timelapse outputs with mismatched shapes: {sorted(shapes)}")
+
+    return normalized
