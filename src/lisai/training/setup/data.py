@@ -107,6 +107,7 @@ def prepare_data(
     data_dir = runtime.paths.dataset_dir(
         dataset_name=cfg.data.dataset_name,
         data_subfolder=cfg.routing.data_subfolder,
+        usage="training",
     )
 
     registry_path = Path(runtime.paths.dataset_registry_path())

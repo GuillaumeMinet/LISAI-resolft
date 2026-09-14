@@ -42,7 +42,7 @@ def test_is_hdn_layout_supports_architecture_headers_and_columns():
 
 
 def test_show_loss_plot_fallback_saves_and_opens_when_backend_non_interactive(tmp_path, monkeypatch):
-    run_dir = tmp_path / "dataset" / "models" / "Upsamp" / "run_00"
+    run_dir = tmp_path / "dataset" / "runs" / "Upsamp" / "run_00"
     run_dir.mkdir(parents=True, exist_ok=True)
     loss_file = run_dir / "custom_loss.dat"
     loss_file.write_text(
@@ -137,7 +137,7 @@ def test_show_loss_plot_fallback_saves_and_opens_when_backend_non_interactive(tm
 
 
 def test_show_loss_plot_uses_show_with_interactive_backend(tmp_path, monkeypatch):
-    run_dir = tmp_path / "dataset" / "models" / "Upsamp" / "run_00"
+    run_dir = tmp_path / "dataset" / "runs" / "Upsamp" / "run_00"
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "loss.txt").write_text(
         "Epoch Train_loss Val_loss\n"
@@ -208,7 +208,7 @@ def test_show_loss_plot_uses_show_with_interactive_backend(tmp_path, monkeypatch
 
 
 def test_save_loss_plot_for_run_uses_configured_artifact_path(tmp_path, monkeypatch):
-    run_dir = tmp_path / "dataset" / "models" / "HDN" / "run_00"
+    run_dir = tmp_path / "dataset" / "runs" / "HDN" / "run_00"
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "loss_history.txt").write_text(
         "Epoch Train_loss Val_loss Recons_Loss KL_Loss\n"

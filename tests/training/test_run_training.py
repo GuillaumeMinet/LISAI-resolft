@@ -489,7 +489,7 @@ def test_run_training_writes_and_finalizes_run_metadata_on_completion(monkeypatc
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_complete"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_complete"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
@@ -540,7 +540,7 @@ def test_run_training_finalizes_run_metadata_as_stopped(monkeypatch: pytest.Monk
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_stopped"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_stopped"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
@@ -573,7 +573,7 @@ def test_run_training_finalizes_run_metadata_as_failed(monkeypatch: pytest.Monke
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_failed"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_failed"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
@@ -614,7 +614,7 @@ def test_run_training_persists_peak_gpu_memory_stats_when_cuda_available(
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_cuda"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_cuda"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     runtime.device = SimpleNamespace(type="cuda", index=0)
     prepared_data = _make_prepared_data()
@@ -668,7 +668,7 @@ def test_run_training_does_not_retry_retryable_hdn_divergence(
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_retry"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_retry"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 

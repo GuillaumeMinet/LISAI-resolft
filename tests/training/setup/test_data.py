@@ -40,7 +40,7 @@ def test_prepare_data_returns_prepared_training_data(monkeypatch, tmp_path: Path
     _write_preprocess_registry_entry(registry_path, dataset_name="demo", data_format="single")
     runtime = SimpleNamespace(
         paths=SimpleNamespace(
-            dataset_dir=lambda dataset_name, data_subfolder: Path("/tmp/data"),
+            dataset_dir=lambda dataset_name, data_subfolder, usage="training": Path("/tmp/data"),
             dataset_registry_path=lambda: registry_path,
         )
     )
@@ -101,7 +101,7 @@ def test_prepare_data_uses_noise_model_metadata_for_lvae(monkeypatch):
     )
     runtime = SimpleNamespace(
         paths=SimpleNamespace(
-            dataset_dir=lambda dataset_name, data_subfolder: Path("/tmp/data"),
+            dataset_dir=lambda dataset_name, data_subfolder, usage="training": Path("/tmp/data"),
             dataset_registry_path=lambda: Path("/tmp/registry.yaml"),
         )
     )
@@ -152,7 +152,7 @@ def test_prepare_data_reuses_origin_manifest_for_continue(monkeypatch, tmp_path:
     runtime = SimpleNamespace(
         run_dir=origin_run_dir,
         paths=SimpleNamespace(
-            dataset_dir=lambda dataset_name, data_subfolder: tmp_path / "data",
+            dataset_dir=lambda dataset_name, data_subfolder, usage="training": tmp_path / "data",
             dataset_registry_path=lambda: tmp_path / "registry.yaml",
             split_manifest_path=lambda run_dir: Path(run_dir) / "split_manifest.json",
         ),
@@ -191,7 +191,7 @@ def test_prepare_data_errors_when_retrain_reuse_manifest_is_missing(monkeypatch,
     runtime = SimpleNamespace(
         run_dir=tmp_path / "new_run",
         paths=SimpleNamespace(
-            dataset_dir=lambda dataset_name, data_subfolder: tmp_path / "data",
+            dataset_dir=lambda dataset_name, data_subfolder, usage="training": tmp_path / "data",
             dataset_registry_path=lambda: tmp_path / "registry.yaml",
             split_manifest_path=lambda run_dir: Path(run_dir) / "split_manifest.json",
         ),
@@ -222,7 +222,7 @@ def test_prepare_data_creates_new_manifest_for_retrain_new_policy(monkeypatch, t
     runtime = SimpleNamespace(
         run_dir=tmp_path / "new_run",
         paths=SimpleNamespace(
-            dataset_dir=lambda dataset_name, data_subfolder: tmp_path / "data",
+            dataset_dir=lambda dataset_name, data_subfolder, usage="training": tmp_path / "data",
             dataset_registry_path=lambda: tmp_path / "registry.yaml",
         ),
     )

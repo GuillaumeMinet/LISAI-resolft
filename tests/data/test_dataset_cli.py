@@ -16,8 +16,10 @@ class FakePaths:
     def dataset_registry_path(self) -> Path:
         return self.root / "dataset_registry.yml"
 
-    def dataset_dir(self, *, dataset_name: str, data_subfolder: str = "") -> Path:
-        return self.root / dataset_name / data_subfolder
+    def dataset_dir(
+        self, *, dataset_name: str, data_subfolder: str = "", usage: str = "training"
+    ) -> Path:
+        return self.root / usage / dataset_name / data_subfolder
 
 
 def _write_registry(root: Path) -> None:
@@ -63,6 +65,19 @@ def _write_registry(root: Path) -> None:
                 "outputs": {
                     "recon": [
                         {"key": "main", "path": "", "role": "inp", "axes": "TYX"},
+                    ]
+                },
+                "defaults": {
+                    "recon": {"input": "", "target": None, "eval_gt": None},
+                },
+            },
+            "AAA_eval": {
+                "data_format": "single",
+                "usage": "evaluation",
+                "size": {"recon": {"n_files": 2}},
+                "outputs": {
+                    "recon": [
+                        {"key": "main", "path": "", "role": "inp", "axes": "YX"},
                     ]
                 },
                 "defaults": {
@@ -117,7 +132,12 @@ def test_datasets_list_renders_compact_table(monkeypatch, tmp_path: Path, capsys
     assert "files" in captured.out
     assert "frames" in captured.out
     assert "Gag_noisy_single" in captured.out
-    assert "Gag_noisy_single      training  single     recon  8      8" in captured.out
+    gag_single_line = next(
+        line for line in captured.out.splitlines() if line.startswith("Gag_noisy_single")
+    )
+    assert gag_single_line.split()[:6] == [
+        "Gag_noisy_single", "training", "single", "recon", "8", "8"
+    ]
     assert "Gag_noisy_timelapses" in captured.out
     assert "timelapse" in captured.out
     assert "338" in captured.out
@@ -138,7 +158,7 @@ def test_datasets_show_renders_dataset_details(monkeypatch, tmp_path: Path, caps
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Dataset: vim_fixed" in captured.out
-    assert f"Path: {(tmp_path / 'vim_fixed').resolve()}" in captured.out
+    assert f"Path: {(tmp_path / 'training' / 'vim_fixed').resolve()}" in captured.out
     assert "Format: mltpl_snr" in captured.out
     assert "snr_levels: 5-6" in captured.out
     assert "split: train=21 val=1 test=3" in captured.out
@@ -148,7 +168,7 @@ def test_datasets_show_renders_dataset_details(monkeypatch, tmp_path: Path, caps
 
 def test_datasets_open_uses_dataset_directory(monkeypatch, tmp_path: Path):
     _write_registry(tmp_path)
-    (tmp_path / "vim_fixed").mkdir()
+    (tmp_path / "training" / "vim_fixed").mkdir(parents=True)
     _patch_paths(monkeypatch, tmp_path)
     opened = {}
 
@@ -161,7 +181,7 @@ def test_datasets_open_uses_dataset_directory(monkeypatch, tmp_path: Path):
     exit_code = root_cli.main(["datasets", "open", "vim_fixed"])
 
     assert exit_code == 0
-    assert opened["path"] == (tmp_path / "vim_fixed").resolve()
+    assert opened["path"] == (tmp_path / "training" / "vim_fixed").resolve()
 
 
 def test_datasets_open_prints_path_when_explorer_launch_fails(monkeypatch, tmp_path: Path, capsys):
@@ -173,7 +193,43 @@ def test_datasets_open_prints_path_when_explorer_launch_fails(monkeypatch, tmp_p
 
     captured = capsys.readouterr()
     assert exit_code == 0
-    assert captured.out.strip() == str((tmp_path / "vim_fixed").resolve())
+    assert captured.out.strip() == str((tmp_path / "training" / "vim_fixed").resolve())
+
+
+def test_datasets_list_groups_training_before_evaluation(monkeypatch, tmp_path: Path, capsys):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+
+    exit_code = root_cli.main(["datasets", "list"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.index("vim_fixed") < captured.out.index("AAA_eval")
+
+
+def test_datasets_list_filters_by_usage(monkeypatch, tmp_path: Path, capsys):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+
+    assert root_cli.main(["datasets", "list", "--training"]) == 0
+    training = capsys.readouterr().out
+    assert "vim_fixed" in training
+    assert "AAA_eval" not in training
+
+    assert root_cli.main(["datasets", "list", "--evaluation"]) == 0
+    evaluation = capsys.readouterr().out
+    assert "AAA_eval" in evaluation
+    assert "vim_fixed" not in evaluation
+
+
+def test_datasets_list_usage_filters_are_mutually_exclusive(monkeypatch, tmp_path: Path):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        root_cli.main(["datasets", "list", "--training", "--evaluation"])
+
+    assert exc_info.value.code == 2
 
 
 def test_datasets_show_unknown_dataset_exits(monkeypatch, tmp_path: Path, capsys):

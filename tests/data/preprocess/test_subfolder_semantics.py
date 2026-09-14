@@ -25,15 +25,15 @@ class DummyPaths:
     def dataset_registry_path(self) -> Path:
         return self.root / "dataset_registry.yml"
 
-    def dataset_dump_dir(self, *, dataset_name: str, data_type: str = "", additional_subfolder: str = "") -> Path:
+    def dataset_dump_dir(self, *, dataset_name: str, data_type: str = "", additional_subfolder: str = "", usage: str = "training") -> Path:
         return self.root / dataset_name / "dump" / data_type / additional_subfolder
 
-    def dataset_preprocess_dir(self, *, dataset_name: str, data_type: str = "") -> Path:
+    def dataset_preprocess_dir(self, *, dataset_name: str, data_type: str = "", usage: str = "training") -> Path:
         return self.root / dataset_name / "preprocess" / data_type
 
-    def preprocess_log_path(self, *, dataset_name: str, data_type: str) -> Path:
+    def preprocess_log_path(self, *, dataset_name: str, data_type: str, usage: str = "training") -> Path:
         key = f"{data_type}_preprocess"
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type) / settings.data_cfg.logs[key]
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / settings.data_cfg.logs[key]
 
     def preprocessed_image_full_path(
         self,
@@ -42,10 +42,11 @@ class DummyPaths:
         fmt: str,
         data_type: str = "",
         additional_subfolder: str = "",
+        usage: str = "training",
         **kwargs,
     ) -> Path:
         filename = settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type) / additional_subfolder / filename
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / additional_subfolder / filename
 
 
 def _write_image(path: Path, value: int) -> None:
@@ -204,7 +205,7 @@ def test_legacy_dump_subfolder_conflicts_only_with_its_new_equivalent():
 
 def test_timelapse_and_mltpl_snr_use_base_then_input_subfolder(tmp_path: Path):
     paths = DummyPaths(tmp_path)
-    run = SimpleNamespace(dataset_name="Data", data_type="recon", paths=paths)
+    run = SimpleNamespace(dataset_name="Data", data_type="recon", usage="training", paths=paths)
     expected = tmp_path / "Data" / "dump" / "recon" / "group" / "primary"
 
     timelapse = ReconTimelapseSimplePipeline(
@@ -220,7 +221,7 @@ def test_timelapse_and_mltpl_snr_use_base_then_input_subfolder(tmp_path: Path):
 
 def test_legacy_dump_subfolder_keeps_previous_pipeline_path_meaning(tmp_path: Path):
     paths = DummyPaths(tmp_path)
-    run = SimpleNamespace(dataset_name="Data", data_type="recon", paths=paths)
+    run = SimpleNamespace(dataset_name="Data", data_type="recon", usage="training", paths=paths)
 
     timelapse = ReconTimelapseSimplePipeline(ReconTimelapseSimpleConfig(dump_subfolder="legacy"))
     assert timelapse.build_source(run=run).root == tmp_path / "Data" / "dump" / "recon" / "legacy"

@@ -112,10 +112,12 @@ class PreprocessRun:
         preprocess_dir = self.paths.dataset_preprocess_dir(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         log_path = self.paths.preprocess_log_path(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         has_log = log_path.exists()
         has_data = preprocess_dir.exists() and any(preprocess_dir.iterdir())
@@ -166,6 +168,7 @@ class PreprocessRun:
             path=self.paths.preprocess_log_path(
                 dataset_name=self.dataset_name,
                 data_type=self.data_type,
+                usage=self.usage,
             ),
             dataset_name=self.dataset_name,
             pipeline_name=self.pipeline_name,
@@ -178,6 +181,7 @@ class PreprocessRun:
             preprocess_dir=self.paths.dataset_preprocess_dir(
                 dataset_name=self.dataset_name,
                 data_type=self.data_type,
+                usage=self.usage,
             ),
         )
 
@@ -255,6 +259,7 @@ class PreprocessRun:
         preprocess_dir = self.paths.dataset_preprocess_dir(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         self._report_start(reporter, source=source, preprocess_dir=preprocess_dir)
 
@@ -274,6 +279,7 @@ class PreprocessRun:
                 data_type=self.data_type,
                 fmt=self.fmt,
                 output_spec=spec,
+                usage=self.usage,
             )
             run_log = self._build_run_log()
 

@@ -17,13 +17,13 @@ class FakePaths:
     def __init__(self, root: Path):
         self.root = root
 
-    def dataset_dir(self, *, dataset_name, data_subfolder):
+    def dataset_dir(self, *, dataset_name, data_subfolder, usage="training"):
         return self.root / dataset_name / data_subfolder
 
     def dataset_registry_path(self):
         return self.root / 'dataset_registry.yml'
 
-    def dataset_preprocess_dir(self, *, dataset_name, data_type=''):
+    def dataset_preprocess_dir(self, *, dataset_name, data_type='', usage="training"):
         return self.root / dataset_name / 'preprocess' / data_type
 
 

@@ -245,7 +245,7 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         "--output",
         help=(
             "Output ZIP path or directory. Defaults to "
-            "<data_root>/promoted_models/exports/<name>.lisai.zip."
+            "<data_root>/models/exports/<name>.lisai.zip."
         ),
     )
     export_parser.add_argument(

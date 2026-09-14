@@ -149,16 +149,29 @@ def _registry_from_paths(paths: Paths) -> dict[str, dict[str, Any]]:
     return load_dataset_registry(paths.dataset_registry_path())
 
 
-def list_datasets(*, paths: Paths | None = None) -> None:
+def _usage_sort_key(item: tuple[str, Mapping[str, Any]]) -> tuple[int, str]:
+    name, info = item
+    usage = str(info.get("usage") or "").lower()
+    order = {"training": 0, "evaluation": 1}
+    return order.get(usage, 2), name.casefold()
+
+
+def list_datasets(*, paths: Paths | None = None, usage: str | None = None) -> None:
     paths = paths or _paths()
     registry = _registry_from_paths(paths)
+    if usage is not None:
+        registry = {
+            name: info
+            for name, info in registry.items()
+            if str(info.get("usage") or "").lower() == usage
+        }
     if not registry:
         print(f"No datasets found in {paths.dataset_registry_path()}")
         return
 
     headers = ("name", "usage", "format", "types", "files", "frames", "split", "range", "defaults")
     rows: list[tuple[str, str, str, str, str, str, str, str, str]] = []
-    for name, info in sorted(registry.items()):
+    for name, info in sorted(registry.items(), key=_usage_sort_key):
         data_types = _data_types(info)
         rows.append(
             (
@@ -187,7 +200,8 @@ def _require_dataset(
     if info is None:
         known = ", ".join(sorted(registry)) or "none"
         parser.exit(status=1, message=f"Unknown dataset {name!r}. Known datasets: {known}\n")
-    return info, paths.dataset_dir(dataset_name=name)
+    usage = str(info.get("usage") or "training").lower()
+    return info, paths.dataset_dir(dataset_name=name, usage=usage)
 
 
 def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.ArgumentParser) -> None:
@@ -259,8 +273,27 @@ def open_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
 
 
 def run_list_from_args(args: argparse.Namespace) -> int:
-    list_datasets()
+    usage = None
+    if args.training:
+        usage = "training"
+    elif args.evaluation:
+        usage = "evaluation"
+    list_datasets(usage=usage)
     return 0
+
+
+def _add_dataset_list_arguments(parser: argparse.ArgumentParser) -> None:
+    usage_group = parser.add_mutually_exclusive_group()
+    usage_group.add_argument(
+        "--training",
+        action="store_true",
+        help="Show only training datasets.",
+    )
+    usage_group.add_argument(
+        "--evaluation",
+        action="store_true",
+        help="Show only evaluation datasets.",
+    )
 
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -286,6 +319,7 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
         help="List registered datasets.",
         description="List registered datasets.",
     )
+    _add_dataset_list_arguments(list_parser)
     list_parser.set_defaults(handler=run_list_from_args)
 
     show_parser = dataset_subparsers.add_parser(
@@ -316,6 +350,7 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
         help="List registered datasets.",
         description="List registered datasets.",
     )
+    _add_dataset_list_arguments(list_parser)
     list_parser.set_defaults(handler=run_list_from_args)
 
     show_parser = subparsers.add_parser(

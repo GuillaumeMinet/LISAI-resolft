@@ -33,7 +33,7 @@ def test_create_run_dir_uses_name_plus_index(tmp_path: Path):
             self.root = root
 
         def run_dir(self, *, dataset_name: str, models_subfolder: str, exp_name: str) -> Path:
-            return self.root / dataset_name / "models" / models_subfolder / exp_name
+            return self.root / dataset_name / "runs" / models_subfolder / exp_name
 
     paths = FakePaths(tmp_path / "datasets")
 

@@ -56,7 +56,7 @@ def _write_metadata(
 
 def test_resolve_discovered_run_selector_accepts_run_id(tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00"
     run_id = "01ARZ3NDEKTSV4RRFFQ69GC100"
     _write_metadata(run_dir, run_id=run_id, dataset="Gag", model_subfolder="HDN")
 
@@ -73,7 +73,7 @@ def test_resolve_discovered_run_selector_accepts_run_id(tmp_path):
 
 def test_resolve_discovered_run_selector_accepts_dataset_subfolder_run_dir(tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp_base" / "SubA" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp_base" / "SubA" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GC101",
@@ -94,8 +94,8 @@ def test_resolve_discovered_run_selector_accepts_dataset_subfolder_run_dir(tmp_p
 
 def test_resolve_discovered_run_selector_accepts_bare_run_dir_with_dataset_filter(tmp_path):
     datasets_root = tmp_path / "datasets"
-    selected_dir = datasets_root / "Gag" / "models" / "HDN" / "duplicate_00"
-    other_dir = datasets_root / "Actin" / "models" / "HDN" / "duplicate_00"
+    selected_dir = datasets_root / "Gag" / "runs" / "HDN" / "duplicate_00"
+    other_dir = datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00"
     _write_metadata(
         selected_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GC102",
@@ -124,13 +124,13 @@ def test_resolve_discovered_run_selector_accepts_bare_run_dir_with_dataset_filte
 def test_resolve_discovered_run_selector_reports_bare_run_dir_ambiguity(tmp_path):
     datasets_root = tmp_path / "datasets"
     _write_metadata(
-        datasets_root / "Gag" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Gag" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69GC104",
         dataset="Gag",
         model_subfolder="HDN",
     )
     _write_metadata(
-        datasets_root / "Actin" / "models" / "Upsamp" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "Upsamp" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69GC105",
         dataset="Actin",
         model_subfolder="Upsamp",
@@ -153,8 +153,8 @@ def test_resolve_discovered_run_selector_reports_bare_run_dir_ambiguity(tmp_path
 
 def test_resolve_discovered_run_selector_uses_partial_exp_name_fallback(tmp_path):
     datasets_root = tmp_path / "datasets"
-    first_dir = datasets_root / "Gag" / "models" / "HDN" / "reducedUpsamp_beta_00"
-    second_dir = datasets_root / "Actin" / "models" / "Upsamp" / "reducedUpsamp_debug_00"
+    first_dir = datasets_root / "Gag" / "runs" / "HDN" / "reducedUpsamp_beta_00"
+    second_dir = datasets_root / "Actin" / "runs" / "Upsamp" / "reducedUpsamp_debug_00"
     _write_metadata(
         first_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GC106",
@@ -184,8 +184,8 @@ def test_resolve_discovered_run_selector_uses_partial_exp_name_fallback(tmp_path
 
 def test_resolve_discovered_run_selector_prefers_exact_bare_run_dir_over_partial_exp_name(tmp_path):
     datasets_root = tmp_path / "datasets"
-    exact_dir = datasets_root / "Gag" / "models" / "HDN" / "reduced"
-    partial_dir = datasets_root / "Gag" / "models" / "HDN" / "reducedUpsamp_beta_00"
+    exact_dir = datasets_root / "Gag" / "runs" / "HDN" / "reduced"
+    partial_dir = datasets_root / "Gag" / "runs" / "HDN" / "reducedUpsamp_beta_00"
     _write_metadata(
         exact_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GC108",
@@ -215,7 +215,7 @@ def test_resolve_discovered_run_selector_rejects_selector_with_run_id(tmp_path):
     datasets_root = tmp_path / "datasets"
     run_id = "01ARZ3NDEKTSV4RRFFQ69GC10A"
     _write_metadata(
-        datasets_root / "Gag" / "models" / "HDN" / "resume_me_00",
+        datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00",
         run_id=run_id,
         dataset="Gag",
         model_subfolder="HDN",

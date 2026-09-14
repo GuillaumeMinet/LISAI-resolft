@@ -55,7 +55,7 @@ def _write_metadata(
 
 def test_runs_plot_delegates_to_shared_plotting(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GB100",
@@ -90,7 +90,7 @@ def test_runs_plot_delegates_to_shared_plotting(monkeypatch, tmp_path):
 
 def test_runs_plot_accepts_dataset_subfolder_runref_selector(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp_base" / "SubA" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp_base" / "SubA" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GB105",
@@ -121,7 +121,7 @@ def test_runs_plot_accepts_dataset_subfolder_runref_selector(monkeypatch, tmp_pa
 
 def test_runs_plot_returns_nonzero_when_plotting_fails(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69GB109",
@@ -144,13 +144,13 @@ def test_runs_plot_ambiguous_selector_requires_disambiguation_when_non_interacti
 ):
     datasets_root = tmp_path / "datasets"
     _write_metadata(
-        datasets_root / "Actin" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69GB102",
         dataset="Actin",
         model_subfolder="HDN",
     )
     _write_metadata(
-        datasets_root / "Gag" / "models" / "Upsamp" / "duplicate_00",
+        datasets_root / "Gag" / "runs" / "Upsamp" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69GB103",
         dataset="Gag",
         model_subfolder="Upsamp",

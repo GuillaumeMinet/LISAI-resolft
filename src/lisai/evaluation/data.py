@@ -340,7 +340,11 @@ def resolve_evaluation_dataset(
     return EvaluationDatasetSpec(
         name=dataset_name,
         data_type=data_type,
-        data_dir=paths.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type),
+        data_dir=paths.dataset_preprocess_dir(
+            dataset_name=dataset_name,
+            data_type=data_type,
+            usage="evaluation",
+        ),
         dataset_info=dict(dataset_info),
         input=str(input_name),
         eval_gt=str(eval_gt) if eval_gt is not None else None,
@@ -376,7 +380,17 @@ def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, An
         subfolder = saved_run.data_subfolder
 
     paths = Paths(settings)
-    return paths.dataset_dir(dataset_name=dataset_name, data_subfolder=subfolder or "")
+    dataset_info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
+    usage = "training"
+    if isinstance(dataset_info, Mapping):
+        registered_usage = dataset_info.get("usage")
+        if isinstance(registered_usage, str) and registered_usage.strip():
+            usage = registered_usage.strip().lower()
+    return paths.dataset_dir(
+        dataset_name=dataset_name,
+        data_subfolder=subfolder or "",
+        usage=usage,
+    )
 
 
 def _training_target(data_cfg: Mapping[str, Any]) -> str | None:

@@ -30,7 +30,7 @@ class FakePaths:
         self.root = root
 
     def promoted_models_root(self):
-        return self.root / "promoted_models"
+        return self.root / "models"
 
     def promoted_model_registry_path(self):
         return self.promoted_models_root() / "model_registry.yml"
@@ -130,7 +130,7 @@ def test_promote_creates_canonical_directory_registry_and_clean_weights(tmp_path
         paths=paths,
     )
 
-    assert result.model_dir == tmp_path / "promoted_models" / "demo-model"
+    assert result.model_dir == tmp_path / "models" / "demo-model"
     assert (result.model_dir / "README.md").exists()
     assert (result.model_dir / "training" / "loss_plot.png").exists()
     state_dict = torch.load(result.weights_path, map_location="cpu", weights_only=True)
@@ -160,7 +160,7 @@ def test_export_zips_existing_promoted_model_under_data_root(tmp_path: Path, mon
 
     exported = package_module.export_promoted_model("demo-model", paths=paths)
 
-    assert exported.archive_path == tmp_path / "promoted_models" / "exports" / "demo-model.lisai.zip"
+    assert exported.archive_path == tmp_path / "models" / "exports" / "demo-model.lisai.zip"
     assert exported.archive_sha256 == hashlib.sha256(exported.archive_path.read_bytes()).hexdigest()
     with zipfile.ZipFile(exported.archive_path) as archive:
         assert "lisai_model.yaml" in archive.namelist()

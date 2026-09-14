@@ -23,7 +23,7 @@ class FakePaths:
         self.root = root
 
     def promoted_models_root(self):
-        return self.root / "promoted_models"
+        return self.root / "models"
 
     def promoted_model_registry_path(self):
         return self.promoted_models_root() / "model_registry.yml"

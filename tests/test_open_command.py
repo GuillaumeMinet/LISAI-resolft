@@ -54,7 +54,7 @@ def _write_metadata(
 
 def test_runs_open_accepts_run_dir_selector(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G9AAA",
@@ -79,7 +79,7 @@ def test_runs_open_accepts_run_dir_selector(monkeypatch, tmp_path):
 
 def test_runs_open_accepts_run_id_selector(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "resume_me_00"
     run_id = "01ARZ3NDEKTSV4RRFFQ69G9AAB"
     _write_metadata(
         run_dir,
@@ -106,13 +106,13 @@ def test_runs_open_accepts_run_id_selector(monkeypatch, tmp_path):
 def test_runs_open_requires_disambiguation_when_selector_is_ambiguous(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
     _write_metadata(
-        datasets_root / "Actin" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G9AAC",
         dataset="Actin",
         model_subfolder="HDN",
     )
     _write_metadata(
-        datasets_root / "Gag" / "models" / "Upsamp" / "duplicate_00",
+        datasets_root / "Gag" / "runs" / "Upsamp" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G9AAD",
         dataset="Gag",
         model_subfolder="Upsamp",
@@ -138,7 +138,7 @@ def test_runs_open_requires_disambiguation_when_selector_is_ambiguous(monkeypatc
 
 def test_runs_open_prints_run_folder_when_explorer_launch_fails(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G9AAZ",

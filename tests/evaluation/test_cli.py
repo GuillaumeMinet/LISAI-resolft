@@ -66,7 +66,7 @@ def _write_metadata(
 def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7ACA",
@@ -115,7 +115,7 @@ def test_cli_parses_tiling_policy_values():
 def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7ACF",
@@ -137,7 +137,7 @@ def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
 def test_apply_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7ACB",
@@ -182,7 +182,7 @@ def test_apply_cli_run_id_without_run_positional_parses_data_path():
 def test_apply_cli_accepts_run_id_selector_without_run_positional(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00"
     run_id = "01ARZ3NDEKTSV4RRFFQ69G7ACD"
     _write_metadata(
         run_dir,
@@ -223,7 +223,7 @@ def test_apply_cli_missing_run_selector_returns_nonzero(monkeypatch):
 def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7ABA",
@@ -267,7 +267,7 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
 def test_evaluate_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7ABB",
@@ -299,7 +299,7 @@ def test_evaluate_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
 def test_evaluate_cli_accepts_run_dir_selector(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "resume_me_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAA",
@@ -326,14 +326,14 @@ def test_evaluate_cli_ambiguous_selector_allows_interactive_line_selection(monke
     datasets_root = tmp_path / "datasets"
     now = utc_now()
     _write_metadata(
-        datasets_root / "Actin" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAB",
         dataset="Actin",
         model_subfolder="HDN",
         last_heartbeat_at=now,
     )
     _write_metadata(
-        datasets_root / "Gag" / "models" / "Upsamp" / "duplicate_00",
+        datasets_root / "Gag" / "runs" / "Upsamp" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAC",
         dataset="Gag",
         model_subfolder="Upsamp",
@@ -363,13 +363,13 @@ def test_evaluate_cli_ambiguous_selector_allows_interactive_line_selection(monke
 def test_evaluate_cli_ambiguous_selector_requires_extra_filters_when_non_interactive(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     _write_metadata(
-        datasets_root / "Actin" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAD",
         dataset="Actin",
         model_subfolder="HDN",
     )
     _write_metadata(
-        datasets_root / "Gag" / "models" / "Upsamp" / "duplicate_00",
+        datasets_root / "Gag" / "runs" / "Upsamp" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAE",
         dataset="Gag",
         model_subfolder="Upsamp",
@@ -420,7 +420,7 @@ def test_apply_cli_accepts_promoted_model_without_run_selector(monkeypatch):
 def test_evaluate_cli_passes_independent_evaluation_dataset(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "Upsamp" / "my_model_00"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAF",

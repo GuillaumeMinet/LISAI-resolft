@@ -148,6 +148,7 @@ class ReconMltplSnrPipeline(BasePipeline[ReconMltplSnrConfig]):
         common_dump_root = run.paths.dataset_dump_dir(
             dataset_name=run.dataset_name,
             data_type=run.data_type,
+            usage=run.usage,
         )
         base_subfolder, input_subfolder = resolve_source_subfolders(
             pipeline_name=self.name,

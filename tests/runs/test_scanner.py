@@ -43,9 +43,9 @@ def _write_metadata(
 
 def test_scan_runs_discovers_nested_run_directories(tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "HDN_Gag_KL07_01"
-    run_b = datasets_root / "Gag" / "models" / "HDN" / "ablationA" / "HDN_Gag_KL07_02"
-    run_c = datasets_root / "Gag" / "models" / "Upsamp" / "2026_03" / "test1" / "Upsamp_Gag_CL5"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "HDN_Gag_KL07_01"
+    run_b = datasets_root / "Gag" / "runs" / "HDN" / "ablationA" / "HDN_Gag_KL07_02"
+    run_c = datasets_root / "Gag" / "runs" / "Upsamp" / "2026_03" / "test1" / "Upsamp_Gag_CL5"
 
     _write_metadata(
         run_a,
@@ -85,9 +85,9 @@ def test_scan_runs_discovers_nested_run_directories(tmp_path):
 
 def test_scan_runs_skips_invalid_metadata_files(tmp_path):
     datasets_root = tmp_path / "datasets"
-    valid_run = datasets_root / "Gag" / "models" / "HDN" / "valid_run"
-    invalid_json_run = datasets_root / "Gag" / "models" / "HDN" / "broken_json"
-    invalid_schema_run = datasets_root / "Gag" / "models" / "HDN" / "broken_schema"
+    valid_run = datasets_root / "Gag" / "runs" / "HDN" / "valid_run"
+    invalid_json_run = datasets_root / "Gag" / "runs" / "HDN" / "broken_json"
+    invalid_schema_run = datasets_root / "Gag" / "runs" / "HDN" / "broken_schema"
 
     _write_metadata(
         valid_run,
@@ -115,7 +115,7 @@ def test_scan_runs_skips_invalid_metadata_files(tmp_path):
 
 def test_scan_runs_marks_path_mismatches_in_discovered_runs(tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "wrong_path"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "wrong_path"
 
     _write_metadata(
         run_dir,
@@ -136,7 +136,7 @@ def test_scan_runs_marks_path_mismatches_in_discovered_runs(tmp_path):
 
 def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "folder_name_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "folder_name_00"
 
     _write_metadata(
         run_dir,
@@ -157,11 +157,11 @@ def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
 
 def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
     datasets_root = tmp_path / "datasets"
-    active_run = datasets_root / "Gag" / "models" / "HDN" / "beta_00"
+    active_run = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
     archived_run = (
         datasets_root
         / "Gag"
-        / "models"
+        / "runs"
         / "HDN"
         / "_archive"
         / "beta_01_archived_20260914-105230Z"
@@ -188,3 +188,39 @@ def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
 
     assert [run.run_dir.name for run in results.runs] == ["beta_00"]
     assert results.invalid == ()
+
+
+def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, monkeypatch):
+    import lisai.runs.scanner as scanner_mod
+
+    datasets_root = tmp_path / "datasets"
+    training_root = datasets_root / "train_bucket"
+    evaluation_root = datasets_root / "eval_bucket"
+    training_run = training_root / "Gag" / "runs" / "HDN" / "train_00"
+    evaluation_run = evaluation_root / "EvalSet" / "runs" / "HDN" / "eval_00"
+
+    _write_metadata(
+        training_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/train_bucket/Gag/models/HDN/train_00",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FA3",
+    )
+    _write_metadata(
+        evaluation_run,
+        dataset="EvalSet",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/eval_bucket/EvalSet/models/HDN/eval_00",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FA4",
+    )
+
+    monkeypatch.setattr(scanner_mod._PATHS, "datasets_root", lambda: datasets_root)
+    monkeypatch.setattr(scanner_mod._PATHS, "training_datasets_root", lambda: training_root)
+
+    results = scanner_mod.scan_runs()
+
+    assert [run.dataset for run in results.runs] == ["Gag"]
+    assert results.runs[0].path == "datasets/train_bucket/Gag/models/HDN/train_00"
+    assert results.runs[0].path_consistent is True
