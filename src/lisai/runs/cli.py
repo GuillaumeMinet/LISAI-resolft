@@ -34,6 +34,7 @@ def list_runs(
     model_subfolder: str | None = None,
     status: str | None = None,
     promoted: bool = False,
+    kept: bool = False,
     full: bool = False,
     recent: int | None = None,
     live: bool = False,
@@ -74,6 +75,7 @@ def list_runs(
                     model_subfolder=model_subfolder,
                     status=status,
                     promoted=promoted,
+                    kept=kept,
                     full=full,
                     recent=recent,
                     stdout=out,
@@ -97,6 +99,7 @@ def list_runs(
         model_subfolder=model_subfolder,
         status=status,
         promoted=promoted,
+        kept=kept,
         full=full,
         recent=recent,
         stdout=out,
@@ -118,6 +121,7 @@ def _render_runs_snapshot(
     model_subfolder: str | None,
     status: str | None,
     promoted: bool,
+    kept: bool,
     full: bool,
     recent: int | None = None,
     stdout,
@@ -136,6 +140,7 @@ def _render_runs_snapshot(
         dataset=dataset,
         model_subfolder=model_subfolder,
         status=status,
+        kept=True if kept else None,
     )
 
     if promoted:
@@ -159,6 +164,7 @@ def _render_runs_snapshot(
             model_subfolder=model_subfolder,
             status=status,
             promoted=promoted,
+            kept=kept,
             recent=recent,
             live=live,
             refresh_interval_seconds=refresh_interval_seconds,
@@ -203,6 +209,7 @@ def _format_listing_title(
     model_subfolder: str | None,
     status: str | None,
     promoted: bool,
+    kept: bool,
     recent: int | None = None,
     live: bool,
     refresh_interval_seconds: float,
@@ -216,6 +223,8 @@ def _format_listing_title(
         filter_parts.append(f"Status: '{status}'")
     if promoted:
         filter_parts.append("Promoted only")
+    if kept:
+        filter_parts.append("Kept only")
     if run_dir_name:
         filter_parts.append(f"run_dir='{run_dir_name}'")
     if exp_name:
@@ -291,6 +300,7 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         model_subfolder=args.model_subfolder,
         status=args.status,
         promoted=args.promoted,
+        kept=args.kept,
         full=args.full,
         recent=args.recent,
         live=args.live,
@@ -385,6 +395,124 @@ def run_plot_from_args(args: argparse.Namespace) -> int:
     )
 
 
+def _run_set_kept_from_args(args: argparse.Namespace, *, kept: bool) -> int:
+    selected = _resolve_run_from_args(args)
+    if selected is None:
+        return 1
+
+    from .retention import set_run_kept
+
+    was_kept = selected.metadata.kept
+    set_run_kept(selected.run_dir, kept=kept)
+    if was_kept == kept:
+        state = "kept" if kept else "not kept"
+        print(f"Run is already {state}: {selected.run_dir.name}")
+    else:
+        action = "Kept" if kept else "Unkept"
+        print(f"{action} run: {selected.run_dir.name}")
+    return 0
+
+
+def run_keep_from_args(args: argparse.Namespace) -> int:
+    return _run_set_kept_from_args(args, kept=True)
+
+
+def run_unkeep_from_args(args: argparse.Namespace) -> int:
+    return _run_set_kept_from_args(args, kept=False)
+
+
+def run_prune_from_args(args: argparse.Namespace) -> int:
+    from .pruning import (
+        archive_run_directory,
+        build_prune_plan,
+        delete_run_directory,
+    )
+    from .schema import utc_now
+
+    scan_result = scan_runs()
+    scoped_runs = filter_runs(
+        scan_result.runs,
+        run_id=args.run_id,
+        run_dir_name=args.run_dir_name,
+        exp_name=args.exp_name,
+        dataset=args.dataset,
+        model_subfolder=args.model_subfolder,
+        status=args.status,
+    )
+    plan = build_prune_plan(scoped_runs)
+
+    _print_prune_summary(args, plan)
+    write_invalid_run_warnings(scan_result.invalid, stderr=sys.stderr)
+    if not plan.candidates:
+        print("No unkept terminal runs to prune.")
+        return 0
+
+    if not args.yes and not _confirm_prune(delete=args.delete):
+        print("Prune cancelled.")
+        return 0
+
+    failures = 0
+    archived_at = utc_now()
+    for run in plan.candidates:
+        try:
+            if args.delete:
+                delete_run_directory(run.run_dir)
+            else:
+                archive_run_directory(run.run_dir, archived_at=archived_at)
+        except OSError as exc:
+            failures += 1
+            print(f"Failed to prune {run.run_dir}: {exc}", file=sys.stderr)
+
+    succeeded = len(plan.candidates) - failures
+    action = "Deleted" if args.delete else "Archived"
+    print(f"{action} {succeeded} run(s).")
+    return 1 if failures else 0
+
+
+def _print_prune_summary(args: argparse.Namespace, plan) -> None:
+    print("LISAI runs prune")
+    scope_parts: list[str] = []
+    if args.dataset:
+        scope_parts.append(f"dataset={args.dataset!r}")
+    if args.model_subfolder:
+        scope_parts.append(f"subfolder={args.model_subfolder!r}")
+    if args.status:
+        scope_parts.append(f"status={args.status!r}")
+    if args.run_dir_name:
+        scope_parts.append(f"run_dir={args.run_dir_name!r}")
+    if args.exp_name:
+        scope_parts.append(f"exp_name~={args.exp_name!r}")
+    if args.run_id:
+        scope_parts.append(f"run_id={args.run_id}")
+    print(f"Scope: {' | '.join(scope_parts) if scope_parts else 'all discovered runs'}")
+    print(f"Matched runs: {len(plan.matched)}")
+    print(f"Kept (protected): {len(plan.kept)}")
+    print(f"Non-terminal (protected): {len(plan.non_terminal)}")
+    print(f"Candidates: {len(plan.candidates)}")
+    print(
+        "Action: permanently delete"
+        if args.delete
+        else "Action: archive to local _archive folders"
+    )
+
+    if plan.candidates:
+        label = "Runs to delete:" if args.delete else "Runs to archive:"
+        print(label)
+        for run in plan.candidates:
+            print(f"  {run.dataset}/{run.model_subfolder}/{run.run_dir.name}")
+
+
+def _confirm_prune(*, delete: bool) -> bool:
+    prompt = (
+        "Permanently delete these runs? [y/N] "
+        if delete
+        else "Archive these runs? [y/N] "
+    )
+    print(prompt, end="", flush=True)
+    answer = sys.stdin.readline()
+    return answer.strip().casefold() in {"y", "yes"}
+
+
 def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     selected = _resolve_run_from_args(args)
     if selected is None:
@@ -449,6 +577,11 @@ def _add_runs_list_arguments(parser: argparse.ArgumentParser) -> argparse.Argume
         help="Show only runs that are the source of a locally promoted model.",
     )
     parser.add_argument(
+        "--kept",
+        action="store_true",
+        help="Show only runs marked as kept.",
+    )
+    parser.add_argument(
         "--full",
         action="store_true",
         help=(
@@ -505,6 +638,41 @@ def _add_runs_open_arguments(parser: argparse.ArgumentParser) -> argparse.Argume
     parser.add_argument("--run-id", help="Stable run identifier to open.")
     add_run_filter_arguments(parser, include_identity=False, include_status=False)
     parser.set_defaults(handler=run_open_from_args)
+    return parser
+
+
+def _add_runs_keep_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    kept: bool,
+) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "run",
+        nargs="?",
+        help=(
+            "Run selector: run_dir_name, partial exp_name, or dataset[/subfolder]/run_dir_name. "
+            "Use --run-id as an alternative."
+        ),
+    )
+    parser.add_argument("--run-id", help="Stable run identifier to select.")
+    add_run_filter_arguments(parser, include_identity=False, include_status=False)
+    parser.set_defaults(handler=run_keep_from_args if kept else run_unkeep_from_args)
+    return parser
+
+
+def _add_runs_prune_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    add_run_filter_arguments(parser, include_identity=True, include_status=True)
+    parser.add_argument(
+        "--delete",
+        action="store_true",
+        help="Permanently delete prune candidates instead of archiving them locally.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Apply the prune plan without the confirmation prompt.",
+    )
+    parser.set_defaults(handler=run_prune_from_args)
     return parser
 
 
@@ -569,6 +737,27 @@ def add_runs_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentP
     )
     _add_runs_open_arguments(open_parser)
 
+    keep_parser = runs_subparsers.add_parser(
+        "keep",
+        help="Mark a training run to be retained by pruning.",
+        description="Mark a training run to be retained by pruning.",
+    )
+    _add_runs_keep_arguments(keep_parser, kept=True)
+
+    unkeep_parser = runs_subparsers.add_parser(
+        "unkeep",
+        help="Remove the keep marker from a training run.",
+        description="Remove the keep marker from a training run.",
+    )
+    _add_runs_keep_arguments(unkeep_parser, kept=False)
+
+    prune_parser = runs_subparsers.add_parser(
+        "prune",
+        help="Archive or delete unkept training runs in a selected scope.",
+        description="Archive or delete unkept training runs in a selected scope.",
+    )
+    _add_runs_prune_arguments(prune_parser)
+
     promote_parser = runs_subparsers.add_parser(
         "promote",
         help="Promote a training run into the local reusable model library.",
@@ -603,6 +792,27 @@ def build_parser(*, prog: str = "lisai runs") -> argparse.ArgumentParser:
         description="Open a selected run folder in file explorer.",
     )
     _add_runs_open_arguments(open_parser)
+
+    keep_parser = subparsers.add_parser(
+        "keep",
+        help="Mark a training run to be retained by pruning.",
+        description="Mark a training run to be retained by pruning.",
+    )
+    _add_runs_keep_arguments(keep_parser, kept=True)
+
+    unkeep_parser = subparsers.add_parser(
+        "unkeep",
+        help="Remove the keep marker from a training run.",
+        description="Remove the keep marker from a training run.",
+    )
+    _add_runs_keep_arguments(unkeep_parser, kept=False)
+
+    prune_parser = subparsers.add_parser(
+        "prune",
+        help="Archive or delete unkept training runs in a selected scope.",
+        description="Archive or delete unkept training runs in a selected scope.",
+    )
+    _add_runs_prune_arguments(prune_parser)
 
     promote_parser = subparsers.add_parser(
         "promote",

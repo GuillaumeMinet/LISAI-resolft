@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
     from .paths import Paths
+
+RUN_ARCHIVE_DIRNAME = "_archive"
 
 @dataclass(frozen=True)
 class InferredRunLocation:
@@ -28,7 +31,15 @@ def iter_run_metadata_paths(
         runs_dir = paths.dataset_runs_dir_from_dataset_dir(dataset_dir)
         if not runs_dir.is_dir():
             continue
-        yield from sorted(runs_dir.rglob(metadata_filename))
+        for current_root, dirnames, filenames in os.walk(runs_dir):
+            # Archived runs are deliberately outside the active run namespace.
+            # Prune stores them locally under _archive, but normal run discovery
+            # (list/open/continue/promote/...) must not rediscover them.
+            dirnames[:] = sorted(
+                name for name in dirnames if name != RUN_ARCHIVE_DIRNAME
+            )
+            if metadata_filename in filenames:
+                yield Path(current_root) / metadata_filename
 
 
 def infer_run_location(
@@ -75,6 +86,7 @@ def infer_run_location(
 
 
 __all__ = [
+    "RUN_ARCHIVE_DIRNAME",
     "InferredRunLocation",
     "infer_run_location",
     "iter_run_metadata_paths",

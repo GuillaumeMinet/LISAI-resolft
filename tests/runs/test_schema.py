@@ -37,6 +37,7 @@ def test_run_metadata_accepts_running_payload():
     metadata = RunMetadata.model_validate(_payload())
 
     assert metadata.status == "running"
+    assert metadata.kept is False
     assert metadata.ended_at is None
     assert metadata.model_subfolder == "HDN"
     assert metadata.run_name == "HDN_Gag_KL07"

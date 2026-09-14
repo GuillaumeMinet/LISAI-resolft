@@ -153,3 +153,38 @@ def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
     assert results.invalid == ()
     assert results.runs[0].metadata.run_id == "01ARZ3NDEKTSV4RRFFQ69G5FA2"
     assert results.runs[0].path_consistent is True
+
+
+def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
+    datasets_root = tmp_path / "datasets"
+    active_run = datasets_root / "Gag" / "models" / "HDN" / "beta_00"
+    archived_run = (
+        datasets_root
+        / "Gag"
+        / "models"
+        / "HDN"
+        / "_archive"
+        / "beta_01_archived_20260914-105230Z"
+    )
+
+    _write_metadata(
+        active_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
+    )
+    _write_metadata(
+        archived_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_01",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
+    )
+
+    results = scan_runs(datasets_root)
+
+    assert [run.run_dir.name for run in results.runs] == ["beta_00"]
+    assert results.invalid == ()

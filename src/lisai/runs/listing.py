@@ -110,6 +110,7 @@ def filter_runs(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     status: str | None = None,
+    kept: bool | None = None,
 ) -> list[DiscoveredRun]:
     return [
         run
@@ -120,6 +121,7 @@ def filter_runs(
         and (dataset is None or run.dataset == dataset)
         and (model_subfolder is None or run.model_subfolder == model_subfolder)
         and (status is None or run.metadata.status == status)
+        and (kept is None or run.metadata.kept is kept)
     ]
 
 
@@ -171,6 +173,7 @@ def render_runs_table(
         "dataset",
         "model_subfolder",
         "run_dir",
+        "kept",
         "status",
         "epoch",
         "eta_left",
@@ -193,6 +196,7 @@ def render_runs_table(
             run.dataset,
             run.model_subfolder,
             run.run_dir.name,
+            "*" if run.metadata.kept else "",
             display_run_status(run, now=reference),
             _format_epoch(run),
             _format_eta_left(run),

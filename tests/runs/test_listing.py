@@ -26,6 +26,7 @@ def _running_run(*, run_id: str, heartbeat: datetime, live_runtime_stats=None) -
             "run_index": 0,
             "dataset": "Gag",
             "model_subfolder": "HDN",
+            "kept": True,
             "status": "running",
             "closed_cleanly": False,
             "created_at": "2026-03-20T10:00:00Z",

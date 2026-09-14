@@ -16,7 +16,7 @@ from lisai.runs.schema import RunMetadata
 
 def _write_metadata(
     run_dir, *, dataset, model_subfolder, group_path, path, status="running",
-    run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+    run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV", kept=False,
 ):
     run_name, run_index = parse_run_dir_name(run_dir.name)
     payload = {
@@ -26,6 +26,7 @@ def _write_metadata(
         "run_index": run_index,
         "dataset": dataset,
         "model_subfolder": model_subfolder,
+        "kept": kept,
         "status": status,
         "closed_cleanly": status != "running",
         "created_at": "2026-03-20T10:14:00Z",
@@ -365,7 +366,9 @@ def test_runs_list_full_appends_extended_columns(monkeypatch, tmp_path, capsys):
     assert exit_code == 0
     assert "LISAI runs listing - Dataset: 'Gag'" in captured.out
     columns = _header_columns(captured.out)
-    assert columns[:6] == ["dataset", "model_subfolder", "run_dir", "status", "epoch", "eta_left"]
+    assert columns[:7] == [
+        "dataset", "model_subfolder", "run_dir", "kept", "status", "epoch", "eta_left"
+    ]
     assert columns[-6:] == [
         "failure",
         "path_consistent",
@@ -562,3 +565,179 @@ def test_runs_list_promoted_filters_by_source_run_id(monkeypatch, tmp_path, caps
     assert "Promoted only" in captured.out
     assert "run_a_00" in captured.out
     assert "run_b_00" not in captured.out
+
+
+def test_runs_list_kept_filter_and_marker(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    kept_run = datasets_root / "Gag" / "models" / "HDN" / "beta_00"
+    ordinary_run = datasets_root / "Gag" / "models" / "HDN" / "beta_01"
+
+    _write_metadata(
+        kept_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
+        kept=True,
+    )
+    _write_metadata(
+        ordinary_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_01",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(["runs", "list", "--kept"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Kept only" in captured.out
+    assert _header_columns(captured.out)[3] == "kept"
+    assert "beta_00" in captured.out
+    assert "beta_01" not in captured.out
+    kept_line = next(line for line in captured.out.splitlines() if "beta_00" in line)
+    assert "  *  " in kept_line
+
+
+def test_runs_keep_and_unkeep_update_run_metadata(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "models" / "HDN" / "beta_00"
+    _write_metadata(
+        run_dir,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(
+        "lisai.runs.selection.scan_runs", lambda: scan_runs(datasets_root)
+    )
+
+    assert root_main(["runs", "keep", "beta_00"]) == 0
+    assert scan_runs(datasets_root).runs[0].metadata.kept is True
+    assert "Kept run: beta_00" in capsys.readouterr().out
+
+    assert root_main(["runs", "unkeep", "beta_00"]) == 0
+    assert scan_runs(datasets_root).runs[0].metadata.kept is False
+    assert "Unkept run: beta_00" in capsys.readouterr().out
+
+
+def test_runs_prune_archives_unkept_terminal_runs_locally(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    parent = datasets_root / "Gag" / "models" / "HDN" / "ablation"
+    candidate = parent / "beta_00"
+    kept_run = parent / "beta_01"
+    running_run = parent / "beta_02"
+
+    _write_metadata(
+        candidate,
+        dataset="Gag",
+        model_subfolder="HDN/ablation",
+        group_path="ablation",
+        path="datasets/Gag/models/HDN/ablation/beta_00",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
+    )
+    _write_metadata(
+        kept_run,
+        dataset="Gag",
+        model_subfolder="HDN/ablation",
+        group_path="ablation",
+        path="datasets/Gag/models/HDN/ablation/beta_01",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
+        kept=True,
+    )
+    _write_metadata(
+        running_run,
+        dataset="Gag",
+        model_subfolder="HDN/ablation",
+        group_path="ablation",
+        path="datasets/Gag/models/HDN/ablation/beta_02",
+        status="running",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAC",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(
+        [
+            "runs",
+            "prune",
+            "--dataset",
+            "Gag",
+            "--subfolder",
+            "HDN/ablation",
+            "--yes",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Kept (protected): 1" in captured.out
+    assert "Non-terminal (protected): 1" in captured.out
+    assert "Candidates: 1" in captured.out
+    assert "Action: archive to local _archive folders" in captured.out
+    assert "Archived 1 run(s)." in captured.out
+    assert not candidate.exists()
+    assert kept_run.is_dir()
+    assert running_run.is_dir()
+    archived = list((parent / "_archive").glob("beta_00_archived_*"))
+    assert len(archived) == 1
+    assert {run.run_dir for run in scan_runs(datasets_root).runs} == {kept_run, running_run}
+
+
+def test_runs_prune_delete_removes_candidate_without_archive(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "models" / "HDN" / "beta_00"
+    _write_metadata(
+        run_dir,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(
+        ["runs", "prune", "--dataset", "Gag", "--subfolder", "HDN", "--delete", "--yes"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Action: permanently delete" in captured.out
+    assert "Deleted 1 run(s)." in captured.out
+    assert not run_dir.exists()
+    assert not (run_dir.parent / "_archive").exists()
+
+
+def test_runs_prune_requires_confirmation_by_default(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "models" / "HDN" / "beta_00"
+    _write_metadata(
+        run_dir,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli.sys, "stdin", StringIO("n\n"))
+
+    exit_code = root_main(["runs", "prune", "--dataset", "Gag", "--subfolder", "HDN"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Archive these runs? [y/N]" in captured.out
+    assert "Prune cancelled." in captured.out
+    assert run_dir.is_dir()
+    assert not (run_dir.parent / "_archive").exists()
