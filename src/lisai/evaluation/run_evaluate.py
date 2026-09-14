@@ -230,6 +230,8 @@ def _run_single_evaluation(
                   f"{limit_n_imgs} because of args limit_n_imgs.")
         else:
             print(f"Found {len(sample_source)} images.")
+    else:
+        n_total = len(sample_source)
 
     n_processed = 0
     stop_eval = False
