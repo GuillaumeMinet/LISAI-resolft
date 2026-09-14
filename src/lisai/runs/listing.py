@@ -174,16 +174,16 @@ def render_runs_table(
         "status",
         "epoch",
         "eta_left",
+        "start_time"
     ]
     if full:
         headers.extend(
             [
+                "last_seen",
+                "run_id",
                 "failure",
                 "path_consistent",
                 "closed_cleanly",
-                "start_time",
-                "last_seen",
-                "run_id",
             ]
         )
     selection_width = max(2, len(str(len(runs))))
@@ -196,16 +196,16 @@ def render_runs_table(
             display_run_status(run, now=reference),
             _format_epoch(run),
             _format_eta_left(run),
+            format_timestamp_local(run.metadata.created_at),
         ]
         if full:
             row.extend(
                 [
+                    format_timestamp_local(run.last_seen),
+                    run.metadata.run_id,
                     _format_failure_summary(run),
                     str(run.path_consistent).lower(),
                     str(run.metadata.closed_cleanly).lower(),
-                    format_timestamp_local(run.metadata.created_at),
-                    format_timestamp_local(run.last_seen),
-                    run.metadata.run_id,
                 ]
             )
         if include_selection_index:

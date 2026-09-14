@@ -35,6 +35,7 @@ def list_runs(
     status: str | None = None,
     promoted: bool = False,
     full: bool = False,
+    recent: int | None = None,
     live: bool = False,
     interval_seconds: float = 2.0,
     stdout=None,
@@ -74,6 +75,7 @@ def list_runs(
                     status=status,
                     promoted=promoted,
                     full=full,
+                    recent=recent,
                     stdout=out,
                     stderr=err,
                     live=True,
@@ -96,6 +98,7 @@ def list_runs(
         status=status,
         promoted=promoted,
         full=full,
+        recent=recent,
         stdout=out,
         stderr=err,
         live=False,
@@ -116,6 +119,7 @@ def _render_runs_snapshot(
     status: str | None,
     promoted: bool,
     full: bool,
+    recent: int | None = None,
     stdout,
     stderr,
     live: bool,
@@ -140,6 +144,9 @@ def _render_runs_snapshot(
         promoted_ids = promoted_source_run_ids()
         filtered_runs = [run for run in filtered_runs if run.metadata.run_id in promoted_ids]
 
+    if recent is not None:
+        filtered_runs = filtered_runs[:recent]
+
     snapshot_lines: list[str] = []
     if top_notice is not None:
         snapshot_lines.append(top_notice)
@@ -152,6 +159,7 @@ def _render_runs_snapshot(
             model_subfolder=model_subfolder,
             status=status,
             promoted=promoted,
+            recent=recent,
             live=live,
             refresh_interval_seconds=refresh_interval_seconds,
         )
@@ -195,6 +203,7 @@ def _format_listing_title(
     model_subfolder: str | None,
     status: str | None,
     promoted: bool,
+    recent: int | None = None,
     live: bool,
     refresh_interval_seconds: float,
 ) -> str:
@@ -213,6 +222,8 @@ def _format_listing_title(
         filter_parts.append(f"exp_name~='{exp_name}'")
     if run_id:
         filter_parts.append(f"run_id={run_id}")
+    if recent is not None:
+        filter_parts.append(f"Recent: {recent}")
 
     title = "LISAI runs listing"
     if filter_parts:
@@ -260,6 +271,16 @@ def _seconds_value(value: str) -> float:
         raise argparse.ArgumentTypeError("Seconds value must be finite.")
     return seconds
 
+def _positive_int(value: str) -> int:
+    try:
+        result = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid integer value: {value!r}.") from exc
+
+    if result <= 0:
+        raise argparse.ArgumentTypeError("Value must be a positive integer.")
+
+    return result
 
 def run_list_from_args(args: argparse.Namespace) -> int:
     return list_runs(
@@ -271,6 +292,7 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         status=args.status,
         promoted=args.promoted,
         full=args.full,
+        recent=args.recent,
         live=args.live,
         interval_seconds=args.interval,
     )
@@ -433,6 +455,12 @@ def _add_runs_list_arguments(parser: argparse.ArgumentParser) -> argparse.Argume
             "Include extra metadata columns "
             "(failure, path_consistent, closed_cleanly, start_time, last_seen, run_id)."
         ),
+    )
+    parser.add_argument(
+        "--recent",
+        type=_positive_int,
+        metavar="N",
+        help="Show only the N most recently seen runs after applying other filters"
     )
     parser.add_argument(
         "--live",
