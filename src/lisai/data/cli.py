@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -9,6 +10,7 @@ from lisai.infra.paths import Paths
 from lisai.runs.cli import _try_open_path
 
 from .dataset_registry import load_dataset_registry
+from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
 
 
 def _paths() -> Paths:
@@ -272,6 +274,79 @@ def open_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
     return 0
 
 
+def _print_rename_plan(plan) -> None:
+    print("Dataset rename")
+    print("")
+    print(f"  {plan.old_name}  ->  {plan.new_name}")
+    print(f"  Usage: {plan.usage}")
+    print("")
+    print("This will change:")
+    print("  - dataset folder")
+    print(f"    {plan.source_dir}")
+    print(f"    -> {plan.destination_dir}")
+    print("")
+    print("  - dataset registry entry")
+    print(f"    {plan.old_name} -> {plan.new_name}")
+    if plan.usage == "training":
+        print("")
+        print(f"  - {plan.active_run_metadata_count} active run metadata file(s)")
+        print(f"  - {plan.training_config_count} saved training config(s)")
+        print(f"  - {plan.split_manifest_count} split manifest(s)")
+        print(f"  - {plan.archived_run_metadata_count} archived run metadata file(s)")
+    print("")
+    print("Not changed:")
+    print("  - TensorBoard logs")
+    print("    Existing logs remain under the old dataset name; future logs may be split")
+    print("    between the old and new dataset folders.")
+    print("  - promoted/exported model packages and historical evaluation provenance")
+    print("  - arbitrary external configs or references outside LISAI-managed dataset metadata")
+
+
+def _confirm_dataset_rename() -> bool:
+    print("")
+    print("Proceed with dataset rename? [y/N] ", end="", flush=True)
+    answer = sys.stdin.readline()
+    return answer.strip().casefold() in {"y", "yes"}
+
+
+def rename_dataset(
+    old_name: str,
+    new_name: str,
+    *,
+    paths: Paths | None = None,
+) -> int:
+    paths = paths or _paths()
+    try:
+        plan = build_dataset_rename_plan(old_name, new_name, paths=paths)
+    except DatasetRenameError as exc:
+        print(f"Cannot rename dataset: {exc}")
+        return 1
+
+    _print_rename_plan(plan)
+    if not _confirm_dataset_rename():
+        print("Dataset rename cancelled.")
+        return 0
+
+    try:
+        apply_dataset_rename(plan)
+    except DatasetRenameError as exc:
+        print(f"Dataset rename failed: {exc}")
+        return 1
+
+    print("")
+    print(f"Renamed dataset: {plan.old_name} -> {plan.new_name}")
+    print(f"Updated folder and registry ({plan.usage}).")
+    if plan.usage == "training":
+        print(
+            "Updated "
+            f"{plan.active_run_metadata_count} active run metadata file(s), "
+            f"{plan.training_config_count} training config(s), "
+            f"{plan.split_manifest_count} split manifest(s), and "
+            f"{plan.archived_run_metadata_count} archived run metadata file(s)."
+        )
+    return 0
+
+
 def run_list_from_args(args: argparse.Namespace) -> int:
     usage = None
     if args.training:
@@ -303,6 +378,26 @@ def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
 
 def run_open_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     return open_dataset(args.name, parser=parser)
+
+
+def run_rename_from_args(args: argparse.Namespace) -> int:
+    return rename_dataset(args.old_name, args.new_name)
+
+
+def _add_dataset_rename_parser(subparsers):
+    rename_parser = subparsers.add_parser(
+        "rename",
+        help="Rename a registered dataset and update LISAI-managed metadata.",
+        description=(
+            "Rename a registered dataset folder and registry key, updating affected "
+            "training-run metadata. This is an impactful operation and always requires "
+            "interactive confirmation after a preflight summary."
+        ),
+    )
+    rename_parser.add_argument("old_name", help="Current dataset name from the registry.")
+    rename_parser.add_argument("new_name", help="New dataset name.")
+    rename_parser.set_defaults(handler=run_rename_from_args)
+    return rename_parser
 
 
 def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]):
@@ -337,6 +432,8 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
     )
     open_parser.add_argument("name", help="Dataset name from the dataset registry.")
     open_parser.set_defaults(handler=lambda args, p=open_parser: run_open_from_args(args, p))
+
+    _add_dataset_rename_parser(dataset_subparsers)
     return parser
 
 
@@ -368,6 +465,8 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
     )
     open_parser.add_argument("name", help="Dataset name from the dataset registry.")
     open_parser.set_defaults(handler=lambda args, p=open_parser: run_open_from_args(args, p))
+
+    _add_dataset_rename_parser(subparsers)
     return parser
 
 
@@ -383,5 +482,6 @@ __all__ = [
     "list_datasets",
     "main",
     "open_dataset",
+    "rename_dataset",
     "show_dataset",
 ]
