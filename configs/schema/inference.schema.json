@@ -1,8 +1,8 @@
 {
   "$defs": {
-    "ApplyOverrides": {
+    "ApplyOutputOverrides": {
       "additionalProperties": false,
-      "description": "Sparse user-authored overrides for the `apply` section.",
+      "description": "Optional output-location overrides for one inference workflow.",
       "properties": {
         "save_folder": {
           "anyOf": [
@@ -14,7 +14,7 @@
             }
           ],
           "default": null,
-          "description": "Output folder for saved predictions or evaluation artifacts. Use 'default' for apply to save next to the inputs, or null for evaluate to save inside the model run directory.",
+          "description": "Explicit output directory for apply predictions. When omitted, output routing falls back to the local/project inference defaults.",
           "title": "Save Folder"
         },
         "in_place": {
@@ -27,8 +27,28 @@
             }
           ],
           "default": null,
-          "description": "Whether apply outputs should be written back into the input location.",
+          "description": "Whether apply outputs should be written alongside the input data. Use false to explicitly force normal inference-directory routing.",
           "title": "In Place"
+        }
+      },
+      "title": "ApplyOutputOverrides",
+      "type": "object"
+    },
+    "ApplyOverrides": {
+      "additionalProperties": false,
+      "description": "Sparse user-authored overrides for the `apply` section.",
+      "properties": {
+        "output": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplyOutputOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional output-location override for this inference config."
         },
         "epoch_number": {
           "anyOf": [
@@ -482,7 +502,7 @@
             }
           ],
           "default": null,
-          "description": "Output folder for saved predictions or evaluation artifacts. Use 'default' for apply to save next to the inputs, or null for evaluate to save inside the model run directory.",
+          "description": "Output folder for evaluation artifacts. Use null to save inside the model run directory.",
           "title": "Save Folder"
         },
         "overwrite": {

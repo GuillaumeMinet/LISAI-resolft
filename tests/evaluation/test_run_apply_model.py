@@ -185,3 +185,56 @@ def test_run_apply_model_rejects_unsupported_deterministic_multiple_sampling(
             model_name="model",
             data_path=tmp_path,
         )
+
+
+def test_run_apply_model_default_output_uses_source_and_model_names(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="default", save_folder=None),
+    )
+    captured = {}
+
+    class _FakePaths:
+        def inference_output_dir(self, *, source_name, model_name):
+            captured["source_name"] = source_name
+            captured["model_name"] = model_name
+            return tmp_path / "inference" / source_name / model_name
+
+    monkeypatch.setattr(apply_mod, "Paths", _FakePaths)
+    monkeypatch.setattr(
+        apply_mod,
+        "create_save_folder",
+        lambda path: captured.setdefault("save_folder", Path(path)),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "save_outputs",
+        lambda _tosave, save_folder, _img_name: captured.setdefault(
+            "writer_save_folder", Path(save_folder)
+        ),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="mito_model_03",
+        data_path=tmp_path,
+    )
+
+    assert captured["source_name"] == tmp_path.name
+    assert captured["model_name"] == "mito_model_03"
+    assert captured["save_folder"] == (
+        tmp_path / "inference" / tmp_path.name / "mito_model_03"
+    )

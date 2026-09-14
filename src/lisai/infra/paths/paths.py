@@ -12,7 +12,7 @@ class TemplateKeys:
     dataset_loading: str = "dataset_loading"
     run_dir: str = "run_dir"
     tensorboard_runs_dir: str = "tensorboard_runs_dir"
-    predictreal_saving: str = "predictreal_saving"
+    inference_output_dir: str = "inference_output_dir"
     noise_model: str = "noise_model"
     promoted_model_registry: str = "promoted_model_registry"
     promoted_model_dir: str = "promoted_model_dir"
@@ -107,7 +107,23 @@ class Paths:
             data_subfolder=data_subfolder,
             dataset_usage_subfolder=self.dataset_usage_subfolder(usage),
         )
-    
+
+    def dataset_readme_path(
+        self,
+        *,
+        dataset_name: str,
+        data_subfolder: str = "",
+        usage: str = "training",
+    ) -> Path:
+        """ Returns full dataset readme path"""
+        dataset_path = self.dataset_dir(
+            dataset_name=dataset_name,
+            data_subfolder=data_subfolder,
+            usage=usage
+        )
+        filename = "readme.txt"
+        return dataset_path / filename
+
     def dataset_runs_dir(self, *, dataset_name: str) -> Path:
         """Return saved runs directory for a training dataset."""
         return self.dataset_dir(dataset_name=dataset_name, usage="training") / self.run_container_dirname()
@@ -134,20 +150,16 @@ class Paths:
             tensorboard_subfolder=tensorboard_subfolder,
         )
 
-    def inference_dir(
-        self,
-        *,
-        dataset_name: str,
-        inference_subfolder: str,
-        exp_name: str,
-        usage: str = "training",
-    ) -> Path:
+    def inference_root(self) -> Path:
+        """Return the effective inference root after local overrides are applied."""
+        return Path(self.settings.resolve_path("{paths.roots.inference_dir}")).resolve()
+
+    def inference_output_dir(self, *, source_name: str, model_name: str) -> Path:
+        """Return the default output directory for one apply invocation."""
         return self.settings.get_template_path(
-            self.keys.predictreal_saving,
-            dataset_name=dataset_name,
-            dataset_usage_subfolder=self.dataset_usage_subfolder(usage),
-            inference_subfolder=inference_subfolder,
-            exp_name=exp_name,
+            self.keys.inference_output_dir,
+            source_name=source_name,
+            model_name=model_name,
         )
 
     def noise_model_path(self, *, noiseModel_name: str) -> Path:

@@ -1,7 +1,5 @@
 # yaml-language-server: $schema=../schema/inference-defaults.schema.json
 apply:
-  save_folder: default
-  in_place: false
   epoch_number: null
   best_or_last: best
   filters:

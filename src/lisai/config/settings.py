@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .models import DataConfig, ProjectConfig
+from .models import DataConfig, LocalConfig, ProjectConfig
 from .io.yaml import load_yaml, save_yaml
 
 
@@ -58,7 +58,9 @@ class Settings:
         self._project_yaml_path = self.CONFIGS_ROOT / "project_config.yml"
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
 
-        self._infra_cfg = self._load_or_setup_infrastructure()
+        self.local_cfg: LocalConfig = LocalConfig.model_validate(
+            self._load_or_setup_infrastructure()
+        )
 
         project_raw = self._load_required(self._project_yaml_path)
         data_raw = self._load_required(self._data_yaml_path)
@@ -91,15 +93,20 @@ class Settings:
         user_input = input(f"Enter absolute path to Data Root [default: {default_root}]: ").strip()
         data_root = user_input if user_input else default_root
 
-        new_config = {"infrastructure": {"data_root": str(Path(data_root).resolve())}}
+        new_config = {
+            "infrastructure": {"data_root": str(Path(data_root).resolve())},
+            "inference": {
+                "output_mode": "default",
+                "inference_dir": "default",
+            },
+        }
         self._local_yaml_path.parent.mkdir(parents=True, exist_ok=True)
         save_yaml(new_config, self._local_yaml_path)
         print(f"Saved to {self._local_yaml_path}\n")
         return new_config
 
     def _build_context(self) -> AttrDict:
-        infra = self._infra_cfg.get("infrastructure", {})
-        data_root = Path(infra.get("data_root")).resolve()
+        data_root = Path(self.local_cfg.infrastructure.data_root).resolve()
         code_dir = self.PROJECT_ROOT.resolve()
 
         ctx = AttrDict(
@@ -114,7 +121,7 @@ class Settings:
         # Provide code_dir for templates
         ctx.paths.roots.code_dir = str(code_dir)
 
-        # Resolve roots (only depend on infra)
+        # Resolve roots (depend only on local infrastructure plus explicit local overrides).
         for key, tmpl in (self.project_cfg.paths.roots or {}).items():
             if key == "run_container_dirname":
                 text = str(tmpl).strip().strip("/\\")
@@ -122,8 +129,12 @@ class Settings:
                     raise ValueError("project.paths.roots.run_container_dirname must not be empty.")
                 ctx.paths.roots[key] = text
                 continue
-            value = tmpl.format(**ctx)
-            value = str(Path(os.path.normpath(value)).resolve())
+
+            if key == "inference_dir" and self.local_cfg.inference.inference_dir != "default":
+                value = self.local_cfg.inference.inference_dir
+            else:
+                value = tmpl.format(**ctx)
+            value = str(Path(os.path.normpath(value)).expanduser().resolve())
             ctx.paths.roots[key] = value
 
         # Store templates as-is (experiment-dependent keys can't be resolved yet)
@@ -158,6 +169,14 @@ class Settings:
     def INFERENCE_CONFIG_DIR(self):
         return self.CONFIGS_ROOT / "inference"
     
+    @property
+    def INFERENCE_OUTPUT_MODE(self) -> str:
+        return self.local_cfg.inference.output_mode
+
+    @property
+    def LOCAL_INFERENCE_DIR(self) -> str:
+        return self.local_cfg.inference.inference_dir
+
     @property
     def INFERENCE_DEFAULT_CONFIG_NAME(self):
         return "defaults"

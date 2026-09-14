@@ -2,14 +2,19 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SAVE_FOLDER_DESC = (
-    "Output folder for saved predictions or evaluation artifacts. "
-    "Use 'default' for apply to save next to the inputs, or null for evaluate "
-    "to save inside the model run directory."
+APPLY_SAVE_FOLDER_DESC = (
+    "Explicit output directory for apply predictions. When omitted, output routing "
+    "falls back to the local/project inference defaults."
 )
-IN_PLACE_DESC = "Whether apply outputs should be written back into the input location."
+IN_PLACE_DESC = (
+    "Whether apply outputs should be written alongside the input data. "
+    "Use false to explicitly force normal inference-directory routing."
+)
+EVALUATE_SAVE_FOLDER_DESC = (
+    "Output folder for evaluation artifacts. Use null to save inside the model run directory."
+)
 EPOCH_NUMBER_DESC = (
     "Explicit checkpoint epoch number to load. Use null to select the checkpoint "
     "through best_or_last instead."
@@ -109,8 +114,6 @@ class ApplyDefaults(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    save_folder: str | None = Field(default="default", description=SAVE_FOLDER_DESC)
-    in_place: bool = Field(default=False, description=IN_PLACE_DESC)
     epoch_number: int | None = Field(default=None, description=EPOCH_NUMBER_DESC)
     best_or_last: CheckpointSelector = Field(default="best", description=BEST_OR_LAST_DESC)
     filters: list[str] = Field(default_factory=lambda: ["tiff", "tif"], description=FILTERS_DESC)
@@ -136,13 +139,38 @@ class ApplyDefaults(BaseModel):
         return _normalize_tiling_size_policy(value)
 
 
+class ApplyOutputOverrides(BaseModel):
+    """Optional output-location overrides for one inference workflow."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    save_folder: str | None = Field(default=None, description=APPLY_SAVE_FOLDER_DESC)
+    in_place: bool | None = Field(default=None, description=IN_PLACE_DESC)
+
+    @field_validator("save_folder", mode="before")
+    @classmethod
+    def _normalize_save_folder(cls, value):
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    @model_validator(mode="after")
+    def _validate_exclusive_output_choice(self):
+        if self.save_folder is not None and self.in_place is not None:
+            raise ValueError("apply.output.save_folder and apply.output.in_place are mutually exclusive.")
+        return self
+
+
 class ApplyOverrides(BaseModel):
     """Sparse user-authored overrides for the `apply` section."""
 
     model_config = ConfigDict(extra="forbid")
 
-    save_folder: str | None = Field(default=None, description=SAVE_FOLDER_DESC)
-    in_place: bool | None = Field(default=None, description=IN_PLACE_DESC)
+    output: ApplyOutputOverrides | None = Field(
+        default=None,
+        description="Optional output-location override for this inference config.",
+    )
     epoch_number: int | None = Field(default=None, description=EPOCH_NUMBER_DESC)
     best_or_last: CheckpointSelector | None = Field(default=None, description=BEST_OR_LAST_DESC)
     filters: list[str] | None = Field(default=None, description=FILTERS_DESC)
@@ -180,7 +208,7 @@ class EvaluateDefaults(BaseModel):
     metrics_list: list[str] | None = Field(default=None, description=METRICS_LIST_DESC)
     lvae_num_samples: int | None = Field(default=20, description=LVAE_NUM_SAMPLES_DESC)
     results: dict[str, Any] | None = Field(default=None, description=RESULTS_DESC)
-    save_folder: str | None = Field(default=None, description=SAVE_FOLDER_DESC)
+    save_folder: str | None = Field(default=None, description=EVALUATE_SAVE_FOLDER_DESC)
     overwrite: bool = Field(default=False, description=OVERWRITE_DESC)
     eval_gt: str | None = Field(default=None, description=EVAL_GT_DESC)
     data_prm_update: dict[str, Any] | None = Field(default=None, description=DATA_PRM_UPDATE_DESC)
@@ -206,7 +234,7 @@ class EvaluateOverrides(BaseModel):
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     metrics_list: list[str] | None = Field(default=None, description=METRICS_LIST_DESC)
     lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
-    save_folder: str | None = Field(default=None, description=SAVE_FOLDER_DESC)
+    save_folder: str | None = Field(default=None, description=EVALUATE_SAVE_FOLDER_DESC)
     overwrite: bool | None = Field(default=None, description=OVERWRITE_DESC)
     eval_gt: str | None = Field(default=None, description=EVAL_GT_DESC)
     data_prm_update: dict[str, Any] | None = Field(default=None, description=DATA_PRM_UPDATE_DESC)
@@ -226,6 +254,7 @@ __all__ = [
     "ColorCodeOverrides",
     "PositiveTilingSize",
     "TilingSizePolicy",
+    "ApplyOutputOverrides",
     "ApplyDefaults",
     "ApplyOverrides",
     "CheckpointSelector",

@@ -4,25 +4,6 @@
       "additionalProperties": false,
       "description": "Fully resolved defaults for the `apply` inference section.",
       "properties": {
-        "save_folder": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": "default",
-          "description": "Output folder for saved predictions or evaluation artifacts. Use 'default' for apply to save next to the inputs, or null for evaluate to save inside the model run directory.",
-          "title": "Save Folder"
-        },
-        "in_place": {
-          "default": false,
-          "description": "Whether apply outputs should be written back into the input location.",
-          "title": "In Place",
-          "type": "boolean"
-        },
         "epoch_number": {
           "anyOf": [
             {
@@ -389,7 +370,7 @@
             }
           ],
           "default": null,
-          "description": "Output folder for saved predictions or evaluation artifacts. Use 'default' for apply to save next to the inputs, or null for evaluate to save inside the model run directory.",
+          "description": "Output folder for evaluation artifacts. Use null to save inside the model run directory.",
           "title": "Save Folder"
         },
         "overwrite": {

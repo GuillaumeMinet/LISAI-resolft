@@ -6,6 +6,7 @@ This module remains as a thin shim so older imports keep working.
 
 from .inference import (
     ApplyDefaults,
+    ApplyOutputOverrides,
     ApplyOverrides,
     ColorCodeDefaults,
     ColorCodeOverrides,
@@ -23,6 +24,7 @@ __all__ = [
     "ColorCodeDefaults",
     "ColorCodeOverrides",
     "ApplyDefaults",
+    "ApplyOutputOverrides",
     "ApplyOverrides",
     "EvaluateDefaults",
     "EvaluateOverrides",

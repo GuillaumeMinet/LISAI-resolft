@@ -132,3 +132,66 @@ def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Pa
 
     with pytest.raises(Exception, match="test_loader"):
         resolve_evaluate_options(config="invalid")
+
+
+def test_resolve_apply_output_policy_uses_local_default_when_no_override(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="default")
+
+    policy = defaults_mod.resolve_apply_output_policy(stg=local)
+
+    assert policy.mode == "default"
+    assert policy.save_folder is None
+
+
+def test_resolve_apply_output_policy_uses_local_in_place_when_no_override(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+
+    policy = defaults_mod.resolve_apply_output_policy(stg=local)
+
+    assert policy.mode == "in_place"
+
+
+def test_named_inference_output_overrides_local_preference(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    _write(
+        inference_config_dir / "upsamp.yml",
+        "apply:\n  output:\n    in_place: false\n  tiling_size: 512\n",
+    )
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+
+    policy = defaults_mod.resolve_apply_output_policy(config="upsamp", stg=local)
+
+    assert policy.mode == "default"
+
+
+def test_named_inference_save_folder_overrides_local_preference(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    _write(
+        inference_config_dir / "special.yml",
+        "apply:\n  output:\n    save_folder: /tmp/special_predictions\n",
+    )
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+
+    policy = defaults_mod.resolve_apply_output_policy(config="special", stg=local)
+
+    assert policy.mode == "folder"
+    assert policy.save_folder == Path("/tmp/special_predictions")
+
+
+def test_cli_output_override_has_priority_over_named_config(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    _write(
+        inference_config_dir / "special.yml",
+        "apply:\n  output:\n    in_place: true\n",
+    )
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+
+    policy = defaults_mod.resolve_apply_output_policy(
+        config="special",
+        in_place=False,
+        stg=local,
+    )
+
+    assert policy.mode == "default"

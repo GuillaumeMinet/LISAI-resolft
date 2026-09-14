@@ -79,3 +79,32 @@ def test_inference_models_reject_invalid_tiling_policy_values():
 
     with pytest.raises(ValidationError, match="tiling_size"):
         InferenceOverrides.model_validate({"evaluate": {"tiling_size": 0}})
+
+
+def test_apply_output_override_is_optional_and_sparse():
+    no_output = InferenceOverrides.model_validate({"apply": {"tiling_size": 512}})
+    in_place = InferenceOverrides.model_validate({"apply": {"output": {"in_place": True}}})
+    force_default = InferenceOverrides.model_validate({"apply": {"output": {"in_place": False}}})
+
+    assert no_output.apply is not None
+    assert no_output.apply.output is None
+    assert in_place.apply is not None
+    assert in_place.apply.output is not None
+    assert in_place.apply.output.in_place is True
+    assert force_default.apply is not None
+    assert force_default.apply.output is not None
+    assert force_default.apply.output.in_place is False
+
+
+def test_apply_output_override_rejects_conflicting_destination_fields():
+    with pytest.raises(ValidationError, match="mutually exclusive"):
+        InferenceOverrides.model_validate(
+            {
+                "apply": {
+                    "output": {
+                        "save_folder": "/tmp/predictions",
+                        "in_place": True,
+                    }
+                }
+            }
+        )

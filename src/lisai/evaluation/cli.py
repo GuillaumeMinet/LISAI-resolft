@@ -85,8 +85,31 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         "--config",
         help="Inference config path, or a config name from configs/inference with or without .yml/.yaml. Defaults to defaults.yml.",
     )
-    parser.add_argument("--save-folder", "--save_folder", dest="save_folder")
-    parser.add_argument("--in-place", "--in_place", dest="in_place", action=argparse.BooleanOptionalAction)
+    output_group = parser.add_argument_group(
+        "Output location",
+        "CLI output options override inference-config and local-config saving preferences.",
+    )
+    output_choice = output_group.add_mutually_exclusive_group()
+    output_choice.add_argument(
+        "--save-folder",
+        "--save_folder",
+        dest="save_folder",
+        metavar="PATH",
+        help=(
+            "Save predictions to PATH. If PATH already exists, LISAI creates a "
+            "numbered sibling instead of overwriting it."
+        ),
+    )
+    output_choice.add_argument(
+        "--in-place",
+        "--in_place",
+        dest="in_place",
+        action=argparse.BooleanOptionalAction,
+        help=(
+            "Save predictions alongside the input data. Use --no-in-place to "
+            "explicitly force normal inference-directory routing."
+        ),
+    )
     parser.add_argument("--epoch-number", "--epoch_number", dest="epoch_number", type=int)
     parser.add_argument("--best-or-last", "--best_or_last", dest="best_or_last", choices=["best", "last", "both"])
     parser.add_argument("--filters", type=_parse_csv_list)
@@ -290,7 +313,12 @@ def add_apply_subparser(subparsers: argparse._SubParsersAction[argparse.Argument
     parser = subparsers.add_parser(
         "apply",
         help="Apply a trained model to one file or directory.",
-        description="Apply a trained model to image file(s)",
+        description=(
+            "Apply a trained or promoted model to image file(s). By default, "
+            "outputs follow local_config.yml and the configured inference root. "
+            "A named inference config may override that behavior, while CLI "
+            "output options take final precedence."
+        ),
     )
     add_apply_arguments(parser)
     parser.set_defaults(handler=lambda args, p=parser: run_apply_from_args(args, p))

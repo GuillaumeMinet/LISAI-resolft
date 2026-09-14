@@ -10,6 +10,7 @@ paths:
     data_dir: "{data_root}/datasets"
     noise_models_dir: "{data_root}/noise_models"
     promoted_models_dir: "{data_root}/models"
+    inference_dir: "{data_root}/inference"
     run_container_dirname: "runs"
     # code_dir is injected automatically by Settings (project root)
 
@@ -30,7 +31,7 @@ paths:
 
     tensorboard_runs_dir: "{paths.roots.code_dir}/tensorboard/{dataset_name}/{tensorboard_subfolder}"
 
-    predictreal_saving: "{paths.roots.data_dir}/{dataset_usage_subfolder}/{dataset_name}/inference/{inference_subfolder}/{exp_name}"
+    inference_output_dir: "{paths.roots.inference_dir}/{source_name}/{model_name}"
 
     noise_model: "{paths.roots.noise_models_dir}/{noiseModel_name}/GMM.npz"
 

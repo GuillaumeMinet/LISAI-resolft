@@ -37,3 +37,21 @@ def test_dataset_usage_subfolders_control_dataset_location(monkeypatch):
         "eval_custom",
         "demo",
     )
+
+
+def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_path):
+    from lisai.config import settings
+
+    monkeypatch.setitem(
+        settings._ctx.paths.roots,
+        "inference_dir",
+        str(tmp_path / "predictions"),
+    )
+
+    paths = Paths(settings)
+
+    assert paths.inference_root() == (tmp_path / "predictions").resolve()
+    assert paths.inference_output_dir(
+        source_name="paper_mito",
+        model_name="mito_model",
+    ) == tmp_path / "predictions" / "paper_mito" / "mito_model"

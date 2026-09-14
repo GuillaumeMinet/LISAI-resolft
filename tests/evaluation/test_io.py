@@ -6,7 +6,7 @@ import numpy as np
 from tifffile import imread
 
 from lisai.evaluation.data import EvalItem
-from lisai.evaluation.io import EvalItemOutputWriter
+from lisai.evaluation.io import EvalItemOutputWriter, create_save_folder
 
 
 def _make_timelapse_item(tmp_path: Path) -> EvalItem:
@@ -64,3 +64,13 @@ def test_eval_item_output_writer_stacks_lvae_timelapse_outputs(tmp_path: Path):
     assert samples.shape == (4, 2, 2, 3)
     assert np.all(samples[:, 0] == 3.0)
     assert np.all(samples[:, 1] == 7.0)
+
+
+def test_create_save_folder_numbers_existing_apply_destination(tmp_path: Path):
+    base = tmp_path / "source" / "model"
+    base.mkdir(parents=True)
+
+    resolved = create_save_folder(base)
+
+    assert resolved == tmp_path / "source" / "model_01"
+    assert resolved.is_dir()

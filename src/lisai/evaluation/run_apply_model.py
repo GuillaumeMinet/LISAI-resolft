@@ -13,7 +13,12 @@ import numpy as np
 from tifffile import imread
 
 from lisai.data.utils import center_pad, crop_center
-from lisai.evaluation.defaults import UNSET, UnsetType, resolve_apply_options
+from lisai.evaluation.defaults import (
+    UNSET,
+    UnsetType,
+    resolve_apply_options,
+    resolve_apply_output_policy,
+)
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_inp
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
@@ -25,6 +30,7 @@ from lisai.evaluation.visualization.z_projection import (
     create_color_coded_image,
     enhance_contrast,
 )
+from lisai.infra.paths import Paths
 from lisai.lib.upsamp.inp_generators import (
     _deterministic_mltpl_sampling,
     generate_downsamp_inp,
@@ -116,8 +122,6 @@ def run_apply_model(model_dataset: str,
     """
     options = resolve_apply_options(
         config=config,
-        save_folder=save_folder,
-        in_place=in_place,
         epoch_number=epoch_number,
         best_or_last=best_or_last,
         filters=filters,
@@ -138,6 +142,11 @@ def run_apply_model(model_dataset: str,
         dark_frame_context_length=dark_frame_context_length,
     )
     color_code_prm = options["color_code_prm"] or {}
+    output_policy = resolve_apply_output_policy(
+        config=config,
+        save_folder=save_folder,
+        in_place=in_place,
+    )
 
     data_path = Path(data_path)
     if promoted_model_name is not None:
@@ -193,18 +202,21 @@ def run_apply_model(model_dataset: str,
     )
     print(f"Found #{len(list_files)} files.")
 
-    if options["in_place"]:
-        warnings.warn("arg:`in_place` set to True, input data will be overwitten by predictions")
-        if data_path.is_dir():
-            save_folder = data_path
-        else:
-            save_folder = data_path.parent
+    if output_policy.mode == "in_place":
+        save_folder = data_path if data_path.is_dir() else data_path.parent
+    elif output_policy.mode == "folder":
+        assert output_policy.save_folder is not None
+        save_folder = create_save_folder(path=output_policy.save_folder)
     else:
-        if options["save_folder"] == "default":
-            save_folder = data_path.parent / f"Predict_{model_subfolder}_{model_name}"
-        else:
-            save_folder = Path(options["save_folder"])
-        save_folder = create_save_folder(path=save_folder)
+        source_name = data_path.name if data_path.is_dir() else data_path.stem
+        if not source_name:
+            source_name = "input"
+        save_folder = create_save_folder(
+            path=Paths().inference_output_dir(
+                source_name=source_name,
+                model_name=model_name,
+            )
+        )
 
     for idx, file in enumerate(list_files):
         print(f"File {idx+1}/{max(1, len(list_files))}: {file}")

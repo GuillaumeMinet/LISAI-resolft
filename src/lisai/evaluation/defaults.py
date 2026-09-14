@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
@@ -23,11 +24,21 @@ class UnsetType:
     def __repr__(self) -> str:
         return "UNSET"
 
+
 UNSET = UnsetType()
+
+
+@dataclass(frozen=True)
+class ApplyOutputPolicy:
+    """Resolved destination policy for one `apply` invocation."""
+
+    mode: Literal["default", "in_place", "folder"]
+    save_folder: Path | None = None
 
 
 def resolve_inference_config_path(config_arg: str | Path | None) -> Path | None:
     return inference_config_paths.resolve(config_arg)
+
 
 def load_inference_config(
     config_arg: str | Path | None = None,
@@ -53,26 +64,44 @@ def _resolve_task_options(defaults: dict[str, Any], overrides: dict[str, Any]) -
     return {key: _merge_value(default, overrides.get(key, UNSET)) for key, default in defaults.items()}
 
 
+def _processing_section_overrides(
+    cfg: InferenceOverrides,
+    section: Literal["apply", "evaluate"],
+) -> dict[str, Any] | None:
+    raw = cfg.model_dump(exclude_unset=True)
+    section_raw = raw.get(section)
+    if section_raw is None:
+        return None
+    section_raw = dict(section_raw)
+    if section == "apply":
+        # Output routing has its own precedence chain and must never be deep-merged
+        # with inference-processing defaults.
+        section_raw.pop("output", None)
+    return section_raw
+
+
 def _resolve_section_defaults(
     section: Literal["apply", "evaluate"],
     *,
     config: str | Path | None = None,
 ) -> dict[str, Any]:
-    resolved = ResolvedInferenceConfig().model_dump()
+    resolved_section = dict(ResolvedInferenceConfig().model_dump()[section])
+
     defaults_cfg, _ = load_inference_config(None)
-    resolved = deep_merge(resolved, defaults_cfg.model_dump(exclude_unset=True))
+    defaults_overrides = _processing_section_overrides(defaults_cfg, section)
+    if defaults_overrides:
+        resolved_section = deep_merge(resolved_section, defaults_overrides)
 
     if config is None:
-        return dict(resolved[section])
+        return resolved_section
 
     named_cfg, cfg_path = load_inference_config(config)
-    named_cfg_dict = named_cfg.model_dump(exclude_unset=True)
-    if section not in named_cfg_dict:
+    named_overrides = _processing_section_overrides(named_cfg, section)
+    if named_overrides is None:
         raise ValueError(
             f"Inference config '{cfg_path}' does not define a '{section}' section."
         )
-    resolved = deep_merge(resolved, named_cfg_dict)
-    return dict(resolved[section])
+    return deep_merge(resolved_section, named_overrides)
 
 
 def resolve_apply_options(
@@ -88,6 +117,45 @@ def resolve_apply_options(
     else:
         section_defaults = _resolve_section_defaults("apply", config=config)
     return _resolve_task_options(section_defaults, overrides)
+
+
+def resolve_apply_output_policy(
+    *,
+    config: str | Path | None = None,
+    save_folder: str | Path | None | UnsetType = UNSET,
+    in_place: bool | UnsetType = UNSET,
+    stg=None,
+) -> ApplyOutputPolicy:
+    """Resolve apply output routing as CLI > named config > local config > project default."""
+    if save_folder is not UNSET and in_place is not UNSET:
+        raise ValueError("save_folder and in_place are mutually exclusive output overrides.")
+
+    # Explicit CLI output choice is authoritative. False means "force default routing".
+    if save_folder is not UNSET:
+        if save_folder is None or not str(save_folder).strip():
+            raise ValueError("save_folder must not be empty when explicitly provided.")
+        return ApplyOutputPolicy(mode="folder", save_folder=Path(save_folder))
+    if in_place is not UNSET:
+        return ApplyOutputPolicy(mode="in_place" if in_place else "default")
+
+    # Only an explicitly selected named config participates in output routing.
+    # defaults.yml provides processing defaults, while local_config owns normal
+    # output behavior.
+    if config is not None:
+        named_cfg, _ = load_inference_config(config)
+        if named_cfg.apply is not None and named_cfg.apply.output is not None:
+            output = named_cfg.apply.output
+            if output.save_folder is not None:
+                return ApplyOutputPolicy(mode="folder", save_folder=Path(output.save_folder))
+            if output.in_place is not None:
+                return ApplyOutputPolicy(mode="in_place" if output.in_place else "default")
+
+    if stg is None:
+        from lisai.config.settings import settings as stg
+
+    if stg.INFERENCE_OUTPUT_MODE == "in_place":
+        return ApplyOutputPolicy(mode="in_place")
+    return ApplyOutputPolicy(mode="default")
 
 
 def resolve_evaluate_options(
@@ -109,20 +177,24 @@ def load_inference_defaults(path: str | Path | None = None) -> ResolvedInference
     resolved = ResolvedInferenceConfig().model_dump()
     cfg_path = Path(path) if path is not None else resolve_inference_config_path(None)
     if cfg_path is not None:
-        cfg = load_yaml(cfg_path)
-        raw = InferenceOverrides.model_validate(cfg).model_dump(exclude_unset=True)
-        resolved = deep_merge(resolved, raw)
+        cfg = InferenceOverrides.model_validate(load_yaml(cfg_path))
+        for section in ("apply", "evaluate"):
+            overrides = _processing_section_overrides(cfg, section)
+            if overrides:
+                resolved[section] = deep_merge(resolved[section], overrides)
     return ResolvedInferenceConfig.model_validate(resolved)
 
 
 __all__ = [
     "UNSET",
     "UnsetType",
+    "ApplyOutputPolicy",
     "InferenceConfig",
     "InferenceDefaults",
     "load_inference_config",
     "load_inference_defaults",
     "resolve_apply_options",
+    "resolve_apply_output_policy",
     "resolve_evaluate_options",
     "resolve_inference_config_path",
 ]

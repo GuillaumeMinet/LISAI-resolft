@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import io
 from datetime import timedelta
 from pathlib import Path
@@ -452,3 +453,35 @@ def test_evaluate_cli_rejects_on_with_split():
         args.handler(args)
 
     assert exc_info.value.code == 2
+
+
+def test_apply_cli_output_arguments_are_mutually_exclusive():
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "apply",
+                "run_00",
+                "/data/images",
+                "--save-folder",
+                "/tmp/predictions",
+                "--in-place",
+            ]
+        )
+
+
+def test_apply_help_has_output_location_group():
+    parser = build_parser()
+    apply_parser = next(
+        action.choices["apply"]
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    help_text = apply_parser.format_help()
+
+    assert "Output location" in help_text
+    assert "--save-folder" in help_text
+    assert "--in-place" in help_text
+    assert "--no-in-place" in help_text
