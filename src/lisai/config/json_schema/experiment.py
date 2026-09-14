@@ -209,7 +209,7 @@ def _registry_schema_summary(info: Mapping[str, Any]) -> _RegistryDatasetSchema:
             if not isinstance(output, Mapping):
                 continue
             role = output.get("role")
-            values = _output_key_path_values(output)
+            values = _output_path_values(output)
             if role == "inp":
                 for value in values:
                     summary.inputs.add(value)
@@ -224,13 +224,14 @@ def _registry_schema_summary(info: Mapping[str, Any]) -> _RegistryDatasetSchema:
     return summary
 
 
-def _output_key_path_values(output: Mapping[str, Any]) -> set[str]:
-    values = {
-        str(value)
-        for value in (output.get("key"), output.get("path"))
-        if value is not None
-    }
-    return values
+def _output_path_values(output: Mapping[str, Any]) -> set[str]:
+    path = output.get("path")
+    if path is not None:
+        path = {str(path)}
+    else:
+        key = output.get("key")
+        path = str(key) if key is not None else set()
+    return path
 
 
 def _known_dataset_conditions(summaries: Mapping[str, _RegistryDatasetSchema]) -> list[dict[str, Any]]:

@@ -202,7 +202,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         nargs="?",
         const="",
         default=None,
-        help="Input subfolder or input key for data.input. Use --input or --input= for an empty string.",
+        help="Input subfolder for data.input. Use --input or --input= for an empty string.",
     )
     new_parser.add_argument("--target", help="Target subfolder or key for paired datasets.")
     new_parser.add_argument("--betaKL", "--beta-kl", dest="betaKL", type=float)

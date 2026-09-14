@@ -181,10 +181,11 @@ def registry_paths_for_data_type(info: Mapping[str, Any], data_type: str | None)
     if isinstance(outputs, list):
         for output in outputs:
             if isinstance(output, Mapping):
-                if output.get("key") is not None:
-                    paths.add(str(output["key"]))
                 if output.get("path") is not None:
                     paths.add(str(output["path"]))
+                elif output.get("key") is not None:
+                    # legacy fallback
+                    paths.add(str(output["key"]))
             elif output is not None:
                 paths.add(str(output))
 
