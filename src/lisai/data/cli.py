@@ -10,7 +10,11 @@ from lisai.infra.paths import Paths
 from lisai.runs.cli import _try_open_path
 
 from .dataset_registry import load_dataset_registry
+from .readme import dataset_readme_path, ensure_dataset_readme
 from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
+
+
+DESCRIPTION_PREVIEW_MAX_CHARS = 40
 
 
 def _paths() -> Paths:
@@ -131,6 +135,18 @@ def _format_defaults(info: Mapping[str, Any], data_types: Sequence[str]) -> str:
     return ";".join(values) if values else "-"
 
 
+def _format_description(value: Any, *, full: bool) -> str:
+    if value is None:
+        return "-"
+    text = " ".join(str(value).split())
+    if not text:
+        return "-"
+    if full or len(text) <= DESCRIPTION_PREVIEW_MAX_CHARS:
+        return text
+    keep = DESCRIPTION_PREVIEW_MAX_CHARS - 3
+    return text[:keep].rstrip() + "..."
+
+
 def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     widths = [
         max(len(str(row[index])) for row in (headers, *rows))
@@ -158,7 +174,13 @@ def _usage_sort_key(item: tuple[str, Mapping[str, Any]]) -> tuple[int, str]:
     return order.get(usage, 2), name.casefold()
 
 
-def list_datasets(*, paths: Paths | None = None, usage: str | None = None) -> None:
+def list_datasets(
+    *,
+    paths: Paths | None = None,
+    usage: str | None = None,
+    full_description: bool = False,
+    include_description: bool = False,
+) -> None:
     paths = paths or _paths()
     registry = _registry_from_paths(paths)
     if usage is not None:
@@ -171,23 +193,35 @@ def list_datasets(*, paths: Paths | None = None, usage: str | None = None) -> No
         print(f"No datasets found in {paths.dataset_registry_path()}")
         return
 
-    headers = ("name", "usage", "format", "types", "files", "frames", "split", "range", "defaults")
-    rows: list[tuple[str, str, str, str, str, str, str, str, str]] = []
+    headers = (
+        "name", "usage", "format", "types", "files", "frames", "split", "range", "defaults",
+    )
+    if include_description:
+        headers += ("description",)
+
+    rows: list[tuple[str, ...]] = []
     for name, info in sorted(registry.items(), key=_usage_sort_key):
         data_types = _data_types(info)
-        rows.append(
-            (
-                name,
-                str(info.get("usage") or "-"),
-                str(info.get("data_format") or "-"),
-                ",".join(data_types) if data_types else "-",
-                _format_files(info, data_types),
-                _format_frames(info, data_types),
-                _format_split(info, data_types),
-                _format_range_summary(info, data_types),
-                _format_defaults(info, data_types),
-            )
+        row = (
+            name,
+            str(info.get("usage") or "-"),
+            str(info.get("data_format") or "-"),
+            ",".join(data_types) if data_types else "-",
+            _format_files(info, data_types),
+            _format_frames(info, data_types),
+            _format_split(info, data_types),
+            _format_range_summary(info, data_types),
+            _format_defaults(info, data_types),
         )
+
+        if include_description:
+            row+=(
+                _format_description(
+                    info.get("description"),
+                    full=full_description,
+                ),
+            )
+        rows.append(row)
     print(_table(headers, rows))
 
 
@@ -214,6 +248,7 @@ def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
     print(f"Path: {dataset_dir.resolve()}")
     print(f"Usage: {info.get('usage') or '-'}")
     print(f"Format: {info.get('data_format') or '-'}")
+    print(f"Description: {info.get('description') or '-'}")
 
     data_types = _data_types(info)
     size = _as_mapping(info.get("size"))
@@ -263,11 +298,43 @@ def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
             for key in ("input", "target", "eval_gt"):
                 print(f"    {key}: {_format_path_value(defaults_entry.get(key))}")
 
+    readme_path = dataset_readme_path(dataset_dir)
+    print("")
+    if not readme_path.exists():
+        print("README: not provided")
+    else:
+        print("README:")
+        content = readme_path.read_text(encoding="utf-8")
+        if content:
+            print(content.rstrip("\n"))
+
 
 def open_dataset(name: str, *, paths: Paths | None = None, parser: argparse.ArgumentParser) -> int:
     paths = paths or _paths()
     _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
     resolved = dataset_dir.resolve()
+    if _try_open_path(resolved):
+        return 0
+    print(resolved)
+    return 0
+
+
+def open_dataset_readme(
+    name: str,
+    *,
+    paths: Paths | None = None,
+    parser: argparse.ArgumentParser,
+) -> int:
+    paths = paths or _paths()
+    _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
+    if not dataset_dir.exists():
+        parser.exit(
+            status=1,
+            message=f"Dataset directory does not exist: {dataset_dir.resolve()}\n",
+        )
+
+    readme_path, _ = ensure_dataset_readme(dataset_dir)
+    resolved = readme_path.resolve()
     if _try_open_path(resolved):
         return 0
     print(resolved)
@@ -353,7 +420,9 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         usage = "training"
     elif args.evaluation:
         usage = "evaluation"
-    list_datasets(usage=usage)
+    list_datasets(usage=usage, 
+                  full_description=args.full,
+                  include_description=not args.short)
     return 0
 
 
@@ -370,6 +439,20 @@ def _add_dataset_list_arguments(parser: argparse.ArgumentParser) -> None:
         help="Show only evaluation datasets.",
     )
 
+    description_group = parser.add_mutually_exclusive_group()
+
+    description_group.add_argument(
+        "--full",
+        action="store_true",
+        help="Show full dataset descriptions instead of compact previews.",
+    )
+
+    description_group.add_argument(
+        "--short",
+        action="store_true",
+        help="Hide dataset descriptions.",
+    )
+
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     show_dataset(args.name, parser=parser)
@@ -378,6 +461,10 @@ def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
 
 def run_open_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     return open_dataset(args.name, parser=parser)
+
+
+def run_open_readme_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    return open_dataset_readme(args.name, parser=parser)
 
 
 def run_rename_from_args(args: argparse.Namespace) -> int:
@@ -433,6 +520,16 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
     open_parser.add_argument("name", help="Dataset name from the dataset registry.")
     open_parser.set_defaults(handler=lambda args, p=open_parser: run_open_from_args(args, p))
 
+    readme_parser = dataset_subparsers.add_parser(
+        "open-readme",
+        help="Open a dataset README, creating the default README if needed.",
+        description="Open a dataset README, creating the default README if needed.",
+    )
+    readme_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    readme_parser.set_defaults(
+        handler=lambda args, p=readme_parser: run_open_readme_from_args(args, p)
+    )
+
     _add_dataset_rename_parser(dataset_subparsers)
     return parser
 
@@ -466,6 +563,16 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
     open_parser.add_argument("name", help="Dataset name from the dataset registry.")
     open_parser.set_defaults(handler=lambda args, p=open_parser: run_open_from_args(args, p))
 
+    readme_parser = subparsers.add_parser(
+        "open-readme",
+        help="Open a dataset README, creating the default README if needed.",
+        description="Open a dataset README, creating the default README if needed.",
+    )
+    readme_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    readme_parser.set_defaults(
+        handler=lambda args, p=readme_parser: run_open_readme_from_args(args, p)
+    )
+
     _add_dataset_rename_parser(subparsers)
     return parser
 
@@ -482,6 +589,7 @@ __all__ = [
     "list_datasets",
     "main",
     "open_dataset",
+    "open_dataset_readme",
     "rename_dataset",
     "show_dataset",
 ]

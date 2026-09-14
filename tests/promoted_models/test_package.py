@@ -41,6 +41,12 @@ class FakePaths:
     def promoted_model_exports_dir(self):
         return self.promoted_models_root() / "exports"
 
+    def dataset_registry_path(self):
+        return self.root / "datasets" / "dataset_registry.yml"
+
+    def dataset_dir(self, *, dataset_name: str, data_subfolder: str = "", usage: str = "training"):
+        return self.root / "datasets" / usage / dataset_name / data_subfolder
+
 
 def _resolved_config() -> dict:
     return {
@@ -150,6 +156,49 @@ def test_promote_creates_canonical_directory_registry_and_clean_weights(tmp_path
     assert registry["models"]["demo-model"]["source_run_id"] == plan.manifest.source.run_id
     assert registry["models"]["demo-model"]["path"] == "demo-model"
     assert registry["models"]["demo-model"]["origin"] == "promoted"
+
+
+def test_promote_snapshots_training_dataset_documentation_in_model_card(
+    tmp_path: Path, monkeypatch
+):
+    plan = _plan(tmp_path)
+    paths = FakePaths(tmp_path)
+    monkeypatch.setattr(package_module, "build_promotion_plan", lambda *args, **kwargs: plan)
+
+    registry_path = paths.dataset_registry_path()
+    registry_path.parent.mkdir(parents=True)
+    registry_path.write_text(
+        "DemoData:\n"
+        "  data_format: timelapse\n"
+        "  usage: training\n"
+        "  description: Live demo dataset for model training.\n",
+        encoding="utf-8",
+    )
+    dataset_dir = paths.dataset_dir(dataset_name="DemoData", usage="training")
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "README.md").write_text(
+        "# DemoData\n\n"
+        "**Sample**\n"
+        "- Cell type: U2OS\n\n"
+        "**Acquisition**\n"
+        "- Pixel size: 30 nm\n",
+        encoding="utf-8",
+    )
+
+    result = package_module.promote_run(
+        tmp_path / "run",
+        name="demo-model",
+        paths=paths,
+    )
+
+    card = (result.model_dir / "README.md").read_text(encoding="utf-8")
+    assert "## Training dataset" in card
+    assert "- Dataset: `DemoData`" in card
+    assert "- Description: Live demo dataset for model training." in card
+    assert "**Sample**" in card
+    assert "- Cell type: U2OS" in card
+    assert "- Pixel size: 30 nm" in card
+    assert "# DemoData" not in card
 
 
 def test_export_zips_existing_promoted_model_under_data_root(tmp_path: Path, monkeypatch):

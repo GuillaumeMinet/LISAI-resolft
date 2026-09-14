@@ -19,6 +19,9 @@ class DummyPaths:
     def dataset_registry_path(self) -> Path:
         return self.root / "dataset_registry.yml"
 
+    def dataset_dir(self, *, dataset_name: str, data_subfolder: str = "", usage: str = "training") -> Path:
+        return self.root / dataset_name / data_subfolder
+
     def dataset_dump_dir(self, *, dataset_name: str, data_type: str = "", additional_subfolder: str = "", usage: str = "training") -> Path:
         return self.root / dataset_name / "dump" / data_type / additional_subfolder
 
@@ -126,6 +129,7 @@ def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
     assert registry[dataset_name]["data_format"] == "single"
     assert "format" not in registry[dataset_name]
     assert registry[dataset_name]["usage"] == "training"
+    assert (tmp_path / dataset_name / "README.md").read_text(encoding="utf-8") == "README not updated yet.\n"
     assert registry[dataset_name]["outputs"]["recon"] == [
         {"key": "main", "path": "", "role": "inp", "axes": "YX"}
     ]
@@ -415,3 +419,37 @@ def test_evaluation_preprocess_rejects_enabled_split(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Evaluation datasets cannot be split"):
         PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path))
+
+
+def test_preprocess_registry_description_initializes_but_does_not_overwrite(tmp_path: Path):
+    dataset_name = "DescribedDataset"
+    _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
+
+    cfg = _single_cfg(dataset_name)
+    cfg["registry"] = {"description": "Initial description"}
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+
+    registry_path = tmp_path / "dataset_registry.yml"
+    registry = load_yaml(registry_path)
+    assert registry[dataset_name]["description"] == "Initial description"
+
+    registry[dataset_name]["description"] = "Manually edited description"
+    from lisai.config.io.yaml import save_yaml
+    save_yaml(registry, registry_path)
+
+    cfg["registry"] = {"description": "Preprocess description should not win"}
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(overwrite=True)
+
+    registry = load_yaml(registry_path)
+    assert registry[dataset_name]["description"] == "Manually edited description"
+
+
+def test_preprocess_does_not_overwrite_existing_readme(tmp_path: Path):
+    dataset_name = "DocumentedDataset"
+    _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
+    readme = tmp_path / dataset_name / "README.md"
+    readme.write_text("Custom dataset notes.\n", encoding="utf-8")
+
+    PreprocessRun.from_cfg(_single_cfg(dataset_name), paths=DummyPaths(tmp_path)).execute()
+
+    assert readme.read_text(encoding="utf-8") == "Custom dataset notes.\n"

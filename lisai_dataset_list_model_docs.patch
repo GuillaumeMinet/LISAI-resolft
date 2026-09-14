@@ -1,0 +1,289 @@
+--- a/src/lisai/data/cli.py
++++ b/src/lisai/data/cli.py
+@@ -12,6 +12,9 @@
+ from .dataset_registry import load_dataset_registry
+ from .readme import dataset_readme_path, ensure_dataset_readme
+ from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
++
++
++DESCRIPTION_PREVIEW_MAX_CHARS = 40
+ 
+ 
+ def _paths() -> Paths:
+@@ -132,6 +135,18 @@
+     return ";".join(values) if values else "-"
+ 
+ 
++def _format_description(value: Any, *, full: bool) -> str:
++    if value is None:
++        return "-"
++    text = " ".join(str(value).split())
++    if not text:
++        return "-"
++    if full or len(text) <= DESCRIPTION_PREVIEW_MAX_CHARS:
++        return text
++    keep = DESCRIPTION_PREVIEW_MAX_CHARS - 3
++    return text[:keep].rstrip() + "..."
++
++
+ def _table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
+     widths = [
+         max(len(str(row[index])) for row in (headers, *rows))
+@@ -159,7 +174,12 @@
+     return order.get(usage, 2), name.casefold()
+ 
+ 
+-def list_datasets(*, paths: Paths | None = None, usage: str | None = None) -> None:
++def list_datasets(
++    *,
++    paths: Paths | None = None,
++    usage: str | None = None,
++    full_description: bool = False,
++) -> None:
+     paths = paths or _paths()
+     registry = _registry_from_paths(paths)
+     if usage is not None:
+@@ -172,8 +192,10 @@
+         print(f"No datasets found in {paths.dataset_registry_path()}")
+         return
+ 
+-    headers = ("name", "usage", "format", "types", "files", "frames", "split", "range", "defaults")
+-    rows: list[tuple[str, str, str, str, str, str, str, str, str]] = []
++    headers = (
++        "name", "usage", "format", "types", "files", "frames", "split", "range", "defaults", "description"
++    )
++    rows: list[tuple[str, ...]] = []
+     for name, info in sorted(registry.items(), key=_usage_sort_key):
+         data_types = _data_types(info)
+         rows.append(
+@@ -187,6 +209,7 @@
+                 _format_split(info, data_types),
+                 _format_range_summary(info, data_types),
+                 _format_defaults(info, data_types),
++                _format_description(info.get("description"), full=full_description),
+             )
+         )
+     print(_table(headers, rows))
+@@ -387,7 +410,7 @@
+         usage = "training"
+     elif args.evaluation:
+         usage = "evaluation"
+-    list_datasets(usage=usage)
++    list_datasets(usage=usage, full_description=args.full)
+     return 0
+ 
+ 
+@@ -402,6 +425,11 @@
+         "--evaluation",
+         action="store_true",
+         help="Show only evaluation datasets.",
++    )
++    parser.add_argument(
++        "--full",
++        action="store_true",
++        help="Show full dataset descriptions instead of compact previews.",
+     )
+ 
+ 
+--- a/src/lisai/promoted_models/card.py
++++ b/src/lisai/promoted_models/card.py
+@@ -63,8 +63,26 @@
+         ]
+     )
+ 
+-    
+-def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> str:
++
++def _dataset_readme_body(readme: str | None) -> str | None:
++    if readme is None:
++        return None
++    lines = readme.strip().splitlines()
++    if lines and lines[0].startswith("# "):
++        lines = lines[1:]
++        while lines and not lines[0].strip():
++            lines.pop(0)
++    body = "\n".join(lines).strip()
++    return body or None
++
++
++def render_model_card(
++    plan: PromotionPlan,
++    manifest: PromotedModelManifest,
++    *,
++    dataset_description: str | None = None,
++    dataset_readme: str | None = None,
++) -> str:
+     """Render a concise, mostly automatic model card for a promoted model."""
+ 
+     params = plan.saved_run.model_parameters.model_dump(mode="json", exclude_none=True)
+@@ -77,9 +95,23 @@
+         "",
+         _render_auto_overview_block(manifest),
+         "",
++        "## Training dataset",
++        "",
++        f"- Dataset: `{manifest.training_data.dataset}`",
++    ]
++
++    if dataset_description:
++        lines.append(f"- Description: {dataset_description}")
++
++    dataset_body = _dataset_readme_body(dataset_readme)
++    if dataset_body:
++        lines.extend(["", dataset_body])
++
++    lines.extend([
++        "",
+         "## Model parameters",
+         "",
+-    ]
++    ])
+ 
+     if parameter_lines:
+         lines.extend(parameter_lines)
+--- a/src/lisai/promoted_models/package.py
++++ b/src/lisai/promoted_models/package.py
+@@ -8,6 +8,8 @@
+ from pathlib import Path
+ 
+ from lisai.config import load_yaml, save_yaml, settings
++from lisai.data.dataset_registry import load_dataset_registry
++from lisai.data.readme import dataset_readme_path
+ from lisai.evaluation.saved_run import SavedTrainingRun
+ from lisai.infra.paths import Paths
+ 
+@@ -94,6 +96,28 @@
+         manifest.model_dump(mode="json", exclude_none=True),
+         model_dir / MODEL_MANIFEST_FILENAME,
+     )
++
++
++def _training_dataset_documentation(
++    dataset_name: str,
++    *,
++    paths: Paths,
++) -> tuple[str | None, str | None]:
++    registry = load_dataset_registry(paths.dataset_registry_path())
++    info = registry.get(dataset_name)
++    if info is None:
++        return None, None
++
++    raw_description = info.get("description")
++    description = str(raw_description).strip() if raw_description is not None else None
++    description = description or None
++
++    usage = str(info.get("usage") or "training").lower()
++    readme_path = dataset_readme_path(
++        paths.dataset_dir(dataset_name=dataset_name, usage=usage)
++    )
++    readme = readme_path.read_text(encoding="utf-8") if readme_path.exists() else None
++    return description, readme
+ 
+ 
+ def load_promoted_model_from_dir(model_dir: str | Path) -> PromotedModel:
+@@ -177,8 +201,17 @@
+         manifest = plan.manifest.model_copy(update={"checksums": checksums})
+         manifest = PromotedModelManifest.model_validate(manifest.model_dump(mode="python"))
+         _write_manifest(staging_dir, manifest)
++        dataset_description, dataset_readme = _training_dataset_documentation(
++            manifest.training_data.dataset,
++            paths=resolved_paths,
++        )
+         (staging_dir / MODEL_CARD_FILENAME).write_text(
+-            render_model_card(plan, manifest),
++            render_model_card(
++                plan,
++                manifest,
++                dataset_description=dataset_description,
++                dataset_readme=dataset_readme,
++            ),
+             encoding="utf-8",
+         )
+ 
+--- a/tests/data/test_dataset_cli.py
++++ b/tests/data/test_dataset_cli.py
+@@ -148,6 +148,19 @@
+     assert "vim_fixed" in captured.out
+     assert "147" in captured.out
+     assert "snr=5-6" in captured.out
++    assert "description" in captured.out
++    assert "Fixed-cell vimentin at multiple SNR l..." in captured.out
++    assert "Fixed-cell vimentin at multiple SNR levels." not in captured.out
++
++
++def test_datasets_list_full_shows_complete_description(monkeypatch, tmp_path: Path, capsys):
++    _write_registry(tmp_path)
++    _patch_paths(monkeypatch, tmp_path)
++
++    assert root_cli.main(["datasets", "list", "--full"]) == 0
++
++    captured = capsys.readouterr()
++    assert "Fixed-cell vimentin at multiple SNR levels." in captured.out
+ 
+ 
+ def test_datasets_show_renders_dataset_details(monkeypatch, tmp_path: Path, capsys):
+--- a/tests/promoted_models/test_package.py
++++ b/tests/promoted_models/test_package.py
+@@ -40,6 +40,12 @@
+ 
+     def promoted_model_exports_dir(self):
+         return self.promoted_models_root() / "exports"
++
++    def dataset_registry_path(self):
++        return self.root / "datasets" / "dataset_registry.yml"
++
++    def dataset_dir(self, *, dataset_name: str, data_subfolder: str = "", usage: str = "training"):
++        return self.root / "datasets" / usage / dataset_name / data_subfolder
+ 
+ 
+ def _resolved_config() -> dict:
+@@ -152,6 +158,49 @@
+     assert registry["models"]["demo-model"]["origin"] == "promoted"
+ 
+ 
++def test_promote_snapshots_training_dataset_documentation_in_model_card(
++    tmp_path: Path, monkeypatch
++):
++    plan = _plan(tmp_path)
++    paths = FakePaths(tmp_path)
++    monkeypatch.setattr(package_module, "build_promotion_plan", lambda *args, **kwargs: plan)
++
++    registry_path = paths.dataset_registry_path()
++    registry_path.parent.mkdir(parents=True)
++    registry_path.write_text(
++        "DemoData:\n"
++        "  data_format: timelapse\n"
++        "  usage: training\n"
++        "  description: Live demo dataset for model training.\n",
++        encoding="utf-8",
++    )
++    dataset_dir = paths.dataset_dir(dataset_name="DemoData", usage="training")
++    dataset_dir.mkdir(parents=True)
++    (dataset_dir / "README.md").write_text(
++        "# DemoData\n\n"
++        "**Sample**\n"
++        "- Cell type: U2OS\n\n"
++        "**Acquisition**\n"
++        "- Pixel size: 30 nm\n",
++        encoding="utf-8",
++    )
++
++    result = package_module.promote_run(
++        tmp_path / "run",
++        name="demo-model",
++        paths=paths,
++    )
++
++    card = (result.model_dir / "README.md").read_text(encoding="utf-8")
++    assert "## Training dataset" in card
++    assert "- Dataset: `DemoData`" in card
++    assert "- Description: Live demo dataset for model training." in card
++    assert "**Sample**" in card
++    assert "- Cell type: U2OS" in card
++    assert "- Pixel size: 30 nm" in card
++    assert "# DemoData" not in card
++
++
+ def test_export_zips_existing_promoted_model_under_data_root(tmp_path: Path, monkeypatch):
+     plan = _plan(tmp_path)
+     paths = FakePaths(tmp_path)

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from lisai.config import load_yaml, save_yaml, settings
+from lisai.data.dataset_registry import load_dataset_registry
+from lisai.data.readme import dataset_readme_path
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
 
@@ -96,6 +98,28 @@ def _write_manifest(model_dir: Path, manifest: PromotedModelManifest) -> None:
     )
 
 
+def _training_dataset_documentation(
+    dataset_name: str,
+    *,
+    paths: Paths,
+) -> tuple[str | None, str | None]:
+    registry = load_dataset_registry(paths.dataset_registry_path())
+    info = registry.get(dataset_name)
+    if info is None:
+        return None, None
+
+    raw_description = info.get("description")
+    description = str(raw_description).strip() if raw_description is not None else None
+    description = description or None
+
+    usage = str(info.get("usage") or "training").lower()
+    readme_path = dataset_readme_path(
+        paths.dataset_dir(dataset_name=dataset_name, usage=usage)
+    )
+    readme = readme_path.read_text(encoding="utf-8") if readme_path.exists() else None
+    return description, readme
+
+
 def load_promoted_model_from_dir(model_dir: str | Path) -> PromotedModel:
     model_dir = Path(model_dir)
     manifest_path = model_dir / MODEL_MANIFEST_FILENAME
@@ -177,8 +201,17 @@ def promote_run(
         manifest = plan.manifest.model_copy(update={"checksums": checksums})
         manifest = PromotedModelManifest.model_validate(manifest.model_dump(mode="python"))
         _write_manifest(staging_dir, manifest)
+        dataset_description, dataset_readme = _training_dataset_documentation(
+            manifest.training_data.dataset,
+            paths=resolved_paths,
+        )
         (staging_dir / MODEL_CARD_FILENAME).write_text(
-            render_model_card(plan, manifest),
+            render_model_card(
+                plan,
+                manifest,
+                dataset_description=dataset_description,
+                dataset_readme=dataset_readme,
+            ),
             encoding="utf-8",
         )
 

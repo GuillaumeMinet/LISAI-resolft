@@ -87,6 +87,7 @@ def _write_registry(root: Path) -> None:
             "vim_fixed": {
                 "data_format": "mltpl_snr",
                 "usage": "training",
+                "description": "Fixed-cell vimentin at multiple SNR levels.",
                 "size": {
                     "recon": {
                         "n_files": 25,
@@ -147,6 +148,19 @@ def test_datasets_list_renders_compact_table(monkeypatch, tmp_path: Path, capsys
     assert "vim_fixed" in captured.out
     assert "147" in captured.out
     assert "snr=5-6" in captured.out
+    assert "description" in captured.out
+    assert "Fixed-cell vimentin at multiple SNR l..." in captured.out
+    assert "Fixed-cell vimentin at multiple SNR levels." not in captured.out
+
+
+def test_datasets_list_full_shows_complete_description(monkeypatch, tmp_path: Path, capsys):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+
+    assert root_cli.main(["datasets", "list", "--full"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Fixed-cell vimentin at multiple SNR levels." in captured.out
 
 
 def test_datasets_show_renders_dataset_details(monkeypatch, tmp_path: Path, capsys):
@@ -160,6 +174,8 @@ def test_datasets_show_renders_dataset_details(monkeypatch, tmp_path: Path, caps
     assert "Dataset: vim_fixed" in captured.out
     assert f"Path: {(tmp_path / 'training' / 'vim_fixed').resolve()}" in captured.out
     assert "Format: mltpl_snr" in captured.out
+    assert "Description: Fixed-cell vimentin at multiple SNR levels." in captured.out
+    assert "README: not provided" in captured.out
     assert "snr_levels: 5-6" in captured.out
     assert "split: train=21 val=1 test=3" in captured.out
     assert "inp_mltpl_snr" in captured.out
@@ -243,3 +259,48 @@ def test_datasets_show_unknown_dataset_exits(monkeypatch, tmp_path: Path, capsys
     assert exc_info.value.code == 1
     assert "Unknown dataset 'missing'" in captured.err
     assert "vim_fixed" in captured.err
+
+
+def test_datasets_show_prints_readme_verbatim(monkeypatch, tmp_path: Path, capsys):
+    _write_registry(tmp_path)
+    dataset_dir = tmp_path / "training" / "vim_fixed"
+    dataset_dir.mkdir(parents=True)
+    (dataset_dir / "README.md").write_text("README not updated yet.\n", encoding="utf-8")
+    _patch_paths(monkeypatch, tmp_path)
+
+    assert root_cli.main(["datasets", "show", "vim_fixed"]) == 0
+
+    captured = capsys.readouterr()
+    assert "README:\nREADME not updated yet." in captured.out
+
+
+def test_datasets_open_readme_creates_default_and_opens(monkeypatch, tmp_path: Path):
+    _write_registry(tmp_path)
+    dataset_dir = tmp_path / "training" / "vim_fixed"
+    dataset_dir.mkdir(parents=True)
+    _patch_paths(monkeypatch, tmp_path)
+    opened = {}
+
+    def fake_open(path: Path) -> bool:
+        opened["path"] = path
+        return True
+
+    monkeypatch.setattr(dataset_cli, "_try_open_path", fake_open)
+
+    assert root_cli.main(["datasets", "open-readme", "vim_fixed"]) == 0
+
+    readme = dataset_dir / "README.md"
+    assert readme.read_text(encoding="utf-8") == "README not updated yet.\n"
+    assert opened["path"] == readme.resolve()
+
+
+def test_datasets_open_readme_does_not_recreate_missing_dataset(monkeypatch, tmp_path: Path, capsys):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        root_cli.main(["datasets", "open-readme", "vim_fixed"])
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "Dataset directory does not exist" in captured.err

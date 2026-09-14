@@ -63,8 +63,26 @@ def _render_auto_overview_block(manifest: PromotedModelManifest) -> str:
         ]
     )
 
-    
-def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> str:
+
+def _dataset_readme_body(readme: str | None) -> str | None:
+    if readme is None:
+        return None
+    lines = readme.strip().splitlines()
+    if lines and lines[0].startswith("# "):
+        lines = lines[1:]
+        while lines and not lines[0].strip():
+            lines.pop(0)
+    body = "\n".join(lines).strip()
+    return body or None
+
+
+def render_model_card(
+    plan: PromotionPlan,
+    manifest: PromotedModelManifest,
+    *,
+    dataset_description: str | None = None,
+    dataset_readme: str | None = None,
+) -> str:
     """Render a concise, mostly automatic model card for a promoted model."""
 
     params = plan.saved_run.model_parameters.model_dump(mode="json", exclude_none=True)
@@ -77,9 +95,23 @@ def render_model_card(plan: PromotionPlan, manifest: PromotedModelManifest) -> s
         "",
         _render_auto_overview_block(manifest),
         "",
+        "## Training dataset",
+        "",
+        f"- Dataset: `{manifest.training_data.dataset}`",
+    ]
+
+    if dataset_description:
+        lines.append(f"- Description: {dataset_description}")
+
+    dataset_body = _dataset_readme_body(dataset_readme)
+    if dataset_body:
+        lines.extend(["", dataset_body])
+
+    lines.extend([
+        "",
         "## Model parameters",
         "",
-    ]
+    ])
 
     if parameter_lines:
         lines.extend(parameter_lines)

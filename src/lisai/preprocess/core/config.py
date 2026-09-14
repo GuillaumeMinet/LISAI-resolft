@@ -157,6 +157,13 @@ class PreprocessRegistryDefaultsConfig(BaseModel):
 class PreprocessRegistryConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    description: str | None = Field(
+        default=None,
+        description=(
+            "Optional short human-readable dataset description. It initializes the "
+            "registry description but does not overwrite an existing one."
+        ),
+    )
     defaults: PreprocessRegistryDefaultsConfig = Field(
         default_factory=PreprocessRegistryDefaultsConfig,
         description="Optional registry default overrides merged over defaults inferred from produced outputs.",

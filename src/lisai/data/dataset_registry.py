@@ -229,9 +229,41 @@ def compact_dataset_registry_ranges(registry: Mapping[str, Any]) -> dict[str, An
     return compacted
 
 
+def _place_description_near_identity(registry: Mapping[str, Any]) -> dict[str, Any]:
+    """Keep dataset descriptions next to the top-level identity metadata on disk."""
+    ordered: dict[str, Any] = {}
+    identity_keys = {DATA_FORMAT_KEY, "usage", "for_training"}
+
+    for dataset_name, entry in registry.items():
+        if not isinstance(entry, Mapping) or "description" not in entry:
+            ordered[str(dataset_name)] = entry
+            continue
+
+        items = [(key, value) for key, value in entry.items() if key != "description"]
+        identity_positions = [
+            index for index, (key, _) in enumerate(items) if key in identity_keys
+        ]
+        insert_after = max(identity_positions) if identity_positions else -1
+
+        ordered_entry: dict[str, Any] = {}
+        if insert_after < 0:
+            ordered_entry["description"] = entry["description"]
+
+        for index, (key, value) in enumerate(items):
+            ordered_entry[key] = value
+            if index == insert_after:
+                ordered_entry["description"] = entry["description"]
+
+        ordered[str(dataset_name)] = ordered_entry
+
+    return ordered
+
+
 def save_dataset_registry(registry: Mapping[str, Any], path: str | Path) -> None:
     """Persist registry metadata using the canonical flat on-disk contract."""
-    save_yaml(compact_dataset_registry_ranges(normalize_dataset_registry(registry)), path)
+    normalized = normalize_dataset_registry(registry)
+    compacted = compact_dataset_registry_ranges(normalized)
+    save_yaml(_place_description_near_identity(compacted), path)
 
 
 __all__ = [

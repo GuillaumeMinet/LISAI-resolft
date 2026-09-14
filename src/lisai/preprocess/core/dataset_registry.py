@@ -102,8 +102,12 @@ class DatasetRegistry:
         usage: str = "training",
         default_overrides: Mapping[str, str | None] | None = None,
         split_summary: dict[str, Any] | None = None,
+        description: str | None = None,
     ) -> None:
         ds = self.ensure_dataset(dataset_name)
+
+        if description is not None and not ds.get("description"):
+            ds["description"] = description
 
         if data_format is not None:
             ds["data_format"] = data_format

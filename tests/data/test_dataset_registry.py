@@ -119,3 +119,31 @@ def test_save_dataset_registry_compacts_numeric_size_ranges(tmp_path: Path):
     registry = load_yaml(path)
     assert registry["demo"]["size"]["recon"]["timepoints"] == {"min": 10, "max": 26}
     assert registry["demo"]["size"]["recon"]["snr_levels"] == {"min": 5, "max": 6}
+
+
+def test_save_dataset_registry_places_description_after_identity_metadata(tmp_path: Path):
+    path = tmp_path / "dataset_registry.yml"
+
+    save_dataset_registry(
+        {
+            "demo": {
+                "data_format": "single",
+                "usage": "evaluation",
+                "for_training": False,
+                "defaults": {"recon": {"input": "low"}},
+                "size": {"recon": {"n_files": 8}},
+                "description": "Evaluation dataset.",
+            }
+        },
+        path,
+    )
+
+    entry = load_yaml(path)["demo"]
+    assert list(entry) == [
+        "data_format",
+        "usage",
+        "for_training",
+        "description",
+        "defaults",
+        "size",
+    ]

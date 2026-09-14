@@ -4,6 +4,9 @@ pipeline: "recon_timelapse_simple"
 data_type: "recon"
 fmt: "timelapse"
 
+registry:
+  description: null
+  
 pipeline_cfg:
   base_subfolder: ""
   input_subfolder: ""

@@ -31,6 +31,9 @@ class PreprocessFinishReport:
     val: Mapping[str, Any]
     test: Mapping[str, Any]
     auxiliary_matches: Mapping[str, Mapping[str, int]]
+    readme_path: str | None = None
+    readme_created: bool = False
+    readme_error: str | None = None
     error_type: str | None = None
     error_message: str | None = None
 
@@ -96,6 +99,16 @@ class ConsolePreprocessReporter:
                 file=self.stream,
             )
         if report.status == "success":
+            if report.readme_created and report.readme_path is not None:
+                print(
+                    f"  dataset README: {report.readme_path} (created; add notes when useful)",
+                    file=self.stream,
+                )
+            elif report.readme_error is not None:
+                print(
+                    f"  dataset README: could not create ({report.readme_error})",
+                    file=self.stream,
+                )
             for name, summary in report.auxiliary_matches.items():
                 print(
                     f"  Auxiliary '{name}': matched {summary.get('matched', 0)}/{summary.get('total', 0)}",

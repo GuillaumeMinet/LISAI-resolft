@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from lisai.config import settings
+from lisai.data.readme import ensure_dataset_readme
 
 from .core import DatasetRegistry, FolderSource, PreprocessConfig, PreprocessSaver
 from .core.config import PreprocessLogConfig, PreprocessSplitConfig
@@ -81,6 +82,7 @@ class PreprocessRun:
     pipeline_name: str
     log_cfg: PreprocessLogConfig
     registry_defaults: dict[str, str | None]
+    registry_description: str | None
     split_cfg: PreprocessSplitConfig
 
     @classmethod
@@ -105,6 +107,7 @@ class PreprocessRun:
             logger=logger,
             log_cfg=pcfg.log,
             registry_defaults=pcfg.registry.defaults.model_dump(exclude_unset=True),
+            registry_description=pcfg.registry.description,
             split_cfg=pcfg.split,
         )
 
@@ -221,6 +224,9 @@ class PreprocessRun:
         n_files_written: int,
         split_summary: dict[str, Any],
         auxiliary_matches: dict[str, dict[str, int]],
+        readme_path: Path | None = None,
+        readme_created: bool = False,
+        readme_error: str | None = None,
         error: Exception | None = None,
     ) -> PreprocessFinishReport:
         empty_bucket = {"count": 0, "source_names": [], "output_names": []}
@@ -235,6 +241,9 @@ class PreprocessRun:
             val=val,
             test=test,
             auxiliary_matches=auxiliary_matches,
+            readme_path=str(readme_path.resolve()) if readme_path is not None else None,
+            readme_created=readme_created,
+            readme_error=readme_error,
             error_type=type(error).__name__ if error is not None else None,
             error_message=str(error) if error is not None else None,
         )
@@ -382,6 +391,7 @@ class PreprocessRun:
                 usage=self.usage,
                 default_overrides=self.registry_defaults,
                 split_summary=registry_split_summary,
+                description=self.registry_description,
             )
             self.registry.save()
 
@@ -391,6 +401,19 @@ class PreprocessRun:
                     structure=spec.structure_keys(),
                     split_summary=manifest_split_summary,
                 )
+
+            readme_path = None
+            readme_created = False
+            readme_error = None
+            try:
+                dataset_dir = self.paths.dataset_dir(
+                    dataset_name=self.dataset_name,
+                    usage=self.usage,
+                )
+                readme_path, readme_created = ensure_dataset_readme(dataset_dir)
+            except Exception as exc:
+                readme_error = str(exc)
+                self.logger.warning("Could not create dataset README: %s", exc)
 
             reporter.report_finish(
                 self._finish_report(
@@ -402,6 +425,9 @@ class PreprocessRun:
                         name: {"matched": count, "total": result.n_files}
                         for name, count in auxiliary_match_counts.items()
                     },
+                    readme_path=readme_path,
+                    readme_created=readme_created,
+                    readme_error=readme_error,
                 )
             )
             return result

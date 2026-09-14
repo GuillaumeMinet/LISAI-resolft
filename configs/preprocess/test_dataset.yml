@@ -1,12 +1,15 @@
 # yaml-language-server: $schema=../schema/preprocess.schema.json
 
-dataset_name: "TestDataset_Gag_low_high"
+dataset_name: "gag_live_denoise_eval"
 
 usage: "evaluation"
 
 pipeline: "paired_single_recon"
 data_type: "recon"
 fmt: "single"
+
+registry:
+  description: "Pairs of low/high ON-switching RESOLFT + confocal. Purpose: denoising evaluation. CAUTION: Cells NOT FIXED - no pixel wise comparison!"
 
 pipeline_cfg:
   input_subfolder: "low"
