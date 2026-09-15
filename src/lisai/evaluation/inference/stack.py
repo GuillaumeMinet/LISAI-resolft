@@ -4,6 +4,7 @@ import numpy as np
 import torch
 
 from lisai.evaluation.inference.engine import predict
+from lisai.evaluation.inference.progress import ProgressLike, ensure_progress
 
 
 def infer_batch(
@@ -15,6 +16,8 @@ def infer_batch(
     num_samples: int | None,
     upsamp: int,
     ch_out: int | None,
+    progress: ProgressLike | None = None,
+    progress_level: int = 0,
 ):
     return predict(
         model,
@@ -24,6 +27,8 @@ def infer_batch(
         num_samples=num_samples,
         upsamp=upsamp,
         ch_out=ch_out,
+        progress=progress,
+        progress_level=progress_level,
     )
 
 
@@ -35,6 +40,7 @@ def _build_temporal_input(
     context_length: int | None,
     dark_frame_context_length: bool,
     verbose: bool = False,
+    progress: ProgressLike | None = None,
 ) -> np.ndarray | None:
     if context_length is None:
         x = img[z, t, ...]
@@ -48,7 +54,12 @@ def _build_temporal_input(
             x[:, context_length // 2] = img[z, t, ...]
             return x
         if verbose:
-            print(f"Skipping frame {t} because not enough context_length")
+            message = f"Skipping frame {t} because not enough context_length"
+            write_progress = getattr(progress, "write", None)
+            if write_progress is not None:
+                write_progress(message)
+            else:
+                print(message)
         return None
 
     x = img[z, start:end, ...]
@@ -70,7 +81,9 @@ def predict_4d_stack(
     context_length: int | None,
     dark_frame_context_length: bool,
     verbose: bool = False,
+    progress: ProgressLike | None = None,
 ):
+    progress = ensure_progress(progress)
     if timelapse:
         output_shape = (*img.shape[:-2], img.shape[-2] * upsamp, img.shape[-1] * upsamp)
     else:
@@ -81,39 +94,54 @@ def predict_4d_stack(
     if is_lvae and lvae_save_samples:
         samples_stack = np.empty(shape=(lvae_num_samples, *output_shape))
 
-    for z in range(img.shape[0]):
-        t_iter = range(img.shape[1]) if timelapse else range(1)
-        for t in t_iter:
-            if timelapse:
-                x_np = _build_temporal_input(
-                    img,
-                    z=z,
-                    t=t,
-                    context_length=context_length,
-                    dark_frame_context_length=dark_frame_context_length,
-                    verbose=verbose,
-                )
-            else:
-                x_np = np.expand_dims(img[z, ...], axis=0)  # [B=1, C, H, W]
-            if x_np is None:
-                continue
+    n_timepoints = img.shape[1] if timelapse else 1
+    n_stack_items = img.shape[0] * n_timepoints
+    show_stack_progress = verbose and n_stack_items > 1
+    stack_iter = ((z, t) for z in range(img.shape[0]) for t in range(n_timepoints))
+    if show_stack_progress:
+        stack_iter = progress.track(
+            stack_iter,
+            total=n_stack_items,
+            desc="Stack inference",
+            level=0,
+            leave=True,
+        )
+    batch_progress_level = 1 if show_stack_progress else 0
 
-            x = torch.from_numpy(x_np).to(device)
-            resolved_ch_out = ch_out
-            if resolved_ch_out is None and context_length is not None:
-                resolved_ch_out = 1
-            outputs = infer_batch(
-                model,
-                x,
-                is_lvae=is_lvae,
-                tiling_size=tiling_size,
-                num_samples=lvae_num_samples,
-                upsamp=upsamp,
-                ch_out=resolved_ch_out,
+    for z, t in stack_iter:
+        if timelapse:
+            x_np = _build_temporal_input(
+                img,
+                z=z,
+                t=t,
+                context_length=context_length,
+                dark_frame_context_length=dark_frame_context_length,
+                verbose=verbose,
+                progress=progress,
             )
+        else:
+            x_np = np.expand_dims(img[z, ...], axis=0)  # [B=1, C, H, W]
+        if x_np is None:
+            continue
 
-            pred_stack[z, t, ...] = outputs.get("prediction")
-            if is_lvae and lvae_save_samples and samples_stack is not None:
-                samples_stack[:, z, t, ...] = outputs.get("samples")
+        x = torch.from_numpy(x_np).to(device)
+        resolved_ch_out = ch_out
+        if resolved_ch_out is None and context_length is not None:
+            resolved_ch_out = 1
+        outputs = infer_batch(
+            model,
+            x,
+            is_lvae=is_lvae,
+            tiling_size=tiling_size,
+            num_samples=lvae_num_samples,
+            upsamp=upsamp,
+            ch_out=resolved_ch_out,
+            progress=progress,
+            progress_level=batch_progress_level,
+        )
+
+        pred_stack[z, t, ...] = outputs.get("prediction")
+        if is_lvae and lvae_save_samples and samples_stack is not None:
+            samples_stack[:, z, t, ...] = outputs.get("samples")
 
     return pred_stack, samples_stack

@@ -1,15 +1,16 @@
 import numpy as np
 import torch
-from tqdm import tqdm
 
 from lisai.data.utils import adjust_for_tiling, adjust_img_size, adjust_pred_size, crop_center
+from lisai.evaluation.inference.progress import ProgressLike, ensure_progress
 from lisai.lib.hdn.forwardpass import forward_pass as lvae_forward_pass
 
 
 def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             is_lvae:bool=False,num_samples:int = None,mltpl_of:int = 16,
             tiling_size:int = None,tiling_overlap = 50,upsamp:int=1,
-            ch_out = None):
+            ch_out = None, progress: ProgressLike | None = None,
+            progress_level: int = 0):
     
     """
     Predicts image for given model, adjusting image size with padding,
@@ -50,6 +51,8 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
     if is_lvae:
         assert num_samples is not None, ("for LVAE inference, number of " \
                                          "samples needs to be specified")
+
+    progress = ensure_progress(progress)
     
     original_size = np.array(inp.shape[-2:])
     # print(f"Original input size: {original_size}")
@@ -108,26 +111,30 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
         x_iter = range(0,inp_size[1],tiling_size[1])
         total_iterations = len(y_iter) * len(x_iter)
 
-        with tqdm(total=total_iterations, desc="Tiling") as pbar:
-            for y in y_iter:
-                for x in x_iter:
-                    # print(f"\n","x:",x,"y:",y)
-                    xx = x + full_tile_size[1]
-                    yy = y + full_tile_size[0]
-                    patch = inp_pad[...,y:yy,x:xx]
-                    # print(patch.shape)
-                    patch_outputs = make_prediction(model,patch,device,is_lvae,num_samples)
-                    # print(patch_outputs.get("prediction").shape)
-                    x_pred = (x+offset_x)*upsamp
-                    y_pred = (y+offset_y)*upsamp
-                    xx_pred = (x + offset_x + tiling_size[1])*upsamp
-                    yy_pred = (y + offset_y + tiling_size[0])*upsamp
-                    prediction[...,y_pred:yy_pred,x_pred:xx_pred] = crop_center(patch_outputs.get("prediction"),
-                                                                                crop_size=output_tile_size)
-                    if is_lvae:
-                        samples[:,y_pred:yy_pred,x_pred:xx_pred] = crop_center(patch_outputs.get("samples"),
-                                                                               crop_size=output_tile_size)
-                    pbar.update(1)
+        tile_iter = ((y, x) for y in y_iter for x in x_iter)
+        for y, x in progress.track(
+            tile_iter,
+            total=total_iterations,
+            desc="Tiling",
+            level=progress_level,
+            leave=progress_level <= 0,
+        ):
+            # print(f"\n","x:",x,"y:",y)
+            xx = x + full_tile_size[1]
+            yy = y + full_tile_size[0]
+            patch = inp_pad[...,y:yy,x:xx]
+            # print(patch.shape)
+            patch_outputs = make_prediction(model,patch,device,is_lvae,num_samples)
+            # print(patch_outputs.get("prediction").shape)
+            x_pred = (x+offset_x)*upsamp
+            y_pred = (y+offset_y)*upsamp
+            xx_pred = (x + offset_x + tiling_size[1])*upsamp
+            yy_pred = (y + offset_y + tiling_size[0])*upsamp
+            prediction[...,y_pred:yy_pred,x_pred:xx_pred] = crop_center(patch_outputs.get("prediction"),
+                                                                        crop_size=output_tile_size)
+            if is_lvae:
+                samples[:,y_pred:yy_pred,x_pred:xx_pred] = crop_center(patch_outputs.get("samples"),
+                                                                       crop_size=output_tile_size)
 
         outputs = {"prediction": prediction}
         if is_lvae: 

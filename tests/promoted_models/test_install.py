@@ -32,7 +32,7 @@ class FakePaths:
         return self.promoted_models_root() / model_name
 
     def promoted_model_exports_dir(self):
-        return self.promoted_models_root() / "exports"
+        return self.promoted_models_root() / "_exports"
 
 
 def _sha(path: Path) -> str:

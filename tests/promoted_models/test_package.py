@@ -39,7 +39,7 @@ class FakePaths:
         return self.promoted_models_root() / model_name
 
     def promoted_model_exports_dir(self):
-        return self.promoted_models_root() / "exports"
+        return self.promoted_models_root() / "_exports"
 
     def dataset_registry_path(self):
         return self.root / "datasets" / "dataset_registry.yml"
@@ -209,7 +209,7 @@ def test_export_zips_existing_promoted_model_under_data_root(tmp_path: Path, mon
 
     exported = package_module.export_promoted_model("demo-model", paths=paths)
 
-    assert exported.archive_path == tmp_path / "models" / "exports" / "demo-model.lisai.zip"
+    assert exported.archive_path == tmp_path / "models" / "_exports" / "demo-model.lisai.zip"
     assert exported.archive_sha256 == hashlib.sha256(exported.archive_path.read_bytes()).hexdigest()
     with zipfile.ZipFile(exported.archive_path) as archive:
         assert "lisai_model.yaml" in archive.namelist()
