@@ -26,8 +26,8 @@ def _render_models_table() -> str:
     for name in sorted(registry.models):
         entry = registry.models[name]
         task = entry.task or "-"
-        rows.append((name, task, entry.origin, entry.source_run_id, entry.path))
-    headers = ("name", "task", "origin", "source_run_id", "path")
+        rows.append((name, task, entry.origin, entry.source_run_id))
+    headers = ("name", "task", "origin", "source_run_id")
     widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) 
               for i in range(len(headers))]
     lines = ["  ".join(headers[i].ljust(widths[i]) for i in range(len(headers)))]

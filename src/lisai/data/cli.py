@@ -14,7 +14,7 @@ from .readme import dataset_readme_path, ensure_dataset_readme
 from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
 
 
-DESCRIPTION_PREVIEW_MAX_CHARS = 40
+DESCRIPTION_PREVIEW_MAX_CHARS = 20
 
 
 def _paths() -> Paths:
@@ -222,7 +222,11 @@ def list_datasets(
                 ),
             )
         rows.append(row)
-    print(_table(headers, rows))
+    print("\n", _table(headers, rows))
+    print(
+        "\nNB: use --full to see full-length description, --short to remove it, " \
+        "and lisai datasets show <dataset-name> to see full dataset info.\n"
+    )
 
 
 def _require_dataset(

@@ -136,7 +136,7 @@ class ApplyInferenceDefaults(BaseModel):
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     keep_original_shape: bool = Field(default=True, description=KEEP_ORIGINAL_SHAPE_DESC)
     tiling_size: TilingSizePolicy = Field(default="auto", description=TILING_SIZE_DESC)
-    lvae_num_samples: int | None = Field(default=20, description=LVAE_NUM_SAMPLES_DESC)
+    lvae_num_samples: int | None = Field(default=30, description=LVAE_NUM_SAMPLES_DESC)
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
     dark_frame_context_length: bool = Field(default=False, description=DARK_FRAME_CONTEXT_LENGTH_DESC)
