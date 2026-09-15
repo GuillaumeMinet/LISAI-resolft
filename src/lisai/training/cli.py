@@ -52,7 +52,11 @@ def run_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> 
         config_path = resolve_config_path(config_arg)
     except (FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
-    run_training(config_path)
+    progress_bar = getattr(args, "progress_bar", None)
+    if progress_bar is None:
+        run_training(config_path)
+    else:
+        run_training(config_path, progress_bar=progress_bar)
     return 0
 
 
@@ -67,6 +71,13 @@ def add_train_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         "--config",
         dest="config_option",
         help=f"Path to a YAML config file, or a config name from {training_config_paths.root} with or without .yml/.yaml.",
+    )
+    parser.add_argument(
+        "--progress-bar",
+        dest="progress_bar",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the local/configured tqdm progress-bar preference for this training run.",
     )
     return parser
 

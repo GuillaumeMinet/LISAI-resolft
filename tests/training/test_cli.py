@@ -68,6 +68,22 @@ def test_training_cli_main_accepts_extensionless_config_name(monkeypatch: pytest
     assert captured["config_path"].name == "vim_denoising_unet.yml"
 
 
+def test_training_cli_passes_progress_bar_override(monkeypatch: pytest.MonkeyPatch):
+    captured = {}
+
+    def fake_run_training(config_path, *, progress_bar=None):
+        captured["config_path"] = config_path
+        captured["progress_bar"] = progress_bar
+
+    monkeypatch.setattr(training_cli, "run_training", fake_run_training)
+
+    exit_code = training_cli.main(["examples/vim_denoising_unet", "--no-progress-bar"])
+
+    assert exit_code == 0
+    assert captured["config_path"].name == "vim_denoising_unet.yml"
+    assert captured["progress_bar"] is False
+
+
 def test_root_cli_train_dispatches_extensionless_config_to_training(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 

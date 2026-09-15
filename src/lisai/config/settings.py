@@ -114,6 +114,7 @@ class Settings:
                 },
                 "inference_dir": "default",
             },
+            "console": {"progress_bar": None},
         }
         self._local_yaml_path.parent.mkdir(parents=True, exist_ok=True)
         save_yaml(new_config, self._local_yaml_path)
@@ -248,6 +249,10 @@ class Settings:
     @property
     def LOCAL_INFERENCE_DIR(self) -> str:
         return self.local_cfg.inference.inference_dir
+
+    @property
+    def LOCAL_PROGRESS_BAR(self) -> bool | None:
+        return self.local_cfg.console.progress_bar
 
     @property
     def INFERENCE_DEFAULT_CONFIG_NAME(self):

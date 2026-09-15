@@ -160,6 +160,23 @@ def test_run_training_happy_path_builds_and_trains(monkeypatch: pytest.MonkeyPat
     assert captured["trainer_kwargs"]["patch_info"] is None
 
 
+def test_run_training_applies_progress_bar_preference(monkeypatch: pytest.MonkeyPatch):
+    cfg = _make_cfg()
+    captured = {}
+
+    def fake_resolve_progress_bar(default, override):
+        captured["default"] = default
+        captured["override"] = override
+        return True
+
+    monkeypatch.setattr(run_training_mod, "resolve_progress_bar", fake_resolve_progress_bar)
+
+    run_training_mod._apply_progress_bar_preference(cfg, None)
+
+    assert captured == {"default": False, "override": None}
+    assert cfg.training.progress_bar is True
+
+
 def test_run_training_does_not_remap_unexpected_trainer_exceptions(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -427,6 +444,7 @@ def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatc
         "model_name": "run_c",
         "model_subfolder": "Upsamp",
         "config": "post_training",
+        "progress_bar": False,
     }
 
 

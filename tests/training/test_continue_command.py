@@ -64,7 +64,7 @@ def _write_metadata(
         "last_epoch": 3,
         "max_epoch": 10,
         "best_val_loss": 0.4,
-        "path": f"datasets/{dataset}/models/{model_subfolder}/{run_dir.name}",
+        "path": f"datasets/{dataset}/runs/{model_subfolder}/{run_dir.name}",
         "group_path": None if "/" not in model_subfolder else model_subfolder.split("/", 1)[1],
     }
     write_run_metadata_atomic(run_dir, RunMetadata.model_validate(payload))
@@ -103,6 +103,39 @@ def test_root_cli_continue_dispatches_unique_match_and_builds_continue_config(mo
             "best_or_last": "last",
         },
     }
+
+
+def test_root_cli_continue_passes_progress_bar_override(monkeypatch, tmp_path):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FBB",
+        dataset="Gag",
+        model_subfolder="HDN",
+        status="completed",
+    )
+
+    captured = {}
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(
+        continue_cli,
+        "run_training_from_config_dict",
+        lambda cfg, **kwargs: captured.update({"cfg": cfg, "kwargs": kwargs}),
+    )
+
+    exit_code = root_cli.main([
+        "continue",
+        "resume_me_00",
+        "--dataset",
+        "Gag",
+        "--yes",
+        "--no-progress-bar",
+    ])
+
+    assert exit_code == 0
+    assert captured["cfg"]["load_model"]["model_full_path"] == str(run_dir.resolve())
+    assert captured["kwargs"] == {"progress_bar": False}
 
 
 def test_continue_reports_multiple_matches_and_requests_disambiguation(monkeypatch, tmp_path):

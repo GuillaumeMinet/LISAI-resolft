@@ -1,4 +1,5 @@
 from .io import load_yaml, prune_config_for_saving, resolve_config, resolve_config_dict, save_yaml
+from .progress import resolve_progress_bar
 from .models import (
     ContinueTrainingConfig,
     DataConfig,
@@ -37,6 +38,7 @@ __all__ = [
     "prune_config_for_saving",
     "load_yaml",
     "save_yaml",
+    "resolve_progress_bar",
     "ProjectConfig",
     "DataConfig",
     "ExperimentConfig",

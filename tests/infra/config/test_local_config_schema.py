@@ -25,6 +25,17 @@ def test_local_config_schema_exposes_output_policy_choices():
     ]
 
 
+def test_local_config_schema_exposes_console_progress_preference():
+    schema = local_config_json_schema()
+    console = schema["properties"]["console"]
+    progress_bar = schema["$defs"]["LocalConsoleConfig"]["properties"]["progress_bar"]
+
+    assert console["$ref"] == "#/$defs/LocalConsoleConfig"
+    assert progress_bar["default"] is None
+    assert {"type": "boolean"} in progress_bar["anyOf"]
+    assert {"type": "null"} in progress_bar["anyOf"]
+
+
 def test_write_local_config_json_schema_writes_json_file(tmp_path: Path):
     output_path = tmp_path / "local-config.schema.json"
 

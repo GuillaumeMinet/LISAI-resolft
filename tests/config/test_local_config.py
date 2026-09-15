@@ -19,6 +19,7 @@ def test_existing_local_config_without_inference_section_uses_defaults():
     assert cfg.inference.output.mode == "default"
     assert cfg.inference.output.save_input_mode == "if_not_in_place"
     assert cfg.inference.inference_dir == "default"
+    assert cfg.console.progress_bar is None
 
 
 def test_local_inference_output_mode_accepts_source_relative_modes():
@@ -54,8 +55,10 @@ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path)
         },
         "inference_dir": "default",
     }
+    assert raw["console"] == {"progress_bar": None}
     written = load_yaml(settings._local_yaml_path)
     assert written["inference"] == raw["inference"]
+    assert written["console"] == raw["console"]
     assert settings._local_yaml_path.read_text(encoding="utf-8").startswith(
         "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
     )

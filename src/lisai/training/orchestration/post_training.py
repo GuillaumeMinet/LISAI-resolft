@@ -65,6 +65,7 @@ def run_post_training_evaluation(cfg, runtime, outcome: "TrainingOutcome") -> No
         model_name=runtime.run_dir.name,
         model_subfolder=cfg.routing.models_subfolder,
         config=POST_TRAINING_INFERENCE_CONFIG,
+        progress_bar=bool(getattr(cfg.training, "progress_bar", False)),
     )
 
 

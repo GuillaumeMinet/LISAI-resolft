@@ -93,6 +93,7 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
             "512",
             "--crop-size",
             "200",
+            "--no-progress-bar",
         ]
     )
     result = args.handler(args)
@@ -105,6 +106,7 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     assert captured["config"] == "fast_upsamp"
     assert captured["tiling_size"] == 512
     assert captured["crop_size"] == 200
+    assert captured["progress_bar"] is False
 
 
 def test_apply_cli_passes_limit_n_imgs(monkeypatch, tmp_path):
@@ -275,6 +277,7 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
             "psnr,ssim",
             "--tiling-size",
             "auto",
+            "--progress-bar",
         ]
     )
     result = args.handler(args)
@@ -287,6 +290,7 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
     assert captured["split"] == "val"
     assert captured["metrics_list"] == ["psnr", "ssim"]
     assert captured["tiling_size"] == "auto"
+    assert captured["progress_bar"] is True
 
 
 def test_evaluate_cli_accepts_best_or_last_both(monkeypatch, tmp_path):

@@ -12,6 +12,7 @@ from typing import Union
 import numpy as np
 from tifffile import imread
 
+from lisai.config.progress import resolve_progress_bar
 from lisai.config.models.inference import ApplyOutputMode
 from lisai.data.utils import center_pad, crop_center
 from lisai.evaluation.defaults import (
@@ -22,6 +23,7 @@ from lisai.evaluation.defaults import (
     resolve_apply_save_input,
 )
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_inp
+from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
 from lisai.evaluation.io import create_save_folder, resolve_prediction_inputs, save_outputs
@@ -142,7 +144,8 @@ def run_apply_model(model_dataset: str,
                 color_code_prm: dict | None | UnsetType = UNSET,
                 dark_frame_context_length: bool | UnsetType = UNSET,
                 config: str | Path | None = None,
-                promoted_model_name: str | None = None):
+                promoted_model_name: str | None = None,
+                progress_bar: bool | None = None):
     """Apply a saved model checkpoint to one file or a directory of files.
 
     Omitted processing options are resolved from inference defaults or the named
@@ -181,6 +184,9 @@ def run_apply_model(model_dataset: str,
         config=config,
         output_policy=output_policy,
         save_input=save_input,
+    )
+    progress = InferenceProgress(
+        enabled=resolve_progress_bar(True, progress_bar)
     )
 
     data_path = Path(data_path)
@@ -332,6 +338,7 @@ def run_apply_model(model_dataset: str,
             context_length=context_length,
             dark_frame_context_length=options["dark_frame_context_length"],
             verbose=True,
+            progress=progress,
         )
 
         if crop_size is not None and options["keep_original_shape"]:

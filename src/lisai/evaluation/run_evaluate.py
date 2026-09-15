@@ -11,12 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from lisai.config import save_yaml
+from lisai.config.progress import resolve_progress_bar
 from lisai.evaluation.data import (
     EvaluationDatasetSpec,
     build_eval_source,
     resolve_evaluation_dataset,
 )
 from lisai.evaluation.defaults import UNSET, UnsetType, resolve_evaluate_options
+from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.stack import infer_batch
 from lisai.evaluation.io import (
     EvalItemOutputWriter,
@@ -187,6 +189,8 @@ def _run_single_evaluation(
             "for LVAE prediction, number of samples needs to be specified"
         )
 
+    progress = InferenceProgress(enabled=options.get("progress_bar", True))
+
     upsamp = saved_run.upsampling_factor
     print(f"Found upsampling factor to be: {upsamp}\n")
     tiling_size = runtime.tiling_size
@@ -268,6 +272,7 @@ def _run_single_evaluation(
                 num_samples=options["lvae_num_samples"],
                 upsamp=upsamp,
                 ch_out=resolved_ch_out,
+                progress=progress,
             )
             img_name = item.sample_name(sample_index)
             tosave = {
@@ -329,7 +334,8 @@ def run_evaluate(dataset_name:str,
              limit_n_imgs: int | None | UnsetType = UNSET,
              timelapse_max: int | None | UnsetType = UNSET,
              evaluation_dataset_name: str | None = None,
-             config: str | Path | None = None
+             config: str | Path | None = None,
+             progress_bar: bool | None = None,
              ):
     """Evaluate a saved run on a dataset split and optionally compute metrics.
 
@@ -357,7 +363,8 @@ def run_evaluate(dataset_name:str,
         limit_n_imgs=limit_n_imgs,
         timelapse_max=timelapse_max,
     )
-    
+    options["progress_bar"] = resolve_progress_bar(True, progress_bar)
+
     run_dir = resolve_run_dir(dataset_name=dataset_name, subfolder=model_subfolder, exp_name=model_name)
     saved_run = load_saved_run(run_dir)
     evaluation_dataset = None

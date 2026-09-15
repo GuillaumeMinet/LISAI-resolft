@@ -1,5 +1,26 @@
 {
   "$defs": {
+    "LocalConsoleConfig": {
+      "additionalProperties": false,
+      "description": "Machine-local console display preferences.",
+      "properties": {
+        "progress_bar": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Machine-local default for live progress bars. Null preserves each command's normal default; true/false enables or disables tqdm when the CLI does not specify --progress-bar or --no-progress-bar.",
+          "title": "Progress Bar"
+        }
+      },
+      "title": "LocalConsoleConfig",
+      "type": "object"
+    },
     "LocalInferenceConfig": {
       "additionalProperties": false,
       "description": "User-specific defaults for `lisai apply`.",
@@ -72,6 +93,9 @@
     },
     "inference": {
       "$ref": "#/$defs/LocalInferenceConfig"
+    },
+    "console": {
+      "$ref": "#/$defs/LocalConsoleConfig"
     }
   },
   "required": [

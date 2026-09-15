@@ -107,6 +107,13 @@ def _add_inference_arguments(parser: argparse.ArgumentParser) -> argparse._Argum
     group.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=_parse_tiling_size)
     group.add_argument("--no-tiling", dest="tiling_size", action="store_const", const="off")
     group.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)
+    group.add_argument(
+        "--progress-bar",
+        dest="progress_bar",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the local/configured tqdm progress-bar preference for this command.",
+    )
     return group
 
 
@@ -256,6 +263,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         lvae_save_samples=_maybe_unset(args.lvae_save_samples),
         save_input=_maybe_unset(args.save_input),
         apply_color_code=_maybe_unset(args.apply_color_code),
+        progress_bar=getattr(args, "progress_bar", None),
         promoted_model_name=promoted_model_name,
     )
     return 0
@@ -287,6 +295,7 @@ def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
         limit_n_imgs=_maybe_unset(args.limit_n_imgs),
         timelapse_max=_maybe_unset(args.timelapse_max),
         evaluation_dataset_name=args.evaluation_dataset_name,
+        progress_bar=getattr(args, "progress_bar", None),
     )
     return 0
 

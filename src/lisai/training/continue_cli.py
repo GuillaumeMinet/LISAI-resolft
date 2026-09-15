@@ -30,6 +30,7 @@ def continue_run(
     stdout=None,
     stderr=None,
     now: datetime | None = None,
+    progress_bar: bool | None = None,
 ) -> int:
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
@@ -127,7 +128,11 @@ def continue_run(
                 print("Continue cancelled.", file=err)
                 return 1
 
-    run_training_from_config_dict(_build_continue_training_config(selected_run))
+    config = _build_continue_training_config(selected_run)
+    if progress_bar is None:
+        run_training_from_config_dict(config)
+    else:
+        run_training_from_config_dict(config, progress_bar=progress_bar)
     return 0
 
 
@@ -151,6 +156,7 @@ def run_from_args(args: argparse.Namespace) -> int:
         model_subfolder=args.model_subfolder,
         assume_yes=args.yes,
         force=args.force,
+        progress_bar=getattr(args, "progress_bar", None),
     )
 
 
@@ -178,6 +184,13 @@ def add_continue_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
             "Allow continuation even if the selected run still appears active from a recent heartbeat, "
             "and permit non-interactive continuation of path-inconsistent runs with --yes."
         ),
+    )
+    parser.add_argument(
+        "--progress-bar",
+        dest="progress_bar",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the local/configured tqdm progress-bar preference for the continued training run.",
     )
     return parser
 

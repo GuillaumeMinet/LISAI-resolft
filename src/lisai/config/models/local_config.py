@@ -60,6 +60,21 @@ class LocalInferenceConfig(BaseModel):
         return text
 
 
+class LocalConsoleConfig(BaseModel):
+    """Machine-local console display preferences."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    progress_bar: bool | None = Field(
+        default=None,
+        description=(
+            "Machine-local default for live progress bars. Null preserves each "
+            "command's normal default; true/false enables or disables tqdm when "
+            "the CLI does not specify --progress-bar or --no-progress-bar."
+        ),
+    )
+
+
 class LocalConfig(BaseModel):
     """Local, untracked LISAI configuration."""
 
@@ -67,6 +82,7 @@ class LocalConfig(BaseModel):
 
     infrastructure: LocalInfrastructureConfig
     inference: LocalInferenceConfig = Field(default_factory=LocalInferenceConfig)
+    console: LocalConsoleConfig = Field(default_factory=LocalConsoleConfig)
 
 
 __all__ = [
@@ -74,4 +90,5 @@ __all__ = [
     "LocalInfrastructureConfig",
     "LocalInferenceConfig",
     "LocalInferenceOutputConfig",
+    "LocalConsoleConfig",
 ]
