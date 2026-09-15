@@ -333,7 +333,7 @@ def run_evaluate(dataset_name:str,
              ):
     """Evaluate a saved run on a dataset split and optionally compute metrics.
 
-    Any omitted optional argument is resolved from `configs/inference/defaults.yml`
+    Any omitted optional argument is resolved from the local inference defaults
     or from the named config passed via `config`.
     """
     if evaluation_dataset_name is not None and split is not UNSET:

@@ -149,3 +149,38 @@ def test_default_local_inference_dir_uses_project_inference_root(tmp_path: Path)
     ctx = settings._build_context()
 
     assert Path(ctx.paths.roots.inference_dir) == (tmp_path / "data" / "inference").resolve()
+
+
+def test_local_inference_configs_are_created_from_builtin_defaults(tmp_path: Path):
+    settings = Settings.__new__(Settings)
+    settings.CONFIGS_ROOT = tmp_path / "configs"
+
+    settings._ensure_local_inference_configs()
+
+    defaults_path = settings.CONFIGS_ROOT / "inference" / "local" / "defaults.yml"
+    post_training_path = settings.CONFIGS_ROOT / "inference" / "local" / "post_training.yml"
+    defaults = load_yaml(defaults_path)
+    post_training = load_yaml(post_training_path)
+
+    assert defaults["apply"]["inference"]["tiling_size"] == "auto"
+    assert defaults["apply"]["postprocess"]["color_code"]["enabled"] is False
+    assert defaults["evaluate"]["checkpoint"]["best_or_last"] == "best"
+    assert post_training["evaluate"]["checkpoint"]["best_or_last"] == "both"
+    assert post_training["evaluate"]["metrics"] == ["psnr", "ssim"]
+    assert post_training["evaluate"]["saving"]["overwrite"] is True
+
+
+def test_local_inference_configs_are_never_overwritten(tmp_path: Path):
+    settings = Settings.__new__(Settings)
+    settings.CONFIGS_ROOT = tmp_path / "configs"
+    local_dir = settings.CONFIGS_ROOT / "inference" / "local"
+    local_dir.mkdir(parents=True)
+    defaults_path = local_dir / "defaults.yml"
+    post_training_path = local_dir / "post_training.yml"
+    save_yaml({"apply": {"inference": {"tiling_size": 777}}}, defaults_path)
+    save_yaml({"evaluate": {"metrics": ["custom"]}}, post_training_path)
+
+    settings._ensure_local_inference_configs()
+
+    assert load_yaml(defaults_path)["apply"]["inference"]["tiling_size"] == 777
+    assert load_yaml(post_training_path)["evaluate"]["metrics"] == ["custom"]

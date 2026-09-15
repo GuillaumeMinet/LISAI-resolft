@@ -5,10 +5,14 @@ from pathlib import Path
 from typing import Any
 
 from .models import DataConfig, LocalConfig, ProjectConfig
+from .models.inference import ResolvedInferenceConfig
+from .models.inference.presets import POST_TRAINING_OVERRIDES
 from .io.yaml import load_yaml, save_yaml
 
 
 _LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/local-config.schema.json"
+_INFERENCE_DEFAULTS_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference-defaults.schema.json"
+_INFERENCE_OVERRIDES_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference.schema.json"
 
 
 class AttrDict(dict):
@@ -64,6 +68,7 @@ class Settings:
         self.local_cfg: LocalConfig = LocalConfig.model_validate(
             self._load_or_setup_infrastructure()
         )
+        self._ensure_local_inference_configs()
 
         project_raw = self._load_required(self._project_yaml_path)
         data_raw = self._load_required(self._data_yaml_path)
@@ -143,6 +148,31 @@ class Settings:
             encoding="utf-8",
         )
 
+
+    @staticmethod
+    def _ensure_schema_hint(path: Path, hint: str) -> None:
+        text = path.read_text(encoding="utf-8")
+        if hint in text.splitlines():
+            return
+        path.write_text(f"{hint}\n{text}", encoding="utf-8")
+
+    def _ensure_local_inference_configs(self) -> None:
+        local_dir = self.CONFIGS_ROOT / "inference" / "local"
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+        defaults_path = local_dir / "defaults.yml"
+        if not defaults_path.exists():
+            save_yaml(
+                ResolvedInferenceConfig().model_dump(mode="json"),
+                defaults_path,
+            )
+        self._ensure_schema_hint(defaults_path, _INFERENCE_DEFAULTS_SCHEMA_HINT)
+
+        post_training_path = local_dir / "post_training.yml"
+        if not post_training_path.exists():
+            save_yaml(POST_TRAINING_OVERRIDES, post_training_path)
+        self._ensure_schema_hint(post_training_path, _INFERENCE_OVERRIDES_SCHEMA_HINT)
+
     def _build_context(self) -> AttrDict:
         data_root = Path(self.local_cfg.infrastructure.data_root).resolve()
         code_dir = self.PROJECT_ROOT.resolve()
@@ -221,7 +251,7 @@ class Settings:
 
     @property
     def INFERENCE_DEFAULT_CONFIG_NAME(self):
-        return "defaults"
+        return "local/defaults"
     
     @property
     def PREPROCESS_CONFIG_DIR(self):

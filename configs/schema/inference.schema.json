@@ -1,9 +1,315 @@
 {
   "$defs": {
-    "ApplyOutputOverrides": {
+    "ApplyInferenceOverrides": {
       "additionalProperties": false,
-      "description": "Optional output-policy overrides for one inference workflow.",
       "properties": {
+        "crop_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional center crop used before inference. Use a single integer for a square crop or a height,width tuple.",
+          "title": "Crop Size"
+        },
+        "keep_original_shape": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether outputs should be padded back to the original spatial size after cropped inference.",
+          "title": "Keep Original Shape"
+        },
+        "tiling_size": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "enum": [
+                "auto",
+                "off"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tile size used for patch-wise inference. Use 'auto' or null to fall back to the saved model default, use a positive integer to force a tile size, or use 'off' to disable tiling.",
+          "title": "Tiling Size"
+        },
+        "lvae_num_samples": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of stochastic samples drawn when running LVAE models.",
+          "title": "Lvae Num Samples"
+        },
+        "downsamp": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional spatial downsampling factor applied to the apply input before inference.",
+          "title": "Downsamp"
+        },
+        "fill_factor": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 1,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional fill factor used with deterministic 'multiple' apply downsampling. When set, apply uses generate_downsamp_inp with random=false.",
+          "title": "Fill Factor"
+        },
+        "dark_frame_context_length": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether missing timelapse context frames should be replaced with dark frames instead of skipping sequence edges.",
+          "title": "Dark Frame Context Length"
+        }
+      },
+      "title": "ApplyInferenceOverrides",
+      "type": "object"
+    },
+    "ApplyInputOverrides": {
+      "additionalProperties": false,
+      "properties": {
+        "filters": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "File extensions accepted when apply input points to a directory.",
+          "title": "Filters"
+        },
+        "skip_if_contain": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional substrings; matching filenames are skipped during apply.",
+          "title": "Skip If Contain"
+        },
+        "stack_selection_idx": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stack or channel index selected before converting the input to a 4D tensor.",
+          "title": "Stack Selection Idx"
+        },
+        "limit_n_imgs": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional cap on the number of input images or batches processed.",
+          "title": "Limit N Imgs"
+        },
+        "timelapse_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional maximum number of timelapse frames to process.",
+          "title": "Timelapse Max"
+        }
+      },
+      "title": "ApplyInputOverrides",
+      "type": "object"
+    },
+    "ApplyOverrides": {
+      "additionalProperties": false,
+      "description": "Sparse user-authored overrides for the `apply` section.",
+      "properties": {
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "input": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplyInputOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "inference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplyInferenceOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "postprocess": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplyPostprocessOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "saving": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApplySavingOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ApplyOverrides",
+      "type": "object"
+    },
+    "ApplyPostprocessOverrides": {
+      "additionalProperties": false,
+      "properties": {
+        "denormalize": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether model outputs should be converted back from normalized model space before saving.",
+          "title": "Denormalize"
+        },
+        "color_code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ColorCodeOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "ApplyPostprocessOverrides",
+      "type": "object"
+    },
+    "ApplySavingOverrides": {
+      "additionalProperties": false,
+      "properties": {
+        "lvae_save_samples": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether individual LVAE samples should be saved in addition to the main prediction.",
+          "title": "Lvae Save Samples"
+        },
         "mode": {
           "anyOf": [
             {
@@ -68,25 +374,12 @@
           "title": "In Place"
         }
       },
-      "title": "ApplyOutputOverrides",
+      "title": "ApplySavingOverrides",
       "type": "object"
     },
-    "ApplyOverrides": {
+    "CheckpointOverrides": {
       "additionalProperties": false,
-      "description": "Sparse user-authored overrides for the `apply` section.",
       "properties": {
-        "output": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ApplyOutputOverrides"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional output-policy override for this inference config."
-        },
         "epoch_number": {
           "anyOf": [
             {
@@ -117,207 +410,16 @@
           "default": null,
           "description": "Checkpoint selector used when epoch_number is null. Supported values are 'best', 'last', and 'both'.",
           "title": "Best Or Last"
-        },
-        "filters": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "File extensions accepted when apply input points to a directory.",
-          "title": "Filters"
-        },
-        "skip_if_contain": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional substrings; matching filenames are skipped during apply.",
-          "title": "Skip If Contain"
-        },
-        "crop_size": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "integer"
-                }
-              ],
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional center crop used before inference. Use a single integer for a square crop or a height,width tuple.",
-          "title": "Crop Size"
-        },
-        "keep_original_shape": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether outputs should be padded back to the original spatial size after cropped inference.",
-          "title": "Keep Original Shape"
-        },
-        "tiling_size": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "enum": [
-                "auto",
-                "off"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Tile size used for patch-wise inference. Use 'auto' or null to fall back to the saved model default, use a positive integer to force a tile size, or use 'off' to disable tiling.",
-          "title": "Tiling Size"
-        },
-        "stack_selection_idx": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stack or channel index selected before converting the input to a 4D tensor.",
-          "title": "Stack Selection Idx"
-        },
-        "limit_n_imgs": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional cap on the number of input images or batches processed.",
-          "title": "Limit N Imgs"
-        },
-        "timelapse_max": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional maximum number of timelapse frames to process during apply.",
-          "title": "Timelapse Max"
-        },
-        "lvae_num_samples": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Number of stochastic samples drawn when running LVAE models.",
-          "title": "Lvae Num Samples"
-        },
-        "lvae_save_samples": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether individual LVAE samples should be saved in addition to the main prediction.",
-          "title": "Lvae Save Samples"
-        },
-        "denormalize_output": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether model outputs should be converted back from normalized model space before saving.",
-          "title": "Denormalize Output"
-        },
-        "downsamp": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional spatial downsampling factor applied to the apply input before inference.",
-          "title": "Downsamp"
-        },
-        "fill_factor": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "maximum": 1,
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional fill factor used with deterministic 'multiple' apply downsampling. When set, apply uses generate_downsamp_inp with random=false.",
-          "title": "Fill Factor"
-        },
-        "apply_color_code": {
+        }
+      },
+      "title": "CheckpointOverrides",
+      "type": "object"
+    },
+    "ColorCodeOverrides": {
+      "additionalProperties": false,
+      "description": "Sparse user overrides for volumetric color-coding settings.",
+      "properties": {
+        "enabled": {
           "anyOf": [
             {
               "type": "boolean"
@@ -328,41 +430,8 @@
           ],
           "default": null,
           "description": "Whether an additional color-coded visualization should be saved for volumetric apply outputs.",
-          "title": "Apply Color Code"
+          "title": "Enabled"
         },
-        "color_code_prm": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ColorCodeOverrides"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Nested volumetric color-coding overrides used when apply_color_code is true."
-        },
-        "dark_frame_context_length": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether missing timelapse context frames should be replaced with dark frames instead of skipping sequence edges.",
-          "title": "Dark Frame Context Length"
-        }
-      },
-      "title": "ApplyOverrides",
-      "type": "object"
-    },
-    "ColorCodeOverrides": {
-      "additionalProperties": false,
-      "description": "Sparse user overrides for volumetric color-coding settings.",
-      "properties": {
         "colormap": {
           "anyOf": [
             {
@@ -419,18 +488,12 @@
       "title": "ColorCodeOverrides",
       "type": "object"
     },
-    "EvaluateOverrides": {
+    "EvaluateDataOverrides": {
       "additionalProperties": false,
-      "description": "Sparse user-authored overrides for the `evaluate` section.",
       "properties": {
-        "best_or_last": {
+        "split": {
           "anyOf": [
             {
-              "enum": [
-                "best",
-                "last",
-                "both"
-              ],
               "type": "string"
             },
             {
@@ -438,12 +501,40 @@
             }
           ],
           "default": null,
-          "description": "Checkpoint selector used when epoch_number is null. Supported values are 'best', 'last', and 'both'.",
-          "title": "Best Or Last"
+          "description": "Dataset split to evaluate, typically 'test' or 'val'.",
+          "title": "Split"
         },
-        "epoch_number": {
+        "eval_gt": {
           "anyOf": [
             {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional evaluation ground-truth path/key. If omitted, evaluation uses the dataset registry eval_gt default when present, otherwise the training target. Use @training to force the saved training target and @none to evaluate without ground truth.",
+          "title": "Eval Gt"
+        },
+        "overrides": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional extra data-loader overrides such as {'data_dir': '...'} or {'subfolder': '...'} used during evaluation.",
+          "title": "Overrides"
+        },
+        "limit_n_imgs": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
               "type": "integer"
             },
             {
@@ -451,9 +542,30 @@
             }
           ],
           "default": null,
-          "description": "Explicit checkpoint epoch number to load. Use null to select the checkpoint through best_or_last instead.",
-          "title": "Epoch Number"
+          "description": "Optional cap on the number of input images or batches processed.",
+          "title": "Limit N Imgs"
         },
+        "timelapse_max": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional maximum number of timelapse frames to process.",
+          "title": "Timelapse Max"
+        }
+      },
+      "title": "EvaluateDataOverrides",
+      "type": "object"
+    },
+    "EvaluateInferenceOverrides": {
+      "additionalProperties": false,
+      "properties": {
         "tiling_size": {
           "anyOf": [
             {
@@ -501,22 +613,6 @@
           "description": "Optional center crop used before inference. Use a single integer for a square crop or a height,width tuple.",
           "title": "Crop Size"
         },
-        "metrics_list": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Metrics to compute during evaluation, for example ['psnr', 'ssim']. Use null to skip metrics.",
-          "title": "Metrics List"
-        },
         "lvae_num_samples": {
           "anyOf": [
             {
@@ -530,6 +626,94 @@
           "description": "Number of stochastic samples drawn when running LVAE models.",
           "title": "Lvae Num Samples"
         },
+        "ch_out": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output channel count forwarded to inference. Defaults to 1 for evaluation because models are trained to predict a single target frame even when inputs contain multiple context channels.",
+          "title": "Ch Out"
+        }
+      },
+      "title": "EvaluateInferenceOverrides",
+      "type": "object"
+    },
+    "EvaluateOverrides": {
+      "additionalProperties": false,
+      "description": "Sparse user-authored overrides for the `evaluate` section.",
+      "properties": {
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CheckpointOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvaluateDataOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "inference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvaluateInferenceOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Metrics to compute during evaluation, for example ['psnr', 'ssim']. Use null to skip metrics.",
+          "title": "Metrics"
+        },
+        "saving": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EvaluateSavingOverrides"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "EvaluateOverrides",
+      "type": "object"
+    },
+    "EvaluateSavingOverrides": {
+      "additionalProperties": false,
+      "properties": {
         "save_folder": {
           "anyOf": [
             {
@@ -555,95 +739,14 @@
           "default": null,
           "description": "Whether an existing save folder may be overwritten.",
           "title": "Overwrite"
-        },
-        "eval_gt": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional evaluation ground-truth path/key. If omitted, evaluation uses the dataset registry eval_gt default when present, otherwise the training target. Use @training to force the saved training target and @none to evaluate without ground truth.",
-          "title": "Eval Gt"
-        },
-        "data_prm_update": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional extra data-loader overrides such as {'data_dir': '...'} or {'subfolder': '...'} used during evaluation.",
-          "title": "Data Prm Update"
-        },
-        "ch_out": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Output channel count forwarded to inference. Defaults to 1 for evaluation because models are trained to predict a single target frame even when inputs contain multiple context channels.",
-          "title": "Ch Out"
-        },
-        "split": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Dataset split to evaluate, typically 'test' or 'val'.",
-          "title": "Split"
-        },
-        "limit_n_imgs": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional cap on the number of input images or batches processed.",
-          "title": "Limit N Imgs"
-        },
-        "timelapse_max": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional maximum number of timelapse frames to process during apply.",
-          "title": "Timelapse Max"
         }
       },
-      "title": "EvaluateOverrides",
+      "title": "EvaluateSavingOverrides",
       "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "Sparse user-authored inference YAML overrides.\n\nAny omitted section or field means \"leave the resolved default as-is\".\nThis is the model used to validate files under `configs/inference/*.yml`.",
+  "description": "Sparse user-authored inference YAML overrides.\n\nAny omitted section or field means \"leave the resolved default as-is\".\nLocal configs may stay sparse; the resolver separately enforces completeness\nfor standalone configs outside `configs/inference/local/`.",
   "properties": {
     "apply": {
       "anyOf": [

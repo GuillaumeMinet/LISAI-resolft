@@ -154,12 +154,14 @@ All main workflows are configured with YAML files:
 - `configs/training/templates/*.yml`: tracked generic starting points with placeholders
 - `configs/training/examples/*.yml`: tracked training examples
 - `configs/training/local/*.yml`: local training configs, ignored by Git
-- `configs/inference/*.yml`: defaults and named inference configs
+- `configs/inference/local/*.yml`: personal inference defaults and workflow overrides, ignored by Git
+- `configs/inference/*.yml`: tracked standalone inference configs; non-local configs must be complete apart from saving settings
 - `configs/schema/*.json`: generated JSON schemas for supported config types
 
 Short config names are resolved from their workflow folder. For example, `lisai train
 examples/vim_denoising_unet` resolves under `configs/training/`, and `lisai preprocess single`
-resolves under `configs/preprocess/`.
+resolves under `configs/preprocess/`. Inference config names check `configs/inference/local/` first,
+then `configs/inference/`.
 
 Training presets and templates are catalog inputs, not direct training inputs. Use `lisai configs
 new ...` to instantiate a preset or template into `configs/training/local/`, then train the local

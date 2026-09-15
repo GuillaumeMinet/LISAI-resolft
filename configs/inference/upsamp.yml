@@ -1,6 +1,0 @@
-apply:
-  crop_size: null
-  tiling_size: 600
-  downsamp: 2
-  fill_factor: null
-  dark_frame_context_length: false

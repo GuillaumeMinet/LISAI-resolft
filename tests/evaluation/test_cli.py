@@ -583,7 +583,7 @@ def test_apply_help_has_output_location_group():
     assert "--save-input" in help_text
     assert "--no-save-input" in help_text
     assert "--limit-n-imgs" in help_text
-    assert "Advanced and model-specific inference settings" in help_text
+    assert "For more advanced or model-specific inference settings" in help_text
 
 
 def test_evaluate_help_uses_workflow_groups():
@@ -603,7 +603,7 @@ def test_evaluate_help_uses_workflow_groups():
     assert "Inference" in help_text
     assert "Metrics" in help_text
     assert "Output" in help_text
-    assert "Advanced and model-specific inference settings" in help_text
+    assert "For more advanced or model-specific inference settings" in help_text
 
 
 @pytest.mark.parametrize(

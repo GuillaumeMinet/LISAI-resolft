@@ -100,6 +100,13 @@ class ConfigPathResolver:
             return resolved
 
         if not config_path.is_absolute():
+            if self.kind == "inference" and (not config_path.parts or config_path.parts[0] != "local"):
+                resolved = self.first_existing_path(
+                    self.candidate_paths(self.root / "local" / config_path)
+                )
+                if resolved is not None:
+                    return resolved
+
             resolved = self.first_existing_path(
                 self.candidate_paths(self.root / config_path)
             )

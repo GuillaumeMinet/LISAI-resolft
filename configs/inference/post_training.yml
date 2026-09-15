@@ -1,8 +1,0 @@
-# yaml-language-server: $schema=../schema/inference.schema.json
-evaluate:
-  split: test
-  metrics_list:
-    - psnr
-    - ssim
-  overwrite: true
-  best_or_last: both

@@ -5,6 +5,10 @@ configs/local_config.yml
 configs/training/local/*
 configs/training/sweeps/*
 
+# Ignore personal inference defaults and workflow overrides
+configs/inference/local/*
+!configs/inference/local/.gitkeep
+
 # But keep subdirectories visible to Git rules and track tracked config sources
 !configs/training/local/.gitkeep
 !configs/training/*/
