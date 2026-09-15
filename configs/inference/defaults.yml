@@ -17,13 +17,13 @@ apply:
   save_inp: true
   downsamp: null
   fill_factor: null
-  apply_color_code: false
+  apply_color_code: true
   color_code_prm:
     colormap: turbo
     saturation: 0.35
     add_colorbar: true
     zstep: 0.4
-  dark_frame_context_length: false
+  dark_frame_context_length: true
 
 evaluate:
   split: test

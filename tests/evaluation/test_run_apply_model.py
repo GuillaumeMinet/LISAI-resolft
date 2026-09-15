@@ -238,3 +238,225 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
     assert captured["save_folder"] == (
         tmp_path / "inference" / tmp_path.name / "mito_model_03"
     )
+
+
+def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    source_dir = tmp_path / "mito_fast"
+    source_dir.mkdir()
+    source_file = source_dir / "c01.tiff"
+    source_file.touch()
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (source_file, [""], source_file.name),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="default", save_folder=None),
+    )
+    captured = {}
+
+    class _FakePaths:
+        def inference_output_dir(self, *, source_name, model_name):
+            captured["source_name"] = source_name
+            return tmp_path / "inference" / source_name / model_name
+
+    monkeypatch.setattr(apply_mod, "Paths", _FakePaths)
+    monkeypatch.setattr(
+        apply_mod,
+        "create_save_folder",
+        lambda path: captured.setdefault("save_folder", Path(path)),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="mito_model_03",
+        data_path=source_file,
+    )
+
+    assert captured["source_name"] == "mito_fast_c01"
+    assert captured["save_folder"] == (
+        tmp_path / "inference" / "mito_fast_c01" / "mito_model_03"
+    )
+
+
+def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (source_dir, ["input.tif"], None),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
+    )
+    captured = {}
+    monkeypatch.setattr(
+        apply_mod,
+        "create_save_folder",
+        lambda path: captured.setdefault("save_folder", Path(path)),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="mito_model_03",
+        data_path=source_dir,
+    )
+
+    assert captured["save_folder"] == source_dir / "Predict_Upsamp_mito_model_03"
+
+
+def test_run_apply_model_folder_outside_directory_includes_source_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (source_dir, ["input.tif"], None),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
+    )
+    captured = {}
+    monkeypatch.setattr(
+        apply_mod,
+        "create_save_folder",
+        lambda path: captured.setdefault("save_folder", Path(path)),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="mito_model_03",
+        data_path=source_dir,
+    )
+
+    assert captured["save_folder"] == (
+        tmp_path / "Predict_source_Upsamp_mito_model_03"
+    )
+
+
+def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    source_dir = tmp_path / "mito_fast"
+    source_dir.mkdir()
+    source_file = source_dir / "c01.tiff"
+    source_file.touch()
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (source_file, [""], source_file.name),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
+    )
+    captured = {}
+    monkeypatch.setattr(
+        apply_mod,
+        "create_save_folder",
+        lambda path: captured.setdefault("save_folder", Path(path)),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="mito_model_03",
+        data_path=source_file,
+    )
+
+    assert captured["save_folder"] == (
+        source_dir / "Predict_mito_fast_c01_Upsamp_mito_model_03"
+    )
+
+
+def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    source_dir = tmp_path / "mito_fast"
+    source_dir.mkdir()
+    source_file = source_dir / "c01.tiff"
+    source_file.touch()
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (source_file, [""], source_file.name),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
+    )
+    captured = {}
+    monkeypatch.setattr(
+        apply_mod,
+        "create_save_folder",
+        lambda path: captured.setdefault("save_folder", Path(path)),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="mito_model_03",
+        data_path=source_file,
+    )
+
+    assert captured["save_folder"] == (
+        tmp_path / "Predict_mito_fast_c01_Upsamp_mito_model_03"
+    )

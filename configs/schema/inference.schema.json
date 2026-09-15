@@ -4,6 +4,25 @@
       "additionalProperties": false,
       "description": "Optional output-location overrides for one inference workflow.",
       "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "default",
+                "in_place",
+                "folder_inside",
+                "folder_outside"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output placement for apply predictions: default uses the configured inference directory, in_place writes directly with the input data, folder_inside creates a dedicated prediction folder inside the input directory, and folder_outside creates that folder beside the input directory.",
+          "title": "Mode"
+        },
         "save_folder": {
           "anyOf": [
             {

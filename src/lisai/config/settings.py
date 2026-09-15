@@ -8,6 +8,9 @@ from .models import DataConfig, LocalConfig, ProjectConfig
 from .io.yaml import load_yaml, save_yaml
 
 
+_LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/local-config.schema.json"
+
+
 class AttrDict(dict):
     """dict with attribute access, so '{paths.roots.data_dir}' works with str.format."""
     def __getattr__(self, key: str):
@@ -84,6 +87,7 @@ class Settings:
 
     def _load_or_setup_infrastructure(self) -> dict:
         if self._local_yaml_path.exists():
+            self._ensure_local_config_schema_hint()
             return load_yaml(self._local_yaml_path)
 
         print("\n" + "=" * 60)
@@ -102,8 +106,18 @@ class Settings:
         }
         self._local_yaml_path.parent.mkdir(parents=True, exist_ok=True)
         save_yaml(new_config, self._local_yaml_path)
+        self._ensure_local_config_schema_hint()
         print(f"Saved to {self._local_yaml_path}\n")
         return new_config
+
+    def _ensure_local_config_schema_hint(self) -> None:
+        text = self._local_yaml_path.read_text(encoding="utf-8")
+        if _LOCAL_CONFIG_SCHEMA_HINT in text.splitlines():
+            return
+        self._local_yaml_path.write_text(
+            f"{_LOCAL_CONFIG_SCHEMA_HINT}\n{text}",
+            encoding="utf-8",
+        )
 
     def _build_context(self) -> AttrDict:
         data_root = Path(self.local_cfg.infrastructure.data_root).resolve()

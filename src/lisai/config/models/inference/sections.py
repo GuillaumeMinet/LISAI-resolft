@@ -4,6 +4,14 @@ from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+ApplyOutputMode: TypeAlias = Literal["default", "in_place", "folder_inside", "folder_outside"]
+
+OUTPUT_MODE_DESC = (
+    "Output placement for apply predictions: default uses the configured inference "
+    "directory, in_place writes directly with the input data, folder_inside creates a "
+    "dedicated prediction folder inside the input directory, and folder_outside creates "
+    "that folder beside the input directory."
+)
 APPLY_SAVE_FOLDER_DESC = (
     "Explicit output directory for apply predictions. When omitted, output routing "
     "falls back to the local/project inference defaults."
@@ -144,6 +152,7 @@ class ApplyOutputOverrides(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    mode: ApplyOutputMode | None = Field(default=None, description=OUTPUT_MODE_DESC)
     save_folder: str | None = Field(default=None, description=APPLY_SAVE_FOLDER_DESC)
     in_place: bool | None = Field(default=None, description=IN_PLACE_DESC)
 
@@ -157,8 +166,16 @@ class ApplyOutputOverrides(BaseModel):
 
     @model_validator(mode="after")
     def _validate_exclusive_output_choice(self):
-        if self.save_folder is not None and self.in_place is not None:
-            raise ValueError("apply.output.save_folder and apply.output.in_place are mutually exclusive.")
+        selected = [
+            self.mode is not None,
+            self.save_folder is not None,
+            self.in_place is not None,
+        ]
+        if sum(selected) > 1:
+            raise ValueError(
+                "apply.output.mode, apply.output.save_folder, and apply.output.in_place "
+                "are mutually exclusive."
+            )
         return self
 
 

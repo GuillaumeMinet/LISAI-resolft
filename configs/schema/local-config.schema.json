@@ -1,0 +1,60 @@
+{
+  "$defs": {
+    "LocalInferenceConfig": {
+      "additionalProperties": false,
+      "description": "User-specific defaults for where `lisai apply` writes predictions.",
+      "properties": {
+        "output_mode": {
+          "default": "default",
+          "description": "Default output placement for `lisai apply`: default uses inference_dir, in_place writes directly with the input data, folder_inside creates a dedicated folder inside the source folder, and folder_outside creates a dedicated folder beside the source folder.",
+          "enum": [
+            "default",
+            "in_place",
+            "folder_inside",
+            "folder_outside"
+          ],
+          "title": "Output Mode",
+          "type": "string"
+        },
+        "inference_dir": {
+          "default": "default",
+          "description": "Root used by output_mode=default. Use default to resolve to the project inference root, or provide an explicit local path.",
+          "title": "Inference Dir",
+          "type": "string"
+        }
+      },
+      "title": "LocalInferenceConfig",
+      "type": "object"
+    },
+    "LocalInfrastructureConfig": {
+      "additionalProperties": false,
+      "description": "Machine-specific filesystem settings.",
+      "properties": {
+        "data_root": {
+          "title": "Data Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_root"
+      ],
+      "title": "LocalInfrastructureConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Local, untracked LISAI configuration.",
+  "properties": {
+    "infrastructure": {
+      "$ref": "#/$defs/LocalInfrastructureConfig"
+    },
+    "inference": {
+      "$ref": "#/$defs/LocalInferenceConfig"
+    }
+  },
+  "required": [
+    "infrastructure"
+  ],
+  "title": "LocalConfig",
+  "type": "object"
+}

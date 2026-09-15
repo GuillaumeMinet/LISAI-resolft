@@ -16,6 +16,7 @@ from .inference import (
     write_inference_json_schema,
     write_inference_overrides_json_schema,
 )
+from .local_config import local_config_json_schema, write_local_config_json_schema
 from .preprocess import preprocess_json_schema, write_preprocess_json_schema
 
 __all__ = [
@@ -33,6 +34,8 @@ __all__ = [
     "write_inference_defaults_json_schema",
     "write_inference_json_schema",
     "write_inference_overrides_json_schema",
+    "local_config_json_schema",
+    "write_local_config_json_schema",
     "preprocess_json_schema",
     "write_preprocess_json_schema",
 ]

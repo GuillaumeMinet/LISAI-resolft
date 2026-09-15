@@ -12,6 +12,7 @@ from typing import Union
 import numpy as np
 from tifffile import imread
 
+from lisai.config.models.inference import ApplyOutputMode
 from lisai.data.utils import center_pad, crop_center
 from lisai.evaluation.defaults import (
     UNSET,
@@ -89,11 +90,36 @@ def _format_tiling_size_for_display(requested: TilingSizePolicy, effective: int 
     return str(effective)
 
 
+def _source_name(data_path: Path) -> str:
+    """Return a compact source identifier suitable for output-folder naming."""
+    data_path = Path(data_path)
+    if data_path.is_dir():
+        return data_path.name or "input"
+
+    parts = [data_path.parent.name, data_path.stem]
+    source_name = "_".join(part for part in parts if part)
+    return source_name or "input"
+
+
+def _prediction_folder_name(
+    *,
+    source_name: str | None,
+    model_subfolder: str,
+    model_name: str,
+) -> str:
+    parts = ["Predict"]
+    if source_name:
+        parts.append(source_name)
+    parts.extend([model_subfolder, model_name])
+    return "_".join(parts)
+
+
 def run_apply_model(model_dataset: str,
                 model_subfolder: str,
                 model_name: str,
                 data_path: Path,
                 save_folder: str | Path | None | UnsetType = UNSET,
+                output_mode: ApplyOutputMode | UnsetType = UNSET,
                 in_place: bool | UnsetType = UNSET,
                 epoch_number: int | None | UnsetType = UNSET,
                 best_or_last: str | UnsetType = UNSET,
@@ -145,6 +171,7 @@ def run_apply_model(model_dataset: str,
     output_policy = resolve_apply_output_policy(
         config=config,
         save_folder=save_folder,
+        output_mode=output_mode,
         in_place=in_place,
     )
 
@@ -202,15 +229,33 @@ def run_apply_model(model_dataset: str,
     )
     print(f"Found #{len(list_files)} files.")
 
+    input_dir = data_path if data_path.is_dir() else data_path.parent
+    source_name = _source_name(data_path)
+
     if output_policy.mode == "in_place":
-        save_folder = data_path if data_path.is_dir() else data_path.parent
+        save_folder = input_dir
+    elif output_policy.mode == "folder_inside":
+        # Directory inputs already provide their own source context. Single-file
+        # inputs need source identity in the generated folder name so multiple
+        # files from the same parent remain distinguishable.
+        folder_source_name = source_name if data_path.is_file() else None
+        prediction_folder_name = _prediction_folder_name(
+            source_name=folder_source_name,
+            model_subfolder=model_subfolder,
+            model_name=model_name,
+        )
+        save_folder = create_save_folder(path=input_dir / prediction_folder_name)
+    elif output_policy.mode == "folder_outside":
+        prediction_folder_name = _prediction_folder_name(
+            source_name=source_name,
+            model_subfolder=model_subfolder,
+            model_name=model_name,
+        )
+        save_folder = create_save_folder(path=input_dir.parent / prediction_folder_name)
     elif output_policy.mode == "folder":
         assert output_policy.save_folder is not None
         save_folder = create_save_folder(path=output_policy.save_folder)
     else:
-        source_name = data_path.name if data_path.is_dir() else data_path.stem
-        if not source_name:
-            source_name = "input"
         save_folder = create_save_folder(
             path=Paths().inference_output_dir(
                 source_name=source_name,

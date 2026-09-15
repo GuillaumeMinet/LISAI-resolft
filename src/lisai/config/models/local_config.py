@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .inference import ApplyOutputMode
 
 
 class LocalInfrastructureConfig(BaseModel):
@@ -18,8 +18,22 @@ class LocalInferenceConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    output_mode: Literal["default", "in_place"] = Field(default="default")
-    inference_dir: str = Field(default="default")
+    output_mode: ApplyOutputMode = Field(
+        default="default",
+        description=(
+            "Default output placement for `lisai apply`: default uses inference_dir, "
+            "in_place writes directly with the input data, folder_inside creates a "
+            "dedicated folder inside the source folder, and folder_outside creates "
+            "a dedicated folder beside the source folder."
+        ),
+    )
+    inference_dir: str = Field(
+        default="default",
+        description=(
+            "Root used by output_mode=default. Use default to resolve to the project "
+            "inference root, or provide an explicit local path."
+        ),
+    )
 
     @field_validator("inference_dir", mode="before")
     @classmethod

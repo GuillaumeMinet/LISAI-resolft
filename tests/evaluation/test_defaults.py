@@ -153,6 +153,20 @@ def test_resolve_apply_output_policy_uses_local_in_place_when_no_override(infere
     assert policy.mode == "in_place"
 
 
+def test_resolve_apply_output_policy_uses_source_relative_local_modes(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+
+    folder_inside = defaults_mod.resolve_apply_output_policy(
+        stg=SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_inside")
+    )
+    folder_outside = defaults_mod.resolve_apply_output_policy(
+        stg=SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_outside")
+    )
+
+    assert folder_inside.mode == "folder_inside"
+    assert folder_outside.mode == "folder_outside"
+
+
 def test_named_inference_output_overrides_local_preference(inference_config_dir: Path):
     _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
     _write(
@@ -164,6 +178,19 @@ def test_named_inference_output_overrides_local_preference(inference_config_dir:
     policy = defaults_mod.resolve_apply_output_policy(config="upsamp", stg=local)
 
     assert policy.mode == "default"
+
+
+def test_named_inference_output_mode_overrides_local_preference(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    _write(
+        inference_config_dir / "folder_inside.yml",
+        "apply:\n  output:\n    mode: folder_inside\n",
+    )
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_outside")
+
+    policy = defaults_mod.resolve_apply_output_policy(config="folder_inside", stg=local)
+
+    assert policy.mode == "folder_inside"
 
 
 def test_named_inference_save_folder_overrides_local_preference(inference_config_dir: Path):
@@ -178,6 +205,23 @@ def test_named_inference_save_folder_overrides_local_preference(inference_config
 
     assert policy.mode == "folder"
     assert policy.save_folder == Path("/tmp/special_predictions")
+
+
+def test_cli_output_mode_has_priority_over_named_config(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    _write(
+        inference_config_dir / "special.yml",
+        "apply:\n  output:\n    mode: folder_outside\n",
+    )
+    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+
+    policy = defaults_mod.resolve_apply_output_policy(
+        config="special",
+        output_mode="folder_inside",
+        stg=local,
+    )
+
+    assert policy.mode == "folder_inside"
 
 
 def test_cli_output_override_has_priority_over_named_config(inference_config_dir: Path):

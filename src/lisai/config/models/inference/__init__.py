@@ -6,6 +6,7 @@ from .root import (
 )
 from .sections import (
     ApplyDefaults,
+    ApplyOutputMode,
     ApplyOutputOverrides,
     ApplyOverrides,
     ColorCodeDefaults,
@@ -20,6 +21,7 @@ __all__ = [
     "ColorCodeDefaults",
     "ColorCodeOverrides",
     "ApplyDefaults",
+    "ApplyOutputMode",
     "ApplyOutputOverrides",
     "ApplyOverrides",
     "EvaluateDefaults",

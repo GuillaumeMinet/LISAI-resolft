@@ -102,7 +102,6 @@
             "default": "single"
           },
           "pipeline_cfg": {
-            "description": "Preprocess paired 2D reconstructed images stored in two folders.",
             "properties": {
               "base_subfolder": {
                 "default": "",
@@ -158,7 +157,8 @@
             },
             "title": "PairedSingleReconConfig",
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Pipeline-specific configuration. Editor hints depend on the selected pipeline."
           }
         }
       }
@@ -191,7 +191,6 @@
             "default": "mltpl_snr"
           },
           "pipeline_cfg": {
-            "description": "Preprocess reconstructed multiple-SNR stacks (T,Y,X).\n\nRefactored from legacy `recon_mltpl_snr` pipeline.\n\nTypical stack layouts:\n  - first_low_inp=False:\n        [snr0, snr1, snr2, ...]  -> inp_mltpl_snr is the full stack\n  - first_low_inp=True:\n        [low_inp, snr0, snr1, ...] -> inp_single is first frame, inp_mltpl_snr is remaining stack\n\nOutputs (depending on config):\n  - inp_mltpl_snr (TYX)\n  - inp_single (YX) (optional)\n  - gt_snr0 (YX) (optional)\n  - gt_avg (YX) (optional)\n\nNotes:\n  - Registration uses pystackreg via `register_stack` (rigid-body) if enabled.\n  - `gt_avg_n_frames` controls how many leading frames are averaged for gt_avg.",
             "properties": {
               "base_subfolder": {
                 "default": "",
@@ -280,7 +279,8 @@
             },
             "title": "ReconMltplSnrConfig",
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Pipeline-specific configuration. Editor hints depend on the selected pipeline."
           }
         }
       }
@@ -313,7 +313,6 @@
             "default": "timelapse"
           },
           "pipeline_cfg": {
-            "description": "Preprocess reconstructed timelapse stacks (T,Y,X) from dump/ into preprocess/recon/.\n\nThis pipeline is the refactored version of the legacy `recon_timelapse_upsamp` pipeline.\n\nOperations (all optional):\n  - remove_first_frame\n  - bleach_correction (simple ratio)\n  - center crop\n  - clip negatives to 0",
             "properties": {
               "base_subfolder": {
                 "default": "",
@@ -373,7 +372,8 @@
             },
             "title": "ReconTimelapseSimpleConfig",
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Pipeline-specific configuration. Editor hints depend on the selected pipeline."
           }
         }
       }
@@ -406,7 +406,6 @@
             "default": "single"
           },
           "pipeline_cfg": {
-            "description": "Preprocess reconstructed single images from dump/ into preprocess/recon/.",
             "properties": {
               "base_subfolder": {
                 "default": "",
@@ -469,7 +468,8 @@
             },
             "title": "SingleReconConfig",
             "type": "object",
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Pipeline-specific configuration. Editor hints depend on the selected pipeline."
           }
         }
       }
@@ -724,7 +724,6 @@
       "type": "object"
     },
     "AuxiliarySubfolderConfig": {
-      "description": "Configuration for one named auxiliary image folder.",
       "properties": {
         "matching": {
           "description": "Whether every primary sample requires an auxiliary match ('required') or unmatched primary samples are kept without that auxiliary ('optional').",

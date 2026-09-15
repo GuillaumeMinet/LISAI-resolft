@@ -1,0 +1,785 @@
+diff --git a/configs/schema/inference.schema.json b/configs/schema/inference.schema.json
+index b8e201b..c8853ec 100644
+--- a/configs/schema/inference.schema.json
++++ b/configs/schema/inference.schema.json
+@@ -10,8 +10,8 @@
+               "enum": [
+                 "default",
+                 "in_place",
+-                "inside",
+-                "next_to"
++                "folder_inside",
++                "folder_outside"
+               ],
+               "type": "string"
+             },
+@@ -20,7 +20,7 @@
+             }
+           ],
+           "default": null,
+-          "description": "Output placement for apply predictions: default uses the configured inference directory, in_place writes directly with the input data, inside creates a dedicated prediction folder inside the input directory, and next_to creates that folder beside the input directory.",
++          "description": "Output placement for apply predictions: default uses the configured inference directory, in_place writes directly with the input data, folder_inside creates a dedicated prediction folder inside the input directory, and folder_outside creates that folder beside the input directory.",
+           "title": "Mode"
+         },
+         "save_folder": {
+diff --git a/configs/schema/local-config.schema.json b/configs/schema/local-config.schema.json
+new file mode 100644
+index 0000000..18749ca
+--- /dev/null
++++ b/configs/schema/local-config.schema.json
+@@ -0,0 +1,60 @@
++{
++  "$defs": {
++    "LocalInferenceConfig": {
++      "additionalProperties": false,
++      "description": "User-specific defaults for where `lisai apply` writes predictions.",
++      "properties": {
++        "output_mode": {
++          "default": "default",
++          "description": "Default output placement for `lisai apply`: default uses inference_dir, in_place writes directly with the input data, folder_inside creates a dedicated folder inside the source folder, and folder_outside creates a dedicated folder beside the source folder.",
++          "enum": [
++            "default",
++            "in_place",
++            "folder_inside",
++            "folder_outside"
++          ],
++          "title": "Output Mode",
++          "type": "string"
++        },
++        "inference_dir": {
++          "default": "default",
++          "description": "Root used by output_mode=default. Use default to resolve to the project inference root, or provide an explicit local path.",
++          "title": "Inference Dir",
++          "type": "string"
++        }
++      },
++      "title": "LocalInferenceConfig",
++      "type": "object"
++    },
++    "LocalInfrastructureConfig": {
++      "additionalProperties": false,
++      "description": "Machine-specific filesystem settings.",
++      "properties": {
++        "data_root": {
++          "title": "Data Root",
++          "type": "string"
++        }
++      },
++      "required": [
++        "data_root"
++      ],
++      "title": "LocalInfrastructureConfig",
++      "type": "object"
++    }
++  },
++  "additionalProperties": false,
++  "description": "Local, untracked LISAI configuration.",
++  "properties": {
++    "infrastructure": {
++      "$ref": "#/$defs/LocalInfrastructureConfig"
++    },
++    "inference": {
++      "$ref": "#/$defs/LocalInferenceConfig"
++    }
++  },
++  "required": [
++    "infrastructure"
++  ],
++  "title": "LocalConfig",
++  "type": "object"
++}
+diff --git a/src/lisai/config/json_schema/__init__.py b/src/lisai/config/json_schema/__init__.py
+index 66e2f79..de89768 100644
+--- a/src/lisai/config/json_schema/__init__.py
++++ b/src/lisai/config/json_schema/__init__.py
+@@ -16,6 +16,7 @@ from .inference import (
+     write_inference_json_schema,
+     write_inference_overrides_json_schema,
+ )
++from .local_config import local_config_json_schema, write_local_config_json_schema
+ from .preprocess import preprocess_json_schema, write_preprocess_json_schema
+ 
+ __all__ = [
+@@ -33,6 +34,8 @@ __all__ = [
+     "write_inference_defaults_json_schema",
+     "write_inference_json_schema",
+     "write_inference_overrides_json_schema",
++    "local_config_json_schema",
++    "write_local_config_json_schema",
+     "preprocess_json_schema",
+     "write_preprocess_json_schema",
+ ]
+diff --git a/src/lisai/config/json_schema/local_config.py b/src/lisai/config/json_schema/local_config.py
+new file mode 100644
+index 0000000..83a1989
+--- /dev/null
++++ b/src/lisai/config/json_schema/local_config.py
+@@ -0,0 +1,19 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++from ..models.local_config import LocalConfig
++
++
++def local_config_json_schema() -> dict:
++    """Return the JSON schema for the untracked machine-local LISAI config."""
++    return LocalConfig.model_json_schema()
++
++
++def write_local_config_json_schema(output_path: str | Path) -> Path:
++    """Write the local-config JSON schema to disk and return the output path."""
++    path = Path(output_path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(local_config_json_schema(), indent=2) + "\n", encoding="utf-8")
++    return path
+diff --git a/src/lisai/config/models/inference/sections.py b/src/lisai/config/models/inference/sections.py
+index bc85ab6..e38b048 100644
+--- a/src/lisai/config/models/inference/sections.py
++++ b/src/lisai/config/models/inference/sections.py
+@@ -4,12 +4,12 @@ from typing import Annotated, Any, Literal, TypeAlias
+ 
+ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+ 
+-ApplyOutputMode: TypeAlias = Literal["default", "in_place", "inside", "next_to"]
++ApplyOutputMode: TypeAlias = Literal["default", "in_place", "folder_inside", "folder_outside"]
+ 
+ OUTPUT_MODE_DESC = (
+     "Output placement for apply predictions: default uses the configured inference "
+-    "directory, in_place writes directly with the input data, inside creates a "
+-    "dedicated prediction folder inside the input directory, and next_to creates "
++    "directory, in_place writes directly with the input data, folder_inside creates a "
++    "dedicated prediction folder inside the input directory, and folder_outside creates "
+     "that folder beside the input directory."
+ )
+ APPLY_SAVE_FOLDER_DESC = (
+diff --git a/src/lisai/config/models/local_config.py b/src/lisai/config/models/local_config.py
+index 336159a..b7ab5d8 100644
+--- a/src/lisai/config/models/local_config.py
++++ b/src/lisai/config/models/local_config.py
+@@ -18,8 +18,22 @@ class LocalInferenceConfig(BaseModel):
+ 
+     model_config = ConfigDict(extra="forbid")
+ 
+-    output_mode: ApplyOutputMode = Field(default="default")
+-    inference_dir: str = Field(default="default")
++    output_mode: ApplyOutputMode = Field(
++        default="default",
++        description=(
++            "Default output placement for `lisai apply`: default uses inference_dir, "
++            "in_place writes directly with the input data, folder_inside creates a "
++            "dedicated folder inside the source folder, and folder_outside creates "
++            "a dedicated folder beside the source folder."
++        ),
++    )
++    inference_dir: str = Field(
++        default="default",
++        description=(
++            "Root used by output_mode=default. Use default to resolve to the project "
++            "inference root, or provide an explicit local path."
++        ),
++    )
+ 
+     @field_validator("inference_dir", mode="before")
+     @classmethod
+diff --git a/src/lisai/config/settings.py b/src/lisai/config/settings.py
+index f5ae222..16ba865 100644
+--- a/src/lisai/config/settings.py
++++ b/src/lisai/config/settings.py
+@@ -8,6 +8,9 @@ from .models import DataConfig, LocalConfig, ProjectConfig
+ from .io.yaml import load_yaml, save_yaml
+ 
+ 
++_LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/local-config.schema.json"
++
++
+ class AttrDict(dict):
+     """dict with attribute access, so '{paths.roots.data_dir}' works with str.format."""
+     def __getattr__(self, key: str):
+@@ -84,6 +87,7 @@ class Settings:
+ 
+     def _load_or_setup_infrastructure(self) -> dict:
+         if self._local_yaml_path.exists():
++            self._ensure_local_config_schema_hint()
+             return load_yaml(self._local_yaml_path)
+ 
+         print("\n" + "=" * 60)
+@@ -102,9 +106,19 @@ class Settings:
+         }
+         self._local_yaml_path.parent.mkdir(parents=True, exist_ok=True)
+         save_yaml(new_config, self._local_yaml_path)
++        self._ensure_local_config_schema_hint()
+         print(f"Saved to {self._local_yaml_path}\n")
+         return new_config
+ 
++    def _ensure_local_config_schema_hint(self) -> None:
++        text = self._local_yaml_path.read_text(encoding="utf-8")
++        if _LOCAL_CONFIG_SCHEMA_HINT in text.splitlines():
++            return
++        self._local_yaml_path.write_text(
++            f"{_LOCAL_CONFIG_SCHEMA_HINT}\n{text}",
++            encoding="utf-8",
++        )
++
+     def _build_context(self) -> AttrDict:
+         data_root = Path(self.local_cfg.infrastructure.data_root).resolve()
+         code_dir = self.PROJECT_ROOT.resolve()
+diff --git a/src/lisai/evaluation/cli.py b/src/lisai/evaluation/cli.py
+index 46ccfd2..73abbe4 100644
+--- a/src/lisai/evaluation/cli.py
++++ b/src/lisai/evaluation/cli.py
+@@ -104,11 +104,11 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
+         "--output-mode",
+         "--output_mode",
+         dest="output_mode",
+-        choices=["default", "in_place", "inside", "next_to"],
++        choices=["default", "in_place", "folder_inside", "folder_outside"],
+         help=(
+             "Choose prediction placement: default uses the configured inference "
+-            "directory; in_place writes directly with the input data; inside creates "
+-            "a prediction folder inside the input directory; next_to creates it beside "
++            "directory; in_place writes directly with the input data; folder_inside creates "
++            "a prediction folder inside the input directory; folder_outside creates it beside "
+             "the input directory."
+         ),
+     )
+diff --git a/src/lisai/evaluation/run_apply_model.py b/src/lisai/evaluation/run_apply_model.py
+index 3f1a26f..07b1cb4 100644
+--- a/src/lisai/evaluation/run_apply_model.py
++++ b/src/lisai/evaluation/run_apply_model.py
+@@ -90,6 +90,30 @@ def _format_tiling_size_for_display(requested: TilingSizePolicy, effective: int
+     return str(effective)
+ 
+ 
++def _source_name(data_path: Path) -> str:
++    """Return a compact source identifier suitable for output-folder naming."""
++    data_path = Path(data_path)
++    if data_path.is_dir():
++        return data_path.name or "input"
++
++    parts = [data_path.parent.name, data_path.stem]
++    source_name = "_".join(part for part in parts if part)
++    return source_name or "input"
++
++
++def _prediction_folder_name(
++    *,
++    source_name: str | None,
++    model_subfolder: str,
++    model_name: str,
++) -> str:
++    parts = ["Predict"]
++    if source_name:
++        parts.append(source_name)
++    parts.extend([model_subfolder, model_name])
++    return "_".join(parts)
++
++
+ def run_apply_model(model_dataset: str,
+                 model_subfolder: str,
+                 model_name: str,
+@@ -205,26 +229,33 @@ def run_apply_model(model_dataset: str,
+     )
+     print(f"Found #{len(list_files)} files.")
+ 
+-    prediction_folder_name = f"Predict_{model_subfolder}_{model_name}"
+     input_dir = data_path if data_path.is_dir() else data_path.parent
++    source_name = _source_name(data_path)
+ 
+     if output_policy.mode == "in_place":
+         save_folder = input_dir
+-    elif output_policy.mode == "inside":
++    elif output_policy.mode == "folder_inside":
++        # Directory inputs already provide their own source context. Single-file
++        # inputs need source identity in the generated folder name so multiple
++        # files from the same parent remain distinguishable.
++        folder_source_name = source_name if data_path.is_file() else None
++        prediction_folder_name = _prediction_folder_name(
++            source_name=folder_source_name,
++            model_subfolder=model_subfolder,
++            model_name=model_name,
++        )
+         save_folder = create_save_folder(path=input_dir / prediction_folder_name)
+-    elif output_policy.mode == "next_to":
+-        # For directory input this restores the historical LISAI layout. For a
+-        # single-file input, inside and next_to naturally resolve to the same
+-        # containing directory because a file cannot contain an output folder.
+-        parent = data_path.parent
+-        save_folder = create_save_folder(path=parent / prediction_folder_name)
++    elif output_policy.mode == "folder_outside":
++        prediction_folder_name = _prediction_folder_name(
++            source_name=source_name,
++            model_subfolder=model_subfolder,
++            model_name=model_name,
++        )
++        save_folder = create_save_folder(path=input_dir.parent / prediction_folder_name)
+     elif output_policy.mode == "folder":
+         assert output_policy.save_folder is not None
+         save_folder = create_save_folder(path=output_policy.save_folder)
+     else:
+-        source_name = data_path.name if data_path.is_dir() else data_path.stem
+-        if not source_name:
+-            source_name = "input"
+         save_folder = create_save_folder(
+             path=Paths().inference_output_dir(
+                 source_name=source_name,
+diff --git a/src/scripts/generate_local_config_schema.py b/src/scripts/generate_local_config_schema.py
+new file mode 100644
+index 0000000..2b34658
+--- /dev/null
++++ b/src/scripts/generate_local_config_schema.py
+@@ -0,0 +1,14 @@
++from pathlib import Path
++
++from lisai.config.json_schema import write_local_config_json_schema
++
++
++def main():
++    repo_root = Path(__file__).resolve().parents[2]
++    output_path = repo_root / "configs" / "schema" / "local-config.schema.json"
++    write_local_config_json_schema(output_path)
++    print(output_path)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/tests/config/test_local_config.py b/tests/config/test_local_config.py
+index c26515e..cc1189b 100644
+--- a/tests/config/test_local_config.py
++++ b/tests/config/test_local_config.py
+@@ -2,7 +2,7 @@ from __future__ import annotations
+ 
+ from pathlib import Path
+ 
+-from lisai.config.io.yaml import load_yaml
++from lisai.config.io.yaml import load_yaml, save_yaml
+ from lisai.config.models.local_config import LocalConfig
+ from lisai.config.settings import Settings
+ 
+@@ -21,21 +21,21 @@ def test_existing_local_config_without_inference_section_uses_defaults():
+ 
+ 
+ def test_local_inference_output_mode_accepts_source_relative_modes():
+-    inside = LocalConfig.model_validate(
++    folder_inside = LocalConfig.model_validate(
+         {
+             "infrastructure": {"data_root": "/tmp/lisai"},
+-            "inference": {"output_mode": "inside"},
++            "inference": {"output_mode": "folder_inside"},
+         }
+     )
+-    next_to = LocalConfig.model_validate(
++    folder_outside = LocalConfig.model_validate(
+         {
+             "infrastructure": {"data_root": "/tmp/lisai"},
+-            "inference": {"output_mode": "next_to"},
++            "inference": {"output_mode": "folder_outside"},
+         }
+     )
+ 
+-    assert inside.inference.output_mode == "inside"
+-    assert next_to.inference.output_mode == "next_to"
++    assert folder_inside.inference.output_mode == "folder_inside"
++    assert folder_outside.inference.output_mode == "folder_outside"
+ 
+ 
+ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path):
+@@ -52,6 +52,27 @@ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path)
+     }
+     written = load_yaml(settings._local_yaml_path)
+     assert written["inference"] == raw["inference"]
++    assert settings._local_yaml_path.read_text(encoding="utf-8").startswith(
++        "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
++    )
++
++
++def test_existing_local_config_gets_schema_hint_without_rewriting_values(tmp_path: Path):
++    settings = Settings.__new__(Settings)
++    settings._local_yaml_path = tmp_path / "configs" / "local_config.yml"
++    settings._local_yaml_path.parent.mkdir(parents=True)
++    expected = {
++        "infrastructure": {"data_root": "/tmp/lisai"},
++        "inference": {"output_mode": "folder_inside", "inference_dir": "default"},
++    }
++    save_yaml(expected, settings._local_yaml_path)
++
++    loaded = settings._load_or_setup_infrastructure()
++
++    assert loaded == expected
++    assert settings._local_yaml_path.read_text(encoding="utf-8").startswith(
++        "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
++    )
+ 
+ 
+ def test_local_inference_dir_overrides_project_root(tmp_path: Path):
+diff --git a/tests/evaluation/test_cli.py b/tests/evaluation/test_cli.py
+index cd97297..73aabf4 100644
+--- a/tests/evaluation/test_cli.py
++++ b/tests/evaluation/test_cli.py
+@@ -471,12 +471,12 @@ def test_apply_cli_accepts_output_mode(monkeypatch, tmp_path):
+ 
+     parser = build_parser()
+     args = parser.parse_args(
+-        ["apply", "my_model_00", "/data/images", "--output-mode", "inside"]
++        ["apply", "my_model_00", "/data/images", "--output-mode", "folder_inside"]
+     )
+     result = args.handler(args)
+ 
+     assert result == 0
+-    assert captured["output_mode"] == "inside"
++    assert captured["output_mode"] == "folder_inside"
+ 
+ 
+ def test_apply_cli_output_arguments_are_mutually_exclusive():
+@@ -505,7 +505,7 @@ def test_apply_cli_output_mode_is_mutually_exclusive_with_legacy_output_flags():
+                 "run_00",
+                 "/data/images",
+                 "--output-mode",
+-                "next_to",
++                "folder_outside",
+                 "--in-place",
+             ]
+         )
+diff --git a/tests/evaluation/test_defaults.py b/tests/evaluation/test_defaults.py
+index 4ff692e..4ebe531 100644
+--- a/tests/evaluation/test_defaults.py
++++ b/tests/evaluation/test_defaults.py
+@@ -156,15 +156,15 @@ def test_resolve_apply_output_policy_uses_local_in_place_when_no_override(infere
+ def test_resolve_apply_output_policy_uses_source_relative_local_modes(inference_config_dir: Path):
+     _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+ 
+-    inside = defaults_mod.resolve_apply_output_policy(
+-        stg=SimpleNamespace(INFERENCE_OUTPUT_MODE="inside")
++    folder_inside = defaults_mod.resolve_apply_output_policy(
++        stg=SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_inside")
+     )
+-    next_to = defaults_mod.resolve_apply_output_policy(
+-        stg=SimpleNamespace(INFERENCE_OUTPUT_MODE="next_to")
++    folder_outside = defaults_mod.resolve_apply_output_policy(
++        stg=SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_outside")
+     )
+ 
+-    assert inside.mode == "inside"
+-    assert next_to.mode == "next_to"
++    assert folder_inside.mode == "folder_inside"
++    assert folder_outside.mode == "folder_outside"
+ 
+ 
+ def test_named_inference_output_overrides_local_preference(inference_config_dir: Path):
+@@ -183,14 +183,14 @@ def test_named_inference_output_overrides_local_preference(inference_config_dir:
+ def test_named_inference_output_mode_overrides_local_preference(inference_config_dir: Path):
+     _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+     _write(
+-        inference_config_dir / "inside.yml",
+-        "apply:\n  output:\n    mode: inside\n",
++        inference_config_dir / "folder_inside.yml",
++        "apply:\n  output:\n    mode: folder_inside\n",
+     )
+-    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="next_to")
++    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_outside")
+ 
+-    policy = defaults_mod.resolve_apply_output_policy(config="inside", stg=local)
++    policy = defaults_mod.resolve_apply_output_policy(config="folder_inside", stg=local)
+ 
+-    assert policy.mode == "inside"
++    assert policy.mode == "folder_inside"
+ 
+ 
+ def test_named_inference_save_folder_overrides_local_preference(inference_config_dir: Path):
+@@ -211,17 +211,17 @@ def test_cli_output_mode_has_priority_over_named_config(inference_config_dir: Pa
+     _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+     _write(
+         inference_config_dir / "special.yml",
+-        "apply:\n  output:\n    mode: next_to\n",
++        "apply:\n  output:\n    mode: folder_outside\n",
+     )
+     local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+ 
+     policy = defaults_mod.resolve_apply_output_policy(
+         config="special",
+-        output_mode="inside",
++        output_mode="folder_inside",
+         stg=local,
+     )
+ 
+-    assert policy.mode == "inside"
++    assert policy.mode == "folder_inside"
+ 
+ 
+ def test_cli_output_override_has_priority_over_named_config(inference_config_dir: Path):
+diff --git a/tests/evaluation/test_inference_models.py b/tests/evaluation/test_inference_models.py
+index fd6b079..c84960f 100644
+--- a/tests/evaluation/test_inference_models.py
++++ b/tests/evaluation/test_inference_models.py
+@@ -83,19 +83,19 @@ def test_inference_models_reject_invalid_tiling_policy_values():
+ 
+ def test_apply_output_override_is_optional_and_sparse():
+     no_output = InferenceOverrides.model_validate({"apply": {"tiling_size": 512}})
+-    inside = InferenceOverrides.model_validate({"apply": {"output": {"mode": "inside"}}})
+-    next_to = InferenceOverrides.model_validate({"apply": {"output": {"mode": "next_to"}}})
++    folder_inside = InferenceOverrides.model_validate({"apply": {"output": {"mode": "folder_inside"}}})
++    folder_outside = InferenceOverrides.model_validate({"apply": {"output": {"mode": "folder_outside"}}})
+     in_place = InferenceOverrides.model_validate({"apply": {"output": {"in_place": True}}})
+     force_default = InferenceOverrides.model_validate({"apply": {"output": {"in_place": False}}})
+ 
+     assert no_output.apply is not None
+     assert no_output.apply.output is None
+-    assert inside.apply is not None
+-    assert inside.apply.output is not None
+-    assert inside.apply.output.mode == "inside"
+-    assert next_to.apply is not None
+-    assert next_to.apply.output is not None
+-    assert next_to.apply.output.mode == "next_to"
++    assert folder_inside.apply is not None
++    assert folder_inside.apply.output is not None
++    assert folder_inside.apply.output.mode == "folder_inside"
++    assert folder_outside.apply is not None
++    assert folder_outside.apply.output is not None
++    assert folder_outside.apply.output.mode == "folder_outside"
+     assert in_place.apply is not None
+     assert in_place.apply.output is not None
+     assert in_place.apply.output.in_place is True
+@@ -104,13 +104,19 @@ def test_apply_output_override_is_optional_and_sparse():
+     assert force_default.apply.output.in_place is False
+ 
+ 
++def test_apply_output_override_rejects_retired_mode_names():
++    for mode in ("inside", "next_to"):
++        with pytest.raises(ValidationError, match="mode"):
++            InferenceOverrides.model_validate({"apply": {"output": {"mode": mode}}})
++
++
+ def test_apply_output_override_rejects_conflicting_destination_fields():
+     with pytest.raises(ValidationError, match="mutually exclusive"):
+         InferenceOverrides.model_validate(
+             {
+                 "apply": {
+                     "output": {
+-                        "mode": "inside",
++                        "mode": "folder_inside",
+                         "save_folder": "/tmp/predictions",
+                     }
+                 }
+diff --git a/tests/evaluation/test_run_apply_model.py b/tests/evaluation/test_run_apply_model.py
+index 6e05d1c..1ceb25c 100644
+--- a/tests/evaluation/test_run_apply_model.py
++++ b/tests/evaluation/test_run_apply_model.py
+@@ -240,7 +240,59 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
+     )
+ 
+ 
+-def test_run_apply_model_inside_output_uses_prediction_folder_inside_input(
++def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++):
++    source_dir = tmp_path / "mito_fast"
++    source_dir.mkdir()
++    source_file = source_dir / "c01.tiff"
++    source_file.touch()
++    options = _base_apply_options(downsamp=None, fill_factor=None)
++    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
++    monkeypatch.setattr(
++        apply_mod,
++        "resolve_prediction_inputs",
++        lambda *_args, **_kwargs: (source_file, [""], source_file.name),
++    )
++    monkeypatch.setattr(
++        apply_mod,
++        "resolve_apply_output_policy",
++        lambda **_: SimpleNamespace(mode="default", save_folder=None),
++    )
++    captured = {}
++
++    class _FakePaths:
++        def inference_output_dir(self, *, source_name, model_name):
++            captured["source_name"] = source_name
++            return tmp_path / "inference" / source_name / model_name
++
++    monkeypatch.setattr(apply_mod, "Paths", _FakePaths)
++    monkeypatch.setattr(
++        apply_mod,
++        "create_save_folder",
++        lambda path: captured.setdefault("save_folder", Path(path)),
++    )
++    monkeypatch.setattr(
++        apply_mod,
++        "predict_4d_stack",
++        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
++    )
++
++    apply_mod.run_apply_model(
++        model_dataset="dataset",
++        model_subfolder="Upsamp",
++        model_name="mito_model_03",
++        data_path=source_file,
++    )
++
++    assert captured["source_name"] == "mito_fast_c01"
++    assert captured["save_folder"] == (
++        tmp_path / "inference" / "mito_fast_c01" / "mito_model_03"
++    )
++
++
++def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
+     monkeypatch: pytest.MonkeyPatch,
+     tmp_path: Path,
+ ):
+@@ -256,7 +308,7 @@ def test_run_apply_model_inside_output_uses_prediction_folder_inside_input(
+     monkeypatch.setattr(
+         apply_mod,
+         "resolve_apply_output_policy",
+-        lambda **_: SimpleNamespace(mode="inside", save_folder=None),
++        lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
+     )
+     captured = {}
+     monkeypatch.setattr(
+@@ -280,7 +332,7 @@ def test_run_apply_model_inside_output_uses_prediction_folder_inside_input(
+     assert captured["save_folder"] == source_dir / "Predict_Upsamp_mito_model_03"
+ 
+ 
+-def test_run_apply_model_next_to_output_restores_historical_sibling_layout(
++def test_run_apply_model_folder_outside_directory_includes_source_name(
+     monkeypatch: pytest.MonkeyPatch,
+     tmp_path: Path,
+ ):
+@@ -296,7 +348,7 @@ def test_run_apply_model_next_to_output_restores_historical_sibling_layout(
+     monkeypatch.setattr(
+         apply_mod,
+         "resolve_apply_output_policy",
+-        lambda **_: SimpleNamespace(mode="next_to", save_folder=None),
++        lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
+     )
+     captured = {}
+     monkeypatch.setattr(
+@@ -317,4 +369,94 @@ def test_run_apply_model_next_to_output_restores_historical_sibling_layout(
+         data_path=source_dir,
+     )
+ 
+-    assert captured["save_folder"] == tmp_path / "Predict_Upsamp_mito_model_03"
++    assert captured["save_folder"] == (
++        tmp_path / "Predict_source_Upsamp_mito_model_03"
++    )
++
++
++def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++):
++    source_dir = tmp_path / "mito_fast"
++    source_dir.mkdir()
++    source_file = source_dir / "c01.tiff"
++    source_file.touch()
++    options = _base_apply_options(downsamp=None, fill_factor=None)
++    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
++    monkeypatch.setattr(
++        apply_mod,
++        "resolve_prediction_inputs",
++        lambda *_args, **_kwargs: (source_file, [""], source_file.name),
++    )
++    monkeypatch.setattr(
++        apply_mod,
++        "resolve_apply_output_policy",
++        lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
++    )
++    captured = {}
++    monkeypatch.setattr(
++        apply_mod,
++        "create_save_folder",
++        lambda path: captured.setdefault("save_folder", Path(path)),
++    )
++    monkeypatch.setattr(
++        apply_mod,
++        "predict_4d_stack",
++        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
++    )
++
++    apply_mod.run_apply_model(
++        model_dataset="dataset",
++        model_subfolder="Upsamp",
++        model_name="mito_model_03",
++        data_path=source_file,
++    )
++
++    assert captured["save_folder"] == (
++        source_dir / "Predict_mito_fast_c01_Upsamp_mito_model_03"
++    )
++
++
++def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
++    monkeypatch: pytest.MonkeyPatch,
++    tmp_path: Path,
++):
++    source_dir = tmp_path / "mito_fast"
++    source_dir.mkdir()
++    source_file = source_dir / "c01.tiff"
++    source_file.touch()
++    options = _base_apply_options(downsamp=None, fill_factor=None)
++    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
++    monkeypatch.setattr(
++        apply_mod,
++        "resolve_prediction_inputs",
++        lambda *_args, **_kwargs: (source_file, [""], source_file.name),
++    )
++    monkeypatch.setattr(
++        apply_mod,
++        "resolve_apply_output_policy",
++        lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
++    )
++    captured = {}
++    monkeypatch.setattr(
++        apply_mod,
++        "create_save_folder",
++        lambda path: captured.setdefault("save_folder", Path(path)),
++    )
++    monkeypatch.setattr(
++        apply_mod,
++        "predict_4d_stack",
++        lambda *_args, **_kwargs: (np.zeros((1, 1, 8, 8), dtype=np.float32), None),
++    )
++
++    apply_mod.run_apply_model(
++        model_dataset="dataset",
++        model_subfolder="Upsamp",
++        model_name="mito_model_03",
++        data_path=source_file,
++    )
++
++    assert captured["save_folder"] == (
++        tmp_path / "Predict_mito_fast_c01_Upsamp_mito_model_03"
++    )
+diff --git a/tests/infra/config/test_local_config_schema.py b/tests/infra/config/test_local_config_schema.py
+new file mode 100644
+index 0000000..6eb227b
+--- /dev/null
++++ b/tests/infra/config/test_local_config_schema.py
+@@ -0,0 +1,28 @@
++from __future__ import annotations
++
++import json
++from pathlib import Path
++
++from lisai.config.json_schema import local_config_json_schema, write_local_config_json_schema
++
++
++def test_local_config_schema_exposes_output_mode_choices():
++    schema = local_config_json_schema()
++    output_mode = schema["$defs"]["LocalInferenceConfig"]["properties"]["output_mode"]
++
++    assert output_mode["enum"] == [
++        "default",
++        "in_place",
++        "folder_inside",
++        "folder_outside",
++    ]
++
++
++def test_write_local_config_json_schema_writes_json_file(tmp_path: Path):
++    output_path = tmp_path / "local-config.schema.json"
++
++    written_path = write_local_config_json_schema(output_path)
++
++    assert written_path == output_path
++    parsed = json.loads(output_path.read_text(encoding="utf-8"))
++    assert parsed["title"] == "LocalConfig"

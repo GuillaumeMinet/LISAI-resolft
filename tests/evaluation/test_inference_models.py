@@ -83,11 +83,19 @@ def test_inference_models_reject_invalid_tiling_policy_values():
 
 def test_apply_output_override_is_optional_and_sparse():
     no_output = InferenceOverrides.model_validate({"apply": {"tiling_size": 512}})
+    folder_inside = InferenceOverrides.model_validate({"apply": {"output": {"mode": "folder_inside"}}})
+    folder_outside = InferenceOverrides.model_validate({"apply": {"output": {"mode": "folder_outside"}}})
     in_place = InferenceOverrides.model_validate({"apply": {"output": {"in_place": True}}})
     force_default = InferenceOverrides.model_validate({"apply": {"output": {"in_place": False}}})
 
     assert no_output.apply is not None
     assert no_output.apply.output is None
+    assert folder_inside.apply is not None
+    assert folder_inside.apply.output is not None
+    assert folder_inside.apply.output.mode == "folder_inside"
+    assert folder_outside.apply is not None
+    assert folder_outside.apply.output is not None
+    assert folder_outside.apply.output.mode == "folder_outside"
     assert in_place.apply is not None
     assert in_place.apply.output is not None
     assert in_place.apply.output.in_place is True
@@ -96,14 +104,20 @@ def test_apply_output_override_is_optional_and_sparse():
     assert force_default.apply.output.in_place is False
 
 
+def test_apply_output_override_rejects_retired_mode_names():
+    for mode in ("inside", "next_to"):
+        with pytest.raises(ValidationError, match="mode"):
+            InferenceOverrides.model_validate({"apply": {"output": {"mode": mode}}})
+
+
 def test_apply_output_override_rejects_conflicting_destination_fields():
     with pytest.raises(ValidationError, match="mutually exclusive"):
         InferenceOverrides.model_validate(
             {
                 "apply": {
                     "output": {
+                        "mode": "folder_inside",
                         "save_folder": "/tmp/predictions",
-                        "in_place": True,
                     }
                 }
             }

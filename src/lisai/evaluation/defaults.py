@@ -9,6 +9,7 @@ from lisai.config import load_yaml
 from lisai.config.io import deep_merge
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.config.models.inference import (
+    ApplyOutputMode,
     InferenceOverrides,
     ResolvedInferenceConfig,
 )
@@ -32,7 +33,7 @@ UNSET = UnsetType()
 class ApplyOutputPolicy:
     """Resolved destination policy for one `apply` invocation."""
 
-    mode: Literal["default", "in_place", "folder"]
+    mode: ApplyOutputMode | Literal["folder"]
     save_folder: Path | None = None
 
 
@@ -123,18 +124,29 @@ def resolve_apply_output_policy(
     *,
     config: str | Path | None = None,
     save_folder: str | Path | None | UnsetType = UNSET,
+    output_mode: ApplyOutputMode | UnsetType = UNSET,
     in_place: bool | UnsetType = UNSET,
     stg=None,
 ) -> ApplyOutputPolicy:
     """Resolve apply output routing as CLI > named config > local config > project default."""
-    if save_folder is not UNSET and in_place is not UNSET:
-        raise ValueError("save_folder and in_place are mutually exclusive output overrides.")
+    cli_choices = [
+        save_folder is not UNSET,
+        output_mode is not UNSET,
+        in_place is not UNSET,
+    ]
+    if sum(cli_choices) > 1:
+        raise ValueError(
+            "save_folder, output_mode, and in_place are mutually exclusive output overrides."
+        )
 
-    # Explicit CLI output choice is authoritative. False means "force default routing".
+    # Explicit CLI output choice is authoritative. --no-in-place remains a
+    # backward-compatible way to force default routing.
     if save_folder is not UNSET:
         if save_folder is None or not str(save_folder).strip():
             raise ValueError("save_folder must not be empty when explicitly provided.")
         return ApplyOutputPolicy(mode="folder", save_folder=Path(save_folder))
+    if output_mode is not UNSET:
+        return ApplyOutputPolicy(mode=output_mode)
     if in_place is not UNSET:
         return ApplyOutputPolicy(mode="in_place" if in_place else "default")
 
@@ -147,15 +159,15 @@ def resolve_apply_output_policy(
             output = named_cfg.apply.output
             if output.save_folder is not None:
                 return ApplyOutputPolicy(mode="folder", save_folder=Path(output.save_folder))
+            if output.mode is not None:
+                return ApplyOutputPolicy(mode=output.mode)
             if output.in_place is not None:
                 return ApplyOutputPolicy(mode="in_place" if output.in_place else "default")
 
     if stg is None:
         from lisai.config.settings import settings as stg
 
-    if stg.INFERENCE_OUTPUT_MODE == "in_place":
-        return ApplyOutputPolicy(mode="in_place")
-    return ApplyOutputPolicy(mode="default")
+    return ApplyOutputPolicy(mode=stg.INFERENCE_OUTPUT_MODE)
 
 
 def resolve_evaluate_options(

@@ -101,6 +101,18 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         ),
     )
     output_choice.add_argument(
+        "--output-mode",
+        "--output_mode",
+        dest="output_mode",
+        choices=["default", "in_place", "folder_inside", "folder_outside"],
+        help=(
+            "Choose prediction placement: default uses the configured inference "
+            "directory; in_place writes directly with the input data; folder_inside creates "
+            "a prediction folder inside the input directory; folder_outside creates it beside "
+            "the input directory."
+        ),
+    )
+    output_choice.add_argument(
         "--in-place",
         "--in_place",
         dest="in_place",
@@ -240,6 +252,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         data_path=Path(args.data_path),
         config=args.config,
         save_folder=_maybe_unset(args.save_folder),
+        output_mode=_maybe_unset(args.output_mode),
         in_place=_maybe_unset(args.in_place),
         epoch_number=_maybe_unset(args.epoch_number),
         best_or_last=_maybe_unset(args.best_or_last),
