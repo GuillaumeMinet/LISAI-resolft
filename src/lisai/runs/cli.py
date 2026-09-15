@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import argparse
 import math
-import os
-import shutil
-import subprocess
 import sys
 import time
 from collections.abc import Iterable
-from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
+
+from lisai.infra.cli.open_path import try_open_path as _try_open_path
+from lisai.infra.cli.prompts import is_interactive, prompt_yes_no
 
 from .listing import (
     filter_runs,
@@ -56,7 +55,7 @@ def list_runs(
             f"{_LIVE_INTERVAL_MIN_SECONDS:g}s; using {_LIVE_INTERVAL_MIN_SECONDS:g}s."
         )
 
-    if live and not _is_interactive(out):
+    if live and not is_interactive(out):
         print(
             "warning: --live requires interactive terminal output; showing a single snapshot instead.",
             file=err,
@@ -266,11 +265,6 @@ def _filter_new_invalid_warnings(
     return new_entries
 
 
-def _is_interactive(stream: Any) -> bool:
-    is_tty = getattr(stream, "isatty", None)
-    return callable(is_tty) and bool(is_tty())
-
-
 def _seconds_value(value: str) -> float:
     try:
         seconds = float(value)
@@ -318,53 +312,6 @@ def _resolve_run_from_args(args: argparse.Namespace) -> DiscoveredRun | None:
         stdout=sys.stdout,
         stderr=sys.stderr,
     )
-
-
-def _try_open_path(path: Path) -> bool:
-    resolved = path.resolve()
-
-    startfile = getattr(os, "startfile", None)
-    if callable(startfile):
-        try:
-            startfile(str(resolved))
-            return True
-        except OSError:
-            pass
-
-    commands: list[list[str]] = []
-    explorer = shutil.which("explorer.exe") or shutil.which("explorer")
-    if explorer is not None:
-        target = _to_windows_path(resolved)
-        commands.append([explorer, target if target is not None else str(resolved)])
-
-    xdg_open = shutil.which("xdg-open")
-    if xdg_open is not None:
-        commands.append([xdg_open, str(resolved)])
-
-    for command in commands:
-        try:
-            subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return True
-        except OSError:
-            continue
-    return False
-
-
-def _to_windows_path(path: Path) -> str | None:
-    wslpath_cmd = shutil.which("wslpath")
-    if wslpath_cmd is None:
-        return None
-    try:
-        completed = subprocess.run(
-            [wslpath_cmd, "-w", str(path)],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    converted = completed.stdout.strip()
-    return converted or None
 
 
 def run_open_from_args(args: argparse.Namespace) -> int:
@@ -447,9 +394,15 @@ def run_prune_from_args(args: argparse.Namespace) -> int:
         print("No unkept terminal runs to prune.")
         return 0
 
-    if not args.yes and not _confirm_prune(delete=args.delete):
-        print("Prune cancelled.")
-        return 0
+    if not args.yes:
+        prompt = (
+            "Permanently delete these runs? [y/N] "
+            if args.delete
+            else "Archive these runs? [y/N] "
+        )
+        if not prompt_yes_no(prompt):
+            print("Prune cancelled.")
+            return 0
 
     failures = 0
     archived_at = utc_now()
@@ -500,17 +453,6 @@ def _print_prune_summary(args: argparse.Namespace, plan) -> None:
         print(label)
         for run in plan.candidates:
             print(f"  {run.dataset}/{run.model_subfolder}/{run.run_dir.name}")
-
-
-def _confirm_prune(*, delete: bool) -> bool:
-    prompt = (
-        "Permanently delete these runs? [y/N] "
-        if delete
-        else "Archive these runs? [y/N] "
-    )
-    print(prompt, end="", flush=True)
-    answer = sys.stdin.readline()
-    return answer.strip().casefold() in {"y", "yes"}
 
 
 def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:

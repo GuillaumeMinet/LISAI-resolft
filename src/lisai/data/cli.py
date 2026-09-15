@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 from lisai.config import settings
+from lisai.infra.cli.open_path import try_open_path as _try_open_path
+from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.infra.paths import Paths
-from lisai.runs.cli import _try_open_path
 
 from .dataset_registry import load_dataset_registry
 from .readme import dataset_readme_path, ensure_dataset_readme
@@ -373,13 +373,6 @@ def _print_rename_plan(plan) -> None:
     print("  - arbitrary external configs or references outside LISAI-managed dataset metadata")
 
 
-def _confirm_dataset_rename() -> bool:
-    print("")
-    print("Proceed with dataset rename? [y/N] ", end="", flush=True)
-    answer = sys.stdin.readline()
-    return answer.strip().casefold() in {"y", "yes"}
-
-
 def rename_dataset(
     old_name: str,
     new_name: str,
@@ -394,7 +387,8 @@ def rename_dataset(
         return 1
 
     _print_rename_plan(plan)
-    if not _confirm_dataset_rename():
+    print("")
+    if not prompt_yes_no("Proceed with dataset rename? [y/N] "):
         print("Dataset rename cancelled.")
         return 0
 

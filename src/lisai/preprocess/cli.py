@@ -7,6 +7,7 @@ from typing import Callable, Sequence
 
 from lisai.config import load_yaml, settings
 from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.infra.cli.prompts import is_interactive, prompt_yes_no
 from lisai.infra.paths import Paths
 
 from .reporting import ConsolePreprocessReporter, PreprocessReporter
@@ -47,8 +48,7 @@ def _confirm_overwrite(
         f"{existing_output.describe()}\n"
         "Overwriting will delete the current preprocess content and log. Continue? [y/N]: "
     )
-    answer = input_fn(prompt).strip().lower()
-    return answer in {"y", "yes"}
+    return bool(prompt_yes_no(prompt, input_fn=input_fn))
 
 
 def run_preprocess_config(
@@ -68,8 +68,8 @@ def run_preprocess_config(
 
     overwrite = False
     if existing_output.exists:
-        is_interactive = sys.stdin.isatty() if interactive is None else interactive
-        if not is_interactive:
+        interactive_input = is_interactive(sys.stdin) if interactive is None else interactive
+        if not interactive_input:
             raise FileExistsError(existing_output.describe())
         if not _confirm_overwrite(existing_output, input_fn=input_fn):
             raise PreprocessAbortedError("Preprocess aborted. Existing preprocess output was left untouched.")

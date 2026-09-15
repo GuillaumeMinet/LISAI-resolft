@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Sequence
 
 from lisai.config import settings
+from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.listing import (
     is_run_likely_active,
@@ -90,10 +91,11 @@ def continue_run(
             )
             return 1
         else:
-            confirmed = _prompt_yes_no(
+            confirmed = prompt_yes_no(
                 "Selected run has inconsistent path metadata. Continue anyway? [y/N]: ",
                 stdin=in_stream,
                 stdout=out,
+                require_interactive=True,
             )
             if confirmed is None:
                 print(
@@ -112,10 +114,11 @@ def continue_run(
             prompt = "Continue training this run in place? [y/N]: "
 
         if prompt is not None:
-            confirmed = _prompt_yes_no(
+            confirmed = prompt_yes_no(
                 prompt,
                 stdin=in_stream,
                 stdout=out,
+                require_interactive=True,
             )
             if confirmed is None:
                 print("Confirmation required. Rerun with --yes to continue non-interactively.", file=err)
@@ -138,18 +141,6 @@ def _build_continue_training_config(run: DiscoveredRun) -> dict:
             "best_or_last": "last",
         },
     }
-
-
-def _prompt_yes_no(prompt: str, *, stdin, stdout) -> bool | None:
-    is_tty = getattr(stdin, "isatty", None)
-    if not callable(is_tty) or not is_tty():
-        return None
-
-    print(prompt, end="", file=stdout, flush=True)
-    answer = stdin.readline()
-    if answer == "":
-        return None
-    return answer.strip().lower() in {"y", "yes"}
 
 
 def run_from_args(args: argparse.Namespace) -> int:

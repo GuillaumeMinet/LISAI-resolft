@@ -4,6 +4,7 @@ import argparse
 from typing import Sequence, get_args
 
 from lisai.config.models.training import TaskName
+from lisai.infra.cli.prompts import prompt_yes_no
 
 from .install import install_model_archive
 from .package import (
@@ -128,11 +129,12 @@ def run_remove_from_args(args: argparse.Namespace, parser: argparse.ArgumentPars
         parser.exit(status=1, message=f"Unknown promoted model {args.name!r}.\n")
 
     if not args.yes:
-        answer = input(
+        confirmed = prompt_yes_no(
             f"Remove promoted model {args.name!r} from the local library? "
-            "Exported archives will be kept. [y/N]: "
+            "Exported archives will be kept. [y/N]: ",
+            input_fn=input,
         )
-        if answer.strip().lower() not in {"y", "yes"}:
+        if not confirmed:
             print("Removal cancelled.")
             return 0
 

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 
 from lisai.evaluation import run_evaluate
+from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.runs.plotting import save_loss_plot_for_run
 
 if TYPE_CHECKING:
@@ -15,11 +16,8 @@ POST_TRAINING_INFERENCE_CONFIG = "post_training"
 
 
 def _prompt_yes_no(prompt: str) -> bool:
-    try:
-        answer = input(prompt).strip().lower()
-    except EOFError:
-        return False
-    return answer in {"y", "yes"}
+    return bool(prompt_yes_no(prompt, input_fn=input))
+
 
 def _log_runtime_warning(runtime, message: str):
     logger = getattr(runtime, "logger", None)
