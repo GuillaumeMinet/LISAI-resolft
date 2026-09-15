@@ -130,6 +130,7 @@ def run_apply_model(model_dataset: str,
                 keep_original_shape: bool | UnsetType = UNSET,
                 tiling_size: TilingSizePolicy | UnsetType = UNSET,
                 stack_selection_idx: int | None | UnsetType = UNSET,
+                limit_n_imgs: int | None | UnsetType = UNSET,
                 timelapse_max: int | None | UnsetType = UNSET,
                 lvae_num_samples: int | None | UnsetType = UNSET,
                 lvae_save_samples: bool | UnsetType = UNSET,
@@ -158,6 +159,7 @@ def run_apply_model(model_dataset: str,
         keep_original_shape=keep_original_shape,
         tiling_size=tiling_size,
         stack_selection_idx=stack_selection_idx,
+        limit_n_imgs=limit_n_imgs,
         timelapse_max=timelapse_max,
         lvae_num_samples=lvae_num_samples,
         lvae_save_samples=lvae_save_samples,
@@ -233,6 +235,8 @@ def run_apply_model(model_dataset: str,
         filters=options["filters"],
         skip_if_contain=options["skip_if_contain"],
     )
+    if options["limit_n_imgs"] is not None:
+        list_files = list_files[: options["limit_n_imgs"]]
     print(f"Found #{len(list_files)} files.")
 
     input_dir = data_path if data_path.is_dir() else data_path.parent

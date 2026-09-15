@@ -107,6 +107,30 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     assert captured["crop_size"] == 200
 
 
+def test_apply_cli_passes_limit_n_imgs(monkeypatch, tmp_path):
+    captured = {}
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G7ACH",
+        dataset="Gag",
+        model_subfolder="Upsamp",
+    )
+
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(
+        ["apply", "my_model_00", "/data/images", "--limit-n-imgs", "7"]
+    )
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["limit_n_imgs"] == 7
+
+
 def test_cli_parses_tiling_policy_values():
     assert evaluation_cli._parse_tiling_size("auto") == "auto"
     assert evaluation_cli._parse_tiling_size("off") == "off"
@@ -545,10 +569,73 @@ def test_apply_help_has_output_location_group():
 
     help_text = apply_parser.format_help()
 
+    assert "Model selection" in help_text
+    assert "Configuration" in help_text
+    assert "Checkpoint" in help_text
+    assert "Input selection" in help_text
+    assert "Inference" in help_text
     assert "Output location" in help_text
+    assert "Output contents" in help_text
     assert "--save-folder" in help_text
     assert "--output-mode" in help_text
     assert "--in-place" in help_text
     assert "--no-in-place" in help_text
     assert "--save-input" in help_text
     assert "--no-save-input" in help_text
+    assert "--limit-n-imgs" in help_text
+    assert "Advanced and model-specific inference settings" in help_text
+
+
+def test_evaluate_help_uses_workflow_groups():
+    parser = build_parser()
+    evaluate_parser = next(
+        action.choices["evaluate"]
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    help_text = evaluate_parser.format_help()
+
+    assert "Model selection" in help_text
+    assert "Configuration" in help_text
+    assert "Checkpoint" in help_text
+    assert "Evaluation data" in help_text
+    assert "Inference" in help_text
+    assert "Metrics" in help_text
+    assert "Output" in help_text
+    assert "Advanced and model-specific inference settings" in help_text
+
+
+@pytest.mark.parametrize(
+    "technical_option",
+    [
+        "--downsamp",
+        "--fill-factor",
+        "--stack-selection-idx",
+        "--dark-frame-context-length",
+        "--denormalize-output",
+        "--color-code-option",
+        "--keep-original-shape",
+    ],
+)
+def test_apply_help_hides_config_only_options(technical_option):
+    parser = build_parser()
+    apply_parser = next(
+        action.choices["apply"]
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    assert technical_option not in apply_parser.format_help()
+
+
+@pytest.mark.parametrize("technical_option", ["--ch-out", "--data-option"])
+def test_evaluate_help_hides_config_only_options(technical_option):
+    parser = build_parser()
+    evaluate_parser = next(
+        action.choices["evaluate"]
+        for action in parser._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+
+    assert technical_option not in evaluate_parser.format_help()

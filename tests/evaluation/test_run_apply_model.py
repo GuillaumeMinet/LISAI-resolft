@@ -22,6 +22,7 @@ def _base_apply_options(**updates):
         "keep_original_shape": True,
         "tiling_size": 64,
         "stack_selection_idx": None,
+        "limit_n_imgs": None,
         "timelapse_max": None,
         "lvae_num_samples": 20,
         "lvae_save_samples": True,
@@ -111,6 +112,48 @@ def test_run_apply_model_keeps_legacy_stride_downsampling_when_fill_factor_is_no
 
     assert captured["img_shape"] == (1, 1, 4, 4)
     assert captured["ch_out"] is None
+
+
+def test_run_apply_model_limits_number_of_input_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    options = _base_apply_options(downsamp=None, fill_factor=None, limit_n_imgs=2)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (
+            tmp_path,
+            ["first.tif", "second.tif", "third.tif"],
+            None,
+        ),
+    )
+
+    read_files = []
+    monkeypatch.setattr(
+        apply_mod,
+        "imread",
+        lambda path: read_files.append(Path(path).name)
+        or np.ones((8, 8), dtype=np.float32),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (
+            np.zeros((1, 1, 8, 8), dtype=np.float32),
+            None,
+        ),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="model",
+        data_path=tmp_path,
+    )
+
+    assert read_files == ["first.tif", "second.tif"]
 
 
 def test_run_apply_model_uses_deterministic_multiple_downsampling_when_fill_factor_is_set(

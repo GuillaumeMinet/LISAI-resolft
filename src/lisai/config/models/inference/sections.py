@@ -76,7 +76,7 @@ CH_OUT_DESC = (
     "contain multiple context channels."
 )
 SPLIT_DESC = "Dataset split to evaluate, typically 'test' or 'val'."
-LIMIT_N_IMGS_DESC = "Optional cap on the number of images or batches evaluated."
+LIMIT_N_IMGS_DESC = "Optional cap on the number of input images or batches processed."
 
 
 CheckpointSelector = Literal["best", "last", "both"]
@@ -134,6 +134,7 @@ class ApplyDefaults(BaseModel):
     keep_original_shape: bool = Field(default=True, description=KEEP_ORIGINAL_SHAPE_DESC)
     tiling_size: TilingSizePolicy = Field(default="auto", description=TILING_SIZE_DESC)
     stack_selection_idx: int | None = Field(default=None, description=STACK_SELECTION_IDX_DESC)
+    limit_n_imgs: int | None = Field(default=None, gt=0, description=LIMIT_N_IMGS_DESC)
     timelapse_max: int | None = Field(default=None, description=TIMELAPSE_MAX_DESC)
     lvae_num_samples: int | None = Field(default=20, description=LVAE_NUM_SAMPLES_DESC)
     lvae_save_samples: bool = Field(default=True, description=LVAE_SAVE_SAMPLES_DESC)
@@ -200,6 +201,7 @@ class ApplyOverrides(BaseModel):
     keep_original_shape: bool | None = Field(default=None, description=KEEP_ORIGINAL_SHAPE_DESC)
     tiling_size: TilingSizePolicy = Field(default=None, description=TILING_SIZE_DESC)
     stack_selection_idx: int | None = Field(default=None, description=STACK_SELECTION_IDX_DESC)
+    limit_n_imgs: int | None = Field(default=None, gt=0, description=LIMIT_N_IMGS_DESC)
     timelapse_max: int | None = Field(default=None, description=TIMELAPSE_MAX_DESC)
     lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
     lvae_save_samples: bool | None = Field(default=None, description=LVAE_SAVE_SAMPLES_DESC)

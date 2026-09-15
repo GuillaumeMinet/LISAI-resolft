@@ -223,6 +223,20 @@
           "description": "Optional stack or channel index selected before converting the input to a 4D tensor.",
           "title": "Stack Selection Idx"
         },
+        "limit_n_imgs": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional cap on the number of input images or batches processed.",
+          "title": "Limit N Imgs"
+        },
         "timelapse_max": {
           "anyOf": [
             {
@@ -606,7 +620,7 @@
             }
           ],
           "default": null,
-          "description": "Optional cap on the number of images or batches evaluated.",
+          "description": "Optional cap on the number of input images or batches processed.",
           "title": "Limit N Imgs"
         },
         "timelapse_max": {
