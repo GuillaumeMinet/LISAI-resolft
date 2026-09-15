@@ -14,6 +14,11 @@ from lisai.runs.scanner import scan_runs
 from lisai.runs.schema import RunMetadata
 
 
+class InteractiveInput(StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 def _write_metadata(
     run_dir, *, dataset, model_subfolder, group_path, path, status="running",
     run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV", kept=False,
@@ -741,3 +746,75 @@ def test_runs_prune_requires_confirmation_by_default(monkeypatch, tmp_path, caps
     assert "Prune cancelled." in captured.out
     assert run_dir.is_dir()
     assert not (run_dir.parent / "_archive").exists()
+
+
+def test_runs_list_accepts_unique_partial_dataset_name(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    selected_run = datasets_root / "actin_fixed_multi_snr" / "runs" / "HDN" / "run_a"
+    other_run = datasets_root / "vimentin_live" / "runs" / "HDN" / "run_b"
+    _write_metadata(
+        selected_run,
+        dataset="actin_fixed_multi_snr",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/actin_fixed_multi_snr/models/HDN/run_a",
+        status="completed",
+    )
+    _write_metadata(
+        other_run,
+        dataset="vimentin_live",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/vimentin_live/models/HDN/run_b",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FB1",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(["runs", "list", "--dataset", "actin_fixed"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Dataset: 'actin_fixed_multi_snr'" in captured.out
+    assert "run_a" in captured.out
+    assert "run_b" not in captured.out
+
+
+def test_runs_list_prompts_for_ambiguous_partial_dataset_name(monkeypatch, tmp_path):
+    datasets_root = tmp_path / "datasets"
+    first_run = datasets_root / "actin_fixed_multi_snr" / "runs" / "HDN" / "run_a"
+    second_run = datasets_root / "actin_fixed_pair" / "runs" / "HDN" / "run_b"
+    _write_metadata(
+        first_run,
+        dataset="actin_fixed_multi_snr",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/actin_fixed_multi_snr/models/HDN/run_a",
+        status="completed",
+    )
+    _write_metadata(
+        second_run,
+        dataset="actin_fixed_pair",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/actin_fixed_pair/models/HDN/run_b",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FB2",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = runs_cli.list_runs(
+        dataset="actin_fixed",
+        stdin=InteractiveInput("02\n"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 0
+    assert "Multiple matching datasets found:" in stdout.getvalue()
+    assert "Dataset: 'actin_fixed_pair'" in stdout.getvalue()
+    assert "run_b" in stdout.getvalue()
+    assert "run_a" not in stdout.getvalue().split("LISAI runs listing", 1)[-1]
+    assert stderr.getvalue() == ""

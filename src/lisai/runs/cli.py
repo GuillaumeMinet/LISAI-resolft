@@ -7,6 +7,7 @@ import time
 from collections.abc import Iterable
 from typing import Sequence
 
+from lisai.data.selection import resolve_dataset_name
 from lisai.infra.cli.open_path import try_open_path as _try_open_path
 from lisai.infra.cli.prompts import is_interactive, prompt_yes_no
 
@@ -17,7 +18,7 @@ from .listing import (
     write_invalid_run_warnings,
 )
 from .plotting import show_loss_plot_for_run
-from .scanner import DiscoveredRun, InvalidRunMetadata, scan_runs
+from .scanner import DiscoveredRun, InvalidRunMetadata, ScanResults, scan_runs
 from .schema import RUN_STATUSES
 from .selection import resolve_discovered_run_selector
 
@@ -38,9 +39,11 @@ def list_runs(
     recent: int | None = None,
     live: bool = False,
     interval_seconds: float = 2.0,
+    stdin=None,
     stdout=None,
     stderr=None,
 ) -> int:
+    in_stream = sys.stdin if stdin is None else stdin
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
     if not math.isfinite(interval_seconds):
@@ -62,6 +65,22 @@ def list_runs(
         )
         live = False
 
+    initial_scan: ScanResults | None = None
+    resolved_dataset = dataset
+    if dataset is not None:
+        initial_scan = scan_runs()
+        resolved_dataset = resolve_dataset_name(
+            dataset,
+            (run.dataset for run in initial_scan.runs),
+            stdin=in_stream,
+            stdout=out,
+            stderr=err,
+            help_hint="Use 'lisai runs list' without --dataset to inspect available datasets and runs.",
+        )
+        if resolved_dataset is None:
+            write_invalid_run_warnings(initial_scan.invalid, stderr=err)
+            return 1
+
     if live:
         emitted_invalid_keys: set[tuple[str, str, str]] = set()
         try:
@@ -70,7 +89,7 @@ def list_runs(
                     run_id=run_id,
                     run_dir_name=run_dir_name,
                     exp_name=exp_name,
-                    dataset=dataset,
+                    dataset=resolved_dataset,
                     model_subfolder=model_subfolder,
                     status=status,
                     promoted=promoted,
@@ -83,7 +102,9 @@ def list_runs(
                     refresh_interval_seconds=resolved_interval_seconds,
                     emitted_invalid_keys=emitted_invalid_keys,
                     top_notice=interval_warning,
+                    scan_result=initial_scan,
                 )
+                initial_scan = None
                 time.sleep(resolved_interval_seconds)
         except KeyboardInterrupt:
             # Keep shell prompt on a clean line after Ctrl+C in live mode.
@@ -94,7 +115,7 @@ def list_runs(
         run_id=run_id,
         run_dir_name=run_dir_name,
         exp_name=exp_name,
-        dataset=dataset,
+        dataset=resolved_dataset,
         model_subfolder=model_subfolder,
         status=status,
         promoted=promoted,
@@ -107,6 +128,7 @@ def list_runs(
         refresh_interval_seconds=resolved_interval_seconds,
         emitted_invalid_keys=None,
         top_notice=interval_warning,
+        scan_result=initial_scan,
     )
     return 0
 
@@ -129,10 +151,11 @@ def _render_runs_snapshot(
     refresh_interval_seconds: float,
     emitted_invalid_keys: set[tuple[str, str, str]] | None,
     top_notice: str | None,
+    scan_result: ScanResults | None = None,
 ) -> None:
-    scan_result = scan_runs()
+    resolved_scan = scan_runs() if scan_result is None else scan_result
     filtered_runs = filter_runs(
-        scan_result.runs,
+        resolved_scan.runs,
         run_id=run_id,
         run_dir_name=run_dir_name,
         exp_name=exp_name,
@@ -191,10 +214,10 @@ def _render_runs_snapshot(
         print(snapshot, file=stdout)
 
     if emitted_invalid_keys is None:
-        write_invalid_run_warnings(scan_result.invalid, stderr=stderr)
+        write_invalid_run_warnings(resolved_scan.invalid, stderr=stderr)
         return
 
-    new_invalid = _filter_new_invalid_warnings(scan_result.invalid, emitted_invalid_keys)
+    new_invalid = _filter_new_invalid_warnings(resolved_scan.invalid, emitted_invalid_keys)
     if new_invalid:
         write_invalid_run_warnings(new_invalid, stderr=stderr)
 
@@ -377,12 +400,27 @@ def run_prune_from_args(args: argparse.Namespace) -> int:
     from .schema import utc_now
 
     scan_result = scan_runs()
+    resolved_dataset = args.dataset
+    if args.dataset is not None:
+        resolved_dataset = resolve_dataset_name(
+            args.dataset,
+            (run.dataset for run in scan_result.runs),
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+            help_hint="Use 'lisai runs list' without --dataset to inspect available datasets and runs.",
+        )
+        if resolved_dataset is None:
+            write_invalid_run_warnings(scan_result.invalid, stderr=sys.stderr)
+            return 1
+        args.dataset = resolved_dataset
+
     scoped_runs = filter_runs(
         scan_result.runs,
         run_id=args.run_id,
         run_dir_name=args.run_dir_name,
         exp_name=args.exp_name,
-        dataset=args.dataset,
+        dataset=resolved_dataset,
         model_subfolder=args.model_subfolder,
         status=args.status,
     )
@@ -498,7 +536,7 @@ def add_run_filter_arguments(
             dest="exp_name",
             help="Partially filter runs by semantic experiment name.",
         )
-    parser.add_argument("--dataset", help="Filter runs by dataset name.")
+    parser.add_argument("--dataset", help="Filter runs by dataset name or unique partial name.")
     parser.add_argument(
         "--model-subfolder",
         "--models-subfolder",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
+from lisai.data.selection import resolve_dataset_name
 from lisai.infra.cli.selection import resolve_ambiguous_matches
 
 from .listing import filter_runs, matches_exp_name, render_runs_table, write_invalid_run_warnings
@@ -74,11 +75,25 @@ def resolve_discovered_run_selector(
     # Scan once so invalid metadata warnings stay consistent with the selected run list.
     resolved_scan = scan_runs() if scan_result is None else scan_result
 
+    resolved_dataset = dataset
+    if dataset is not None:
+        resolved_dataset = resolve_dataset_name(
+            dataset,
+            (run.dataset for run in resolved_scan.runs),
+            stdin=stdin,
+            stdout=out,
+            stderr=err,
+            help_hint="Use 'lisai runs list' to inspect available datasets and runs.",
+        )
+        if resolved_dataset is None:
+            write_invalid_run_warnings(resolved_scan.invalid, stderr=err)
+            return None
+
     if run_id is not None:
         matches = filter_runs(
             resolved_scan.runs,
             run_id=run_id,
-            dataset=dataset,
+            dataset=resolved_dataset,
             model_subfolder=model_subfolder,
         )
         selector_description = f"run_id={run_id!r}"
@@ -87,7 +102,7 @@ def resolve_discovered_run_selector(
         matches, selector_description = _select_runs_by_public_selector(
             resolved_scan.runs,
             normalized_selector,
-            dataset=dataset,
+            dataset=resolved_dataset,
             model_subfolder=model_subfolder,
             allow_partial_exp_name=allow_partial_exp_name,
             stderr=err,

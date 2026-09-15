@@ -9,6 +9,23 @@ from .prompts import is_interactive
 _T = TypeVar("_T")
 
 
+def find_name_matches(query: str, candidates: Sequence[str]) -> list[str]:
+    """Return exact name matches, or case-insensitive substring matches as fallback."""
+    normalized_query = query.strip().casefold()
+    if not normalized_query:
+        return []
+
+    exact_matches = [
+        candidate for candidate in candidates if candidate.casefold() == normalized_query
+    ]
+    if exact_matches:
+        return exact_matches
+
+    return [
+        candidate for candidate in candidates if normalized_query in candidate.casefold()
+    ]
+
+
 def resolve_ambiguous_matches(
     matches: Sequence[_T],
     *,
@@ -82,4 +99,4 @@ def _prompt_selection_index(
         print(f"Selection out of range. Enter a value between 1 and {count}.", file=stderr)
 
 
-__all__ = ["resolve_ambiguous_matches"]
+__all__ = ["find_name_matches", "resolve_ambiguous_matches"]

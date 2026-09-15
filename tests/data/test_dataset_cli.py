@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,11 @@ import pytest
 import lisai.cli as root_cli
 import lisai.data.cli as dataset_cli
 from lisai.config.io.yaml import save_yaml
+
+
+class InteractiveInput(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 class FakePaths:
@@ -257,8 +263,8 @@ def test_datasets_show_unknown_dataset_exits(monkeypatch, tmp_path: Path, capsys
 
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
-    assert "Unknown dataset 'missing'" in captured.err
-    assert "vim_fixed" in captured.err
+    assert "No matching dataset found for 'missing'." in captured.err
+    assert "lisai datasets list" in captured.err
 
 
 def test_datasets_show_prints_readme_verbatim(monkeypatch, tmp_path: Path, capsys):
@@ -304,3 +310,29 @@ def test_datasets_open_readme_does_not_recreate_missing_dataset(monkeypatch, tmp
     captured = capsys.readouterr()
     assert exc_info.value.code == 1
     assert "Dataset directory does not exist" in captured.err
+
+
+def test_datasets_show_accepts_unique_partial_name(monkeypatch, tmp_path: Path, capsys):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+
+    assert root_cli.main(["datasets", "show", "vim_fix"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Dataset: vim_fixed" in captured.out
+
+
+def test_datasets_show_prompts_when_partial_name_is_ambiguous(
+    monkeypatch, tmp_path: Path, capsys
+):
+    _write_registry(tmp_path)
+    _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.stdin", InteractiveInput("02\n"))
+
+    assert root_cli.main(["datasets", "show", "Gag_noisy"]) == 0
+
+    captured = capsys.readouterr()
+    assert "Multiple matching datasets found:" in captured.out
+    assert "Gag_noisy_single" in captured.out
+    assert "Gag_noisy_timelapses" in captured.out
+    assert "Dataset: Gag_noisy_timelapses" in captured.out

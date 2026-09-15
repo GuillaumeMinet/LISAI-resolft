@@ -302,3 +302,23 @@ def test_datasets_rename_has_no_yes_bypass(monkeypatch: pytest.MonkeyPatch, tmp_
         root_cli.main(["datasets", "rename", "OldDataset", "NewDataset", "--yes"])
 
     assert exc_info.value.code == 2
+
+
+def test_datasets_rename_accepts_unique_partial_source_name(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys,
+):
+    paths = FakePaths(tmp_path)
+    _write_registry(paths)
+    paths.dataset_dir(dataset_name="OldDataset", usage="training").mkdir(parents=True)
+    monkeypatch.setattr(dataset_cli, "Paths", lambda _settings: paths)
+    monkeypatch.setattr("sys.stdin", StringIO("yes\n"))
+
+    assert root_cli.main(["datasets", "rename", "Old", "NewDataset"]) == 0
+    output = capsys.readouterr().out
+
+    assert "OldDataset  ->  NewDataset" in output
+    assert "Renamed dataset: OldDataset -> NewDataset" in output
+    assert not paths.dataset_dir(dataset_name="OldDataset", usage="training").exists()
+    assert paths.dataset_dir(dataset_name="NewDataset", usage="training").exists()

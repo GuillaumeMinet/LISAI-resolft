@@ -66,3 +66,21 @@ def test_resolve_ambiguous_matches_non_interactive_returns_none_with_hint():
     assert selected is None
     assert "Matches:" in stdout.getvalue()
     assert "Try again." in stderr.getvalue()
+
+
+def test_find_name_matches_prefers_exact_match_over_partial_matches():
+    from lisai.infra.cli.selection import find_name_matches
+
+    assert find_name_matches(
+        "actin_fixed",
+        ["actin_fixed_multi_snr", "actin_fixed", "other"],
+    ) == ["actin_fixed"]
+
+
+def test_find_name_matches_falls_back_to_case_insensitive_partial_matches():
+    from lisai.infra.cli.selection import find_name_matches
+
+    assert find_name_matches(
+        "ACTIN_FIXED",
+        ["actin_fixed_multi_snr", "other", "actin_fixed_pair"],
+    ) == ["actin_fixed_multi_snr", "actin_fixed_pair"]

@@ -232,3 +232,32 @@ def test_resolve_discovered_run_selector_rejects_selector_with_run_id(tmp_path):
 
     assert selected is None
     assert "Use either a run selector or --run-id, not both." in stderr.getvalue()
+
+
+def test_resolve_discovered_run_selector_accepts_partial_dataset_filter(tmp_path):
+    datasets_root = tmp_path / "datasets"
+    selected_dir = datasets_root / "actin_fixed_multi_snr" / "runs" / "HDN" / "duplicate_00"
+    other_dir = datasets_root / "vimentin_live" / "runs" / "HDN" / "duplicate_00"
+    _write_metadata(
+        selected_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69GC10B",
+        dataset="actin_fixed_multi_snr",
+        model_subfolder="HDN",
+    )
+    _write_metadata(
+        other_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69GC10C",
+        dataset="vimentin_live",
+        model_subfolder="HDN",
+    )
+
+    selected = resolve_discovered_run_selector(
+        selector="duplicate_00",
+        dataset="actin_fixed",
+        scan_result=scan_runs(datasets_root),
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+    )
+
+    assert selected is not None
+    assert selected.run_dir == selected_dir.resolve()

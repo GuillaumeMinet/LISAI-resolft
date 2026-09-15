@@ -12,6 +12,7 @@ from lisai.infra.paths import Paths
 from .dataset_registry import load_dataset_registry
 from .readme import dataset_readme_path, ensure_dataset_readme
 from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
+from .selection import resolve_dataset_name
 
 
 DESCRIPTION_PREVIEW_MAX_CHARS = 20
@@ -234,21 +235,21 @@ def _require_dataset(
     *,
     paths: Paths,
     parser: argparse.ArgumentParser,
-) -> tuple[dict[str, Any], Path]:
+) -> tuple[str, dict[str, Any], Path]:
     registry = _registry_from_paths(paths)
-    info = registry.get(name)
-    if info is None:
-        known = ", ".join(sorted(registry)) or "none"
-        parser.exit(status=1, message=f"Unknown dataset {name!r}. Known datasets: {known}\n")
+    resolved_name = resolve_dataset_name(name, registry)
+    if resolved_name is None:
+        parser.exit(status=1)
+    info = registry[resolved_name]
     usage = str(info.get("usage") or "training").lower()
-    return info, paths.dataset_dir(dataset_name=name, usage=usage)
+    return resolved_name, info, paths.dataset_dir(dataset_name=resolved_name, usage=usage)
 
 
 def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.ArgumentParser) -> None:
     paths = paths or _paths()
-    info, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
+    resolved_name, info, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
 
-    print(f"Dataset: {name}")
+    print(f"Dataset: {resolved_name}")
     print(f"Path: {dataset_dir.resolve()}")
     print(f"Usage: {info.get('usage') or '-'}")
     print(f"Format: {info.get('data_format') or '-'}")
@@ -315,7 +316,7 @@ def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
 
 def open_dataset(name: str, *, paths: Paths | None = None, parser: argparse.ArgumentParser) -> int:
     paths = paths or _paths()
-    _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
+    _, _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
     resolved = dataset_dir.resolve()
     if _try_open_path(resolved):
         return 0
@@ -330,7 +331,7 @@ def open_dataset_readme(
     parser: argparse.ArgumentParser,
 ) -> int:
     paths = paths or _paths()
-    _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
+    _, _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
     if not dataset_dir.exists():
         parser.exit(
             status=1,
@@ -380,8 +381,13 @@ def rename_dataset(
     paths: Paths | None = None,
 ) -> int:
     paths = paths or _paths()
+    registry = _registry_from_paths(paths)
+    resolved_old_name = resolve_dataset_name(old_name, registry)
+    if resolved_old_name is None:
+        return 1
+
     try:
-        plan = build_dataset_rename_plan(old_name, new_name, paths=paths)
+        plan = build_dataset_rename_plan(resolved_old_name, new_name, paths=paths)
     except DatasetRenameError as exc:
         print(f"Cannot rename dataset: {exc}")
         return 1
@@ -479,7 +485,7 @@ def _add_dataset_rename_parser(subparsers):
             "interactive confirmation after a preflight summary."
         ),
     )
-    rename_parser.add_argument("old_name", help="Current dataset name from the registry.")
+    rename_parser.add_argument("old_name", help="Current dataset name or unique partial name from the registry.")
     rename_parser.add_argument("new_name", help="New dataset name.")
     rename_parser.set_defaults(handler=run_rename_from_args)
     return rename_parser
@@ -507,7 +513,7 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
         help="Show details for a registered dataset.",
         description="Show details for a registered dataset.",
     )
-    show_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    show_parser.add_argument("name", help="Dataset name or unique partial name from the dataset registry.")
     show_parser.set_defaults(handler=lambda args, p=show_parser: run_show_from_args(args, p))
 
     open_parser = dataset_subparsers.add_parser(
@@ -515,7 +521,7 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
         help="Open a registered dataset folder in file explorer.",
         description="Open a registered dataset folder in file explorer.",
     )
-    open_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    open_parser.add_argument("name", help="Dataset name or unique partial name from the dataset registry.")
     open_parser.set_defaults(handler=lambda args, p=open_parser: run_open_from_args(args, p))
 
     readme_parser = dataset_subparsers.add_parser(
@@ -523,7 +529,7 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
         help="Open a dataset README, creating the default README if needed.",
         description="Open a dataset README, creating the default README if needed.",
     )
-    readme_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    readme_parser.add_argument("name", help="Dataset name or unique partial name from the dataset registry.")
     readme_parser.set_defaults(
         handler=lambda args, p=readme_parser: run_open_readme_from_args(args, p)
     )
@@ -550,7 +556,7 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
         help="Show details for a registered dataset.",
         description="Show details for a registered dataset.",
     )
-    show_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    show_parser.add_argument("name", help="Dataset name or unique partial name from the dataset registry.")
     show_parser.set_defaults(handler=lambda args, p=show_parser: run_show_from_args(args, p))
 
     open_parser = subparsers.add_parser(
@@ -558,7 +564,7 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
         help="Open a registered dataset folder in file explorer.",
         description="Open a registered dataset folder in file explorer.",
     )
-    open_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    open_parser.add_argument("name", help="Dataset name or unique partial name from the dataset registry.")
     open_parser.set_defaults(handler=lambda args, p=open_parser: run_open_from_args(args, p))
 
     readme_parser = subparsers.add_parser(
@@ -566,7 +572,7 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
         help="Open a dataset README, creating the default README if needed.",
         description="Open a dataset README, creating the default README if needed.",
     )
-    readme_parser.add_argument("name", help="Dataset name from the dataset registry.")
+    readme_parser.add_argument("name", help="Dataset name or unique partial name from the dataset registry.")
     readme_parser.set_defaults(
         handler=lambda args, p=readme_parser: run_open_readme_from_args(args, p)
     )
