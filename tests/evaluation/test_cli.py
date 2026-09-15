@@ -511,6 +511,30 @@ def test_apply_cli_output_mode_is_mutually_exclusive_with_legacy_output_flags():
         )
 
 
+def test_apply_cli_save_input_override(monkeypatch, tmp_path):
+    captured = {}
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G7ACG",
+        dataset="Gag",
+        model_subfolder="Upsamp",
+    )
+
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(
+        ["apply", "my_model_00", "/data/images", "--no-save-input"]
+    )
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["save_input"] is False
+
+
 def test_apply_help_has_output_location_group():
     parser = build_parser()
     apply_parser = next(
@@ -526,3 +550,5 @@ def test_apply_help_has_output_location_group():
     assert "--output-mode" in help_text
     assert "--in-place" in help_text
     assert "--no-in-place" in help_text
+    assert "--save-input" in help_text
+    assert "--no-save-input" in help_text

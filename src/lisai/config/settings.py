@@ -87,8 +87,11 @@ class Settings:
 
     def _load_or_setup_infrastructure(self) -> dict:
         if self._local_yaml_path.exists():
+            raw = load_yaml(self._local_yaml_path)
+            if self._migrate_local_inference_output(raw):
+                save_yaml(raw, self._local_yaml_path)
             self._ensure_local_config_schema_hint()
-            return load_yaml(self._local_yaml_path)
+            return raw
 
         print("\n" + "=" * 60)
         print(" LISAI - FIRST TIME SETUP")
@@ -100,7 +103,10 @@ class Settings:
         new_config = {
             "infrastructure": {"data_root": str(Path(data_root).resolve())},
             "inference": {
-                "output_mode": "default",
+                "output": {
+                    "mode": "default",
+                    "save_input_mode": "if_not_in_place",
+                },
                 "inference_dir": "default",
             },
         }
@@ -109,6 +115,24 @@ class Settings:
         self._ensure_local_config_schema_hint()
         print(f"Saved to {self._local_yaml_path}\n")
         return new_config
+
+    @staticmethod
+    def _migrate_local_inference_output(raw: dict) -> bool:
+        """Migrate the recent flat local output_mode setting to inference.output."""
+        inference = raw.get("inference")
+        if not isinstance(inference, dict) or "output_mode" not in inference:
+            return False
+        if "output" in inference:
+            raise ValueError(
+                "local inference config cannot define both output_mode and output."
+            )
+
+        mode = inference.pop("output_mode")
+        inference["output"] = {
+            "mode": mode,
+            "save_input_mode": "if_not_in_place",
+        }
+        return True
 
     def _ensure_local_config_schema_hint(self) -> None:
         text = self._local_yaml_path.read_text(encoding="utf-8")
@@ -185,7 +209,11 @@ class Settings:
     
     @property
     def INFERENCE_OUTPUT_MODE(self) -> str:
-        return self.local_cfg.inference.output_mode
+        return self.local_cfg.inference.output.mode
+
+    @property
+    def INFERENCE_SAVE_INPUT_MODE(self) -> str:
+        return self.local_cfg.inference.output.save_input_mode
 
     @property
     def LOCAL_INFERENCE_DIR(self) -> str:

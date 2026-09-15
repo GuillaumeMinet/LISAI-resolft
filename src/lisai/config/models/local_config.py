@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .inference import ApplyOutputMode
+from .inference import ApplyOutputMode, SaveInputMode
 
 
 class LocalInfrastructureConfig(BaseModel):
@@ -13,12 +13,12 @@ class LocalInfrastructureConfig(BaseModel):
     data_root: str
 
 
-class LocalInferenceConfig(BaseModel):
-    """User-specific defaults for where `lisai apply` writes predictions."""
+class LocalInferenceOutputConfig(BaseModel):
+    """User-specific defaults controlling where and what `lisai apply` saves."""
 
     model_config = ConfigDict(extra="forbid")
 
-    output_mode: ApplyOutputMode = Field(
+    mode: ApplyOutputMode = Field(
         default="default",
         description=(
             "Default output placement for `lisai apply`: default uses inference_dir, "
@@ -27,11 +27,27 @@ class LocalInferenceConfig(BaseModel):
             "a dedicated folder beside the source folder."
         ),
     )
+    save_input_mode: SaveInputMode = Field(
+        default="if_not_in_place",
+        description=(
+            "Default policy for saving apply inputs: always saves them, never omits them, "
+            "and if_not_in_place saves them unless predictions are written directly with "
+            "the source data."
+        ),
+    )
+
+
+class LocalInferenceConfig(BaseModel):
+    """User-specific defaults for `lisai apply`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    output: LocalInferenceOutputConfig = Field(default_factory=LocalInferenceOutputConfig)
     inference_dir: str = Field(
         default="default",
         description=(
-            "Root used by output_mode=default. Use default to resolve to the project "
-            "inference root, or provide an explicit local path."
+            "Root used by inference.output.mode=default. Use default to resolve to the "
+            "project inference root, or provide an explicit local path."
         ),
     )
 
@@ -57,4 +73,5 @@ __all__ = [
     "LocalConfig",
     "LocalInfrastructureConfig",
     "LocalInferenceConfig",
+    "LocalInferenceOutputConfig",
 ]

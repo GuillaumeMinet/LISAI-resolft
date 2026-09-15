@@ -2,7 +2,7 @@
   "$defs": {
     "ApplyOutputOverrides": {
       "additionalProperties": false,
-      "description": "Optional output-location overrides for one inference workflow.",
+      "description": "Optional output-policy overrides for one inference workflow.",
       "properties": {
         "mode": {
           "anyOf": [
@@ -22,6 +22,24 @@
           "default": null,
           "description": "Output placement for apply predictions: default uses the configured inference directory, in_place writes directly with the input data, folder_inside creates a dedicated prediction folder inside the input directory, and folder_outside creates that folder beside the input directory.",
           "title": "Mode"
+        },
+        "save_input_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "never",
+                "if_not_in_place"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Policy controlling whether apply also saves its input: always saves it, never omits it, and if_not_in_place saves it unless predictions are written directly with the source data.",
+          "title": "Save Input Mode"
         },
         "save_folder": {
           "anyOf": [
@@ -67,7 +85,7 @@
             }
           ],
           "default": null,
-          "description": "Optional output-location override for this inference config."
+          "description": "Optional output-policy override for this inference config."
         },
         "epoch_number": {
           "anyOf": [
@@ -256,19 +274,6 @@
           "default": null,
           "description": "Whether model outputs should be converted back from normalized model space before saving.",
           "title": "Denormalize Output"
-        },
-        "save_inp": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Whether the input image or tensor should also be saved alongside predictions.",
-          "title": "Save Inp"
         },
         "downsamp": {
           "anyOf": [

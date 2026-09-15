@@ -6,15 +6,22 @@ from pathlib import Path
 from lisai.config.json_schema import local_config_json_schema, write_local_config_json_schema
 
 
-def test_local_config_schema_exposes_output_mode_choices():
+def test_local_config_schema_exposes_output_policy_choices():
     schema = local_config_json_schema()
-    output_mode = schema["$defs"]["LocalInferenceConfig"]["properties"]["output_mode"]
+    output = schema["$defs"]["LocalInferenceConfig"]["properties"]["output"]
+    output_schema = schema["$defs"]["LocalInferenceOutputConfig"]["properties"]
 
-    assert output_mode["enum"] == [
+    assert output["$ref"] == "#/$defs/LocalInferenceOutputConfig"
+    assert output_schema["mode"]["enum"] == [
         "default",
         "in_place",
         "folder_inside",
         "folder_outside",
+    ]
+    assert output_schema["save_input_mode"]["enum"] == [
+        "always",
+        "never",
+        "if_not_in_place",
     ]
 
 

@@ -9,6 +9,7 @@ import lisai.evaluation.defaults as defaults_mod
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.evaluation.defaults import (
     resolve_apply_options,
+    resolve_apply_save_input,
     resolve_evaluate_options,
     resolve_inference_config_path,
 )
@@ -73,13 +74,13 @@ apply:
         + "\n",
     )
 
-    resolved = resolve_apply_options(config="fast_upsamp", save_inp=True)
+    resolved = resolve_apply_options(config="fast_upsamp")
 
     assert resolved["tiling_size"] == 512
     assert resolved["crop_size"] == 128
     assert resolved["fill_factor"] == pytest.approx(0.75)
     assert resolved["denormalize_output"] is False
-    assert resolved["save_inp"] is True
+    assert "save_inp" not in resolved
     assert resolved["color_code_prm"]["colormap"] == "turbo"
 
 
@@ -132,6 +133,43 @@ def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Pa
 
     with pytest.raises(Exception, match="test_loader"):
         resolve_evaluate_options(config="invalid")
+
+
+def test_resolve_apply_save_input_uses_local_policy(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    in_place = defaults_mod.ApplyOutputPolicy(mode="in_place")
+    default = defaults_mod.ApplyOutputPolicy(mode="default")
+    local = SimpleNamespace(INFERENCE_SAVE_INPUT_MODE="if_not_in_place")
+
+    assert resolve_apply_save_input(output_policy=in_place, stg=local) is False
+    assert resolve_apply_save_input(output_policy=default, stg=local) is True
+
+
+def test_named_save_input_mode_overrides_local_policy(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    _write(
+        inference_config_dir / "no_input.yml",
+        "apply:\n  output:\n    save_input_mode: never\n",
+    )
+    policy = defaults_mod.ApplyOutputPolicy(mode="default")
+    local = SimpleNamespace(INFERENCE_SAVE_INPUT_MODE="always")
+
+    assert resolve_apply_save_input(
+        output_policy=policy, config="no_input", stg=local
+    ) is False
+
+
+def test_cli_save_input_override_has_priority(inference_config_dir: Path):
+    _write(inference_config_dir / "defaults.yml", "apply:\n  tiling_size: auto\n")
+    policy = defaults_mod.ApplyOutputPolicy(mode="in_place")
+    local = SimpleNamespace(INFERENCE_SAVE_INPUT_MODE="never")
+
+    assert resolve_apply_save_input(
+        output_policy=policy, save_input=True, stg=local
+    ) is True
+    assert resolve_apply_save_input(
+        output_policy=policy, save_input=False, stg=local
+    ) is False
 
 
 def test_resolve_apply_output_policy_uses_local_default_when_no_override(inference_config_dir: Path):

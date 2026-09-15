@@ -16,7 +16,8 @@ def test_existing_local_config_without_inference_section_uses_defaults():
         }
     )
 
-    assert cfg.inference.output_mode == "default"
+    assert cfg.inference.output.mode == "default"
+    assert cfg.inference.output.save_input_mode == "if_not_in_place"
     assert cfg.inference.inference_dir == "default"
 
 
@@ -24,18 +25,18 @@ def test_local_inference_output_mode_accepts_source_relative_modes():
     folder_inside = LocalConfig.model_validate(
         {
             "infrastructure": {"data_root": "/tmp/lisai"},
-            "inference": {"output_mode": "folder_inside"},
+            "inference": {"output": {"mode": "folder_inside"}},
         }
     )
     folder_outside = LocalConfig.model_validate(
         {
             "infrastructure": {"data_root": "/tmp/lisai"},
-            "inference": {"output_mode": "folder_outside"},
+            "inference": {"output": {"mode": "folder_outside"}},
         }
     )
 
-    assert folder_inside.inference.output_mode == "folder_inside"
-    assert folder_outside.inference.output_mode == "folder_outside"
+    assert folder_inside.inference.output.mode == "folder_inside"
+    assert folder_outside.inference.output.mode == "folder_outside"
 
 
 def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path):
@@ -47,7 +48,10 @@ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path)
     raw = settings._load_or_setup_infrastructure()
 
     assert raw["inference"] == {
-        "output_mode": "default",
+        "output": {
+            "mode": "default",
+            "save_input_mode": "if_not_in_place",
+        },
         "inference_dir": "default",
     }
     written = load_yaml(settings._local_yaml_path)
@@ -57,13 +61,43 @@ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path)
     )
 
 
+def test_existing_flat_output_mode_is_migrated_to_nested_output(tmp_path: Path):
+    settings = Settings.__new__(Settings)
+    settings._local_yaml_path = tmp_path / "configs" / "local_config.yml"
+    settings._local_yaml_path.parent.mkdir(parents=True)
+    save_yaml(
+        {
+            "infrastructure": {"data_root": "/tmp/lisai"},
+            "inference": {
+                "output_mode": "folder_inside",
+                "inference_dir": "default",
+            },
+        },
+        settings._local_yaml_path,
+    )
+
+    loaded = settings._load_or_setup_infrastructure()
+
+    assert loaded["inference"] == {
+        "output": {
+            "mode": "folder_inside",
+            "save_input_mode": "if_not_in_place",
+        },
+        "inference_dir": "default",
+    }
+    assert load_yaml(settings._local_yaml_path)["inference"] == loaded["inference"]
+
+
 def test_existing_local_config_gets_schema_hint_without_rewriting_values(tmp_path: Path):
     settings = Settings.__new__(Settings)
     settings._local_yaml_path = tmp_path / "configs" / "local_config.yml"
     settings._local_yaml_path.parent.mkdir(parents=True)
     expected = {
         "infrastructure": {"data_root": "/tmp/lisai"},
-        "inference": {"output_mode": "folder_inside", "inference_dir": "default"},
+        "inference": {
+            "output": {"mode": "folder_inside", "save_input_mode": "never"},
+            "inference_dir": "default",
+        },
     }
     save_yaml(expected, settings._local_yaml_path)
 
@@ -85,7 +119,7 @@ def test_local_inference_dir_overrides_project_root(tmp_path: Path):
         {
             "infrastructure": {"data_root": str(tmp_path / "data")},
             "inference": {
-                "output_mode": "default",
+                "output": {"mode": "default"},
                 "inference_dir": str(tmp_path / "custom_predictions"),
             },
         }
@@ -106,7 +140,7 @@ def test_default_local_inference_dir_uses_project_inference_root(tmp_path: Path)
         {
             "infrastructure": {"data_root": str(tmp_path / "data")},
             "inference": {
-                "output_mode": "default",
+                "output": {"mode": "default"},
                 "inference_dir": "default",
             },
         }

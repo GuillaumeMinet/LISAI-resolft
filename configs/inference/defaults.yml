@@ -14,7 +14,6 @@ apply:
   lvae_num_samples: 20
   lvae_save_samples: true
   denormalize_output: true
-  save_inp: true
   downsamp: null
   fill_factor: null
   apply_color_code: true

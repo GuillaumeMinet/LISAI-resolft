@@ -2,9 +2,26 @@
   "$defs": {
     "LocalInferenceConfig": {
       "additionalProperties": false,
-      "description": "User-specific defaults for where `lisai apply` writes predictions.",
+      "description": "User-specific defaults for `lisai apply`.",
       "properties": {
-        "output_mode": {
+        "output": {
+          "$ref": "#/$defs/LocalInferenceOutputConfig"
+        },
+        "inference_dir": {
+          "default": "default",
+          "description": "Root used by inference.output.mode=default. Use default to resolve to the project inference root, or provide an explicit local path.",
+          "title": "Inference Dir",
+          "type": "string"
+        }
+      },
+      "title": "LocalInferenceConfig",
+      "type": "object"
+    },
+    "LocalInferenceOutputConfig": {
+      "additionalProperties": false,
+      "description": "User-specific defaults controlling where and what `lisai apply` saves.",
+      "properties": {
+        "mode": {
           "default": "default",
           "description": "Default output placement for `lisai apply`: default uses inference_dir, in_place writes directly with the input data, folder_inside creates a dedicated folder inside the source folder, and folder_outside creates a dedicated folder beside the source folder.",
           "enum": [
@@ -13,17 +30,22 @@
             "folder_inside",
             "folder_outside"
           ],
-          "title": "Output Mode",
+          "title": "Mode",
           "type": "string"
         },
-        "inference_dir": {
-          "default": "default",
-          "description": "Root used by output_mode=default. Use default to resolve to the project inference root, or provide an explicit local path.",
-          "title": "Inference Dir",
+        "save_input_mode": {
+          "default": "if_not_in_place",
+          "description": "Default policy for saving apply inputs: always saves them, never omits them, and if_not_in_place saves them unless predictions are written directly with the source data.",
+          "enum": [
+            "always",
+            "never",
+            "if_not_in_place"
+          ],
+          "title": "Save Input Mode",
           "type": "string"
         }
       },
-      "title": "LocalInferenceConfig",
+      "title": "LocalInferenceOutputConfig",
       "type": "object"
     },
     "LocalInfrastructureConfig": {

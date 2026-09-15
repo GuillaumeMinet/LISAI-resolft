@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ApplyOutputMode: TypeAlias = Literal["default", "in_place", "folder_inside", "folder_outside"]
+SaveInputMode: TypeAlias = Literal["always", "never", "if_not_in_place"]
 
 OUTPUT_MODE_DESC = (
     "Output placement for apply predictions: default uses the configured inference "
@@ -42,7 +43,10 @@ TIMELAPSE_MAX_DESC = "Optional maximum number of timelapse frames to process dur
 LVAE_NUM_SAMPLES_DESC = "Number of stochastic samples drawn when running LVAE models."
 LVAE_SAVE_SAMPLES_DESC = "Whether individual LVAE samples should be saved in addition to the main prediction."
 DENORMALIZE_OUTPUT_DESC = "Whether model outputs should be converted back from normalized model space before saving."
-SAVE_INP_DESC = "Whether the input image or tensor should also be saved alongside predictions."
+SAVE_INPUT_MODE_DESC = (
+    "Policy controlling whether apply also saves its input: always saves it, never omits it, "
+    "and if_not_in_place saves it unless predictions are written directly with the source data."
+)
 DOWNSAMP_DESC = "Optional spatial downsampling factor applied to the apply input before inference."
 FILL_FACTOR_DESC = (
     "Optional fill factor used with deterministic 'multiple' apply downsampling. "
@@ -134,7 +138,6 @@ class ApplyDefaults(BaseModel):
     lvae_num_samples: int | None = Field(default=20, description=LVAE_NUM_SAMPLES_DESC)
     lvae_save_samples: bool = Field(default=True, description=LVAE_SAVE_SAMPLES_DESC)
     denormalize_output: bool = Field(default=True, description=DENORMALIZE_OUTPUT_DESC)
-    save_inp: bool = Field(default=False, description=SAVE_INP_DESC)
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
     apply_color_code: bool = Field(default=False, description=APPLY_COLOR_CODE_DESC)
@@ -148,11 +151,12 @@ class ApplyDefaults(BaseModel):
 
 
 class ApplyOutputOverrides(BaseModel):
-    """Optional output-location overrides for one inference workflow."""
+    """Optional output-policy overrides for one inference workflow."""
 
     model_config = ConfigDict(extra="forbid")
 
     mode: ApplyOutputMode | None = Field(default=None, description=OUTPUT_MODE_DESC)
+    save_input_mode: SaveInputMode | None = Field(default=None, description=SAVE_INPUT_MODE_DESC)
     save_folder: str | None = Field(default=None, description=APPLY_SAVE_FOLDER_DESC)
     in_place: bool | None = Field(default=None, description=IN_PLACE_DESC)
 
@@ -186,7 +190,7 @@ class ApplyOverrides(BaseModel):
 
     output: ApplyOutputOverrides | None = Field(
         default=None,
-        description="Optional output-location override for this inference config.",
+        description="Optional output-policy override for this inference config.",
     )
     epoch_number: int | None = Field(default=None, description=EPOCH_NUMBER_DESC)
     best_or_last: CheckpointSelector | None = Field(default=None, description=BEST_OR_LAST_DESC)
@@ -200,7 +204,6 @@ class ApplyOverrides(BaseModel):
     lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
     lvae_save_samples: bool | None = Field(default=None, description=LVAE_SAVE_SAMPLES_DESC)
     denormalize_output: bool | None = Field(default=None, description=DENORMALIZE_OUTPUT_DESC)
-    save_inp: bool | None = Field(default=None, description=SAVE_INP_DESC)
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
     apply_color_code: bool | None = Field(default=None, description=APPLY_COLOR_CODE_DESC)

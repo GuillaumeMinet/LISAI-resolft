@@ -150,7 +150,12 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         dest="denormalize_output",
         action=argparse.BooleanOptionalAction,
     )
-    parser.add_argument("--save-inp", "--save_inp", dest="save_inp", action=argparse.BooleanOptionalAction)
+    output_group.add_argument(
+        "--save-input",
+        dest="save_input",
+        action=argparse.BooleanOptionalAction,
+        help="Override the configured input-saving policy for this apply invocation.",
+    )
     parser.add_argument("--downsamp", type=int)
     parser.add_argument(
         "--apply-color-code",
@@ -266,7 +271,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         lvae_num_samples=_maybe_unset(args.lvae_num_samples),
         lvae_save_samples=_maybe_unset(args.lvae_save_samples),
         denormalize_output=_maybe_unset(args.denormalize_output),
-        save_inp=_maybe_unset(args.save_inp),
+        save_input=_maybe_unset(args.save_input),
         downsamp=_maybe_unset(args.downsamp),
         apply_color_code=_maybe_unset(args.apply_color_code),
         color_code_prm=_parse_key_value_overrides(args.color_code_option, parser),

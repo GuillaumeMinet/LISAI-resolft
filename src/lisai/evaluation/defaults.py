@@ -10,6 +10,7 @@ from lisai.config.io import deep_merge
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.config.models.inference import (
     ApplyOutputMode,
+    SaveInputMode,
     InferenceOverrides,
     ResolvedInferenceConfig,
 )
@@ -170,6 +171,38 @@ def resolve_apply_output_policy(
     return ApplyOutputPolicy(mode=stg.INFERENCE_OUTPUT_MODE)
 
 
+def resolve_apply_save_input(
+    *,
+    output_policy: ApplyOutputPolicy,
+    config: str | Path | None = None,
+    save_input: bool | UnsetType = UNSET,
+    stg=None,
+) -> bool:
+    """Resolve whether apply saves its input as CLI > named config > local config."""
+    if save_input is not UNSET:
+        return bool(save_input)
+
+    save_input_mode: SaveInputMode | None = None
+    if config is not None:
+        named_cfg, _ = load_inference_config(config)
+        if named_cfg.apply is not None and named_cfg.apply.output is not None:
+            save_input_mode = named_cfg.apply.output.save_input_mode
+
+    if stg is None:
+        from lisai.config.settings import settings as stg
+
+    if save_input_mode is None:
+        save_input_mode = stg.INFERENCE_SAVE_INPUT_MODE
+
+    if save_input_mode == "always":
+        return True
+    if save_input_mode == "never":
+        return False
+    if save_input_mode == "if_not_in_place":
+        return output_policy.mode != "in_place"
+    raise ValueError(f"Unknown save_input_mode: {save_input_mode!r}")
+
+
 def resolve_evaluate_options(
     *,
     defaults: ResolvedInferenceConfig | None = None,
@@ -207,6 +240,7 @@ __all__ = [
     "load_inference_defaults",
     "resolve_apply_options",
     "resolve_apply_output_policy",
+    "resolve_apply_save_input",
     "resolve_evaluate_options",
     "resolve_inference_config_path",
 ]

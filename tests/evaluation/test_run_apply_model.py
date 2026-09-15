@@ -26,7 +26,7 @@ def _base_apply_options(**updates):
         "lvae_num_samples": 20,
         "lvae_save_samples": True,
         "denormalize_output": False,
-        "save_inp": False,
+        "save_input": False,
         "downsamp": 2,
         "fill_factor": None,
         "apply_color_code": False,
@@ -48,6 +48,11 @@ def _patch_common_runtime(
         input_image = np.ones((8, 8), dtype=np.float32)
 
     monkeypatch.setattr(apply_mod, "resolve_apply_options", lambda **_: options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_save_input",
+        lambda **_: options["save_input"],
+    )
     monkeypatch.setattr(apply_mod, "resolve_run_dir", lambda **_: tmp_path / "run")
     monkeypatch.setattr(
         apply_mod,

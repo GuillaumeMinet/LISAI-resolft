@@ -104,6 +104,24 @@ def test_apply_output_override_is_optional_and_sparse():
     assert force_default.apply.output.in_place is False
 
 
+def test_apply_output_override_accepts_save_input_mode_with_destination():
+    cfg = InferenceOverrides.model_validate(
+        {
+            "apply": {
+                "output": {
+                    "mode": "in_place",
+                    "save_input_mode": "always",
+                }
+            }
+        }
+    )
+
+    assert cfg.apply is not None
+    assert cfg.apply.output is not None
+    assert cfg.apply.output.mode == "in_place"
+    assert cfg.apply.output.save_input_mode == "always"
+
+
 def test_apply_output_override_rejects_retired_mode_names():
     for mode in ("inside", "next_to"):
         with pytest.raises(ValidationError, match="mode"):

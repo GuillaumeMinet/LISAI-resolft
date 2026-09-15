@@ -156,12 +156,6 @@
           "title": "Denormalize Output",
           "type": "boolean"
         },
-        "save_inp": {
-          "default": false,
-          "description": "Whether the input image or tensor should also be saved alongside predictions.",
-          "title": "Save Inp",
-          "type": "boolean"
-        },
         "downsamp": {
           "anyOf": [
             {

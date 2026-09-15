@@ -19,6 +19,7 @@ from lisai.evaluation.defaults import (
     UnsetType,
     resolve_apply_options,
     resolve_apply_output_policy,
+    resolve_apply_save_input,
 )
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_inp
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
@@ -133,7 +134,7 @@ def run_apply_model(model_dataset: str,
                 lvae_num_samples: int | None | UnsetType = UNSET,
                 lvae_save_samples: bool | UnsetType = UNSET,
                 denormalize_output: bool | UnsetType = UNSET,
-                save_inp: bool | UnsetType = UNSET,
+                save_input: bool | UnsetType = UNSET,
                 downsamp: int | None | UnsetType = UNSET,
                 fill_factor: float | None | UnsetType = UNSET,
                 apply_color_code: bool | UnsetType = UNSET,
@@ -143,8 +144,9 @@ def run_apply_model(model_dataset: str,
                 promoted_model_name: str | None = None):
     """Apply a saved model checkpoint to one file or a directory of files.
 
-    Any omitted optional argument is resolved from `configs/inference/defaults.yml`
-    or from the named config passed via `config`.
+    Omitted processing options are resolved from inference defaults or the named
+    inference config. Output placement and input-saving policies additionally use
+    local inference settings.
     """
     options = resolve_apply_options(
         config=config,
@@ -160,7 +162,6 @@ def run_apply_model(model_dataset: str,
         lvae_num_samples=lvae_num_samples,
         lvae_save_samples=lvae_save_samples,
         denormalize_output=denormalize_output,
-        save_inp=save_inp,
         downsamp=downsamp,
         fill_factor=fill_factor,
         apply_color_code=apply_color_code,
@@ -173,6 +174,11 @@ def run_apply_model(model_dataset: str,
         save_folder=save_folder,
         output_mode=output_mode,
         in_place=in_place,
+    )
+    save_input = resolve_apply_save_input(
+        config=config,
+        output_policy=output_policy,
+        save_input=save_input,
     )
 
     data_path = Path(data_path)
@@ -371,7 +377,7 @@ def run_apply_model(model_dataset: str,
             img_name = file.split('.')[0]
         else:
             img_name = name_file.split('.')[0]
-        if options["save_inp"]:
+        if save_input:
             tosave["inp"] = img.astype(np.float32)
 
         save_outputs(tosave, save_folder, img_name)
