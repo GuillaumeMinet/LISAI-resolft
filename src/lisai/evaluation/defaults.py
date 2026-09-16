@@ -178,32 +178,6 @@ def _resolve_section_nested(
     return _validate_resolved_section(section, resolved_section)
 
 
-def _flatten_evaluate_section(section: EvaluateDefaults) -> dict[str, Any]:
-    """Temporary adapter for the pre-refactor flat evaluate runtime."""
-    section_dict = section.model_dump()
-    checkpoint = section_dict["checkpoint"]
-    data = section_dict["data"]
-    inference = section_dict["inference"]
-    saving = section_dict["saving"]
-    return {
-        "best_or_last": checkpoint["best_or_last"],
-        "epoch_number": checkpoint["epoch_number"],
-        "tiling_size": inference["tiling_size"],
-        "crop_size": inference["crop_size"],
-        "metrics_list": section_dict["metrics"],
-        "lvae_num_samples": inference["lvae_num_samples"],
-        "results": None,
-        "save_folder": saving["save_folder"],
-        "overwrite": saving["overwrite"],
-        "eval_gt": data["eval_gt"],
-        "data_prm_update": data["overrides"],
-        "ch_out": inference["ch_out"],
-        "split": data["split"],
-        "limit_n_imgs": data["limit_n_imgs"],
-        "timelapse_max": data["timelapse_max"],
-    }
-
-
 def _finalize_apply_local_fallbacks(
     resolved: ApplyDefaults,
     *,
@@ -304,22 +278,6 @@ def resolve_evaluate_config(
     return validated
 
 
-def resolve_evaluate_options(
-    *,
-    defaults: ResolvedInferenceConfig | None = None,
-    defaults_path: str | Path | None = None,
-    config: str | Path | None = None,
-    **overrides: Any,
-) -> dict[str, Any]:
-    """Temporary flat adapter kept until the evaluate runtime is converted to typed config."""
-    if defaults is not None or defaults_path is not None:
-        loaded_defaults = load_inference_defaults(defaults_path) if defaults is None else defaults
-        section_defaults = _flatten_evaluate_section(loaded_defaults.evaluate)
-    else:
-        section_defaults = _flatten_evaluate_section(resolve_evaluate_config(config=config))
-    return _resolve_task_options(section_defaults, overrides)
-
-
 def load_inference_defaults(path: str | Path | None = None) -> ResolvedInferenceConfig:
     resolved = ResolvedInferenceConfig().model_dump()
     if path is None:
@@ -348,6 +306,5 @@ __all__ = [
     "resolve_apply_output_policy",
     "resolve_apply_save_input",
     "resolve_evaluate_config",
-    "resolve_evaluate_options",
     "resolve_inference_config_path",
 ]

@@ -10,7 +10,7 @@ import pytest
 import lisai.evaluation.cli as evaluation_cli
 import lisai.runs.selection as selection_mod
 from lisai.cli import build_parser
-from lisai.config.models.inference import ApplyDefaults
+from lisai.config.models.inference import ApplyDefaults, EvaluateDefaults
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.runs.io import write_run_metadata_atomic
 from lisai.runs.scanner import scan_runs
@@ -176,6 +176,42 @@ def test_build_apply_overrides_translates_cli_aliases_to_nested_config():
     assert overrides.postprocess.color_code.enabled is True
 
 
+def test_build_evaluate_overrides_is_sparse():
+    parser = build_parser()
+    args = parser.parse_args(["evaluate", "run_00"])
+
+    overrides = evaluation_cli._build_evaluate_overrides(args)
+
+    assert overrides.model_dump(exclude_unset=True) == {}
+
+
+def test_build_evaluate_overrides_maps_cli_fields_to_nested_config():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "evaluate",
+            "run_00",
+            "--split",
+            "val",
+            "--metrics",
+            "psnr,ssim",
+            "--tiling-size",
+            "512",
+            "--save-folder",
+            "/tmp/eval",
+            "--overwrite",
+        ]
+    )
+
+    overrides = evaluation_cli._build_evaluate_overrides(args)
+
+    assert overrides.data.split == "val"
+    assert overrides.metrics == ["psnr", "ssim"]
+    assert overrides.inference.tiling_size == 512
+    assert overrides.saving.save_folder == "/tmp/eval"
+    assert overrides.saving.overwrite is True
+
+
 def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
     captured = {}
     datasets_root = tmp_path / "datasets"
@@ -295,10 +331,16 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
+    def fake_resolve_evaluate_config(*, config, overrides):
+        captured["config"] = config
+        captured["overrides"] = overrides
+        return EvaluateDefaults()
+
     def fake_run_evaluate(**kwargs):
         captured.update(kwargs)
 
     monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "resolve_evaluate_config", fake_resolve_evaluate_config)
     monkeypatch.setattr(evaluation_cli, "run_evaluate", fake_run_evaluate)
 
     parser = build_parser()
@@ -324,9 +366,10 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
     assert captured["model_subfolder"] == "Upsamp"
     assert captured["model_name"] == "my_model_00"
     assert captured["config"] == "benchmark"
-    assert captured["split"] == "val"
-    assert captured["metrics_list"] == ["psnr", "ssim"]
-    assert captured["tiling_size"] == "auto"
+    assert captured["overrides"].data.split == "val"
+    assert captured["overrides"].metrics == ["psnr", "ssim"]
+    assert captured["overrides"].inference.tiling_size == "auto"
+    assert isinstance(captured["cfg"], EvaluateDefaults)
     assert captured["progress_bar"] is True
 
 
@@ -359,7 +402,7 @@ def test_evaluate_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["best_or_last"] == "both"
+    assert captured["cfg"].checkpoint.best_or_last == "both"
 
 
 def test_evaluate_cli_accepts_run_dir_selector(monkeypatch, tmp_path):
@@ -373,7 +416,13 @@ def test_evaluate_cli_accepts_run_dir_selector(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
+    def fake_resolve_evaluate_config(*, config, overrides):
+        captured["config"] = config
+        captured["overrides"] = overrides
+        return EvaluateDefaults()
+
     monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "resolve_evaluate_config", fake_resolve_evaluate_config)
     monkeypatch.setattr(evaluation_cli, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -512,7 +561,7 @@ def test_evaluate_cli_passes_independent_evaluation_dataset(monkeypatch, tmp_pat
 
     assert result == 0
     assert captured["evaluation_dataset_name"] == "gag_independent"
-    assert captured["split"] is evaluation_cli.UNSET
+    assert captured["cfg"].data.split == "test"
 
 
 def test_evaluate_cli_rejects_on_with_split():

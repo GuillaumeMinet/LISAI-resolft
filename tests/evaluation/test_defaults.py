@@ -20,7 +20,6 @@ from lisai.evaluation.defaults import (
     resolve_apply_config,
     resolve_apply_save_input,
     resolve_evaluate_config,
-    resolve_evaluate_options,
     resolve_inference_config_path,
 )
 
@@ -261,19 +260,24 @@ def test_named_nonlocal_evaluate_preserves_tiling_policy_and_cli_override(
         "evaluate:\n  inference:\n    tiling_size: off\n",
     )
 
-    resolved = resolve_evaluate_options(config="examples/no_tiling")
-    forced = resolve_evaluate_options(config="examples/no_tiling", tiling_size=512)
+    resolved = resolve_evaluate_config(config="examples/no_tiling")
+    forced = resolve_evaluate_config(
+        config="examples/no_tiling",
+        overrides=EvaluateOverrides(
+            inference=EvaluateInferenceOverrides(tiling_size=512),
+        ),
+    )
 
-    assert resolved["tiling_size"] == "off"
-    assert forced["tiling_size"] == 512
+    assert resolved.inference.tiling_size == "off"
+    assert forced.inference.tiling_size == 512
 
 
-def test_resolve_evaluate_options_requires_requested_section_in_local_config(inference_config_dir: Path):
+def test_resolve_evaluate_config_requires_requested_section_in_local_config(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "evaluate:\n  data:\n    split: test\n")
     _write(inference_config_dir / "local" / "apply_only.yml", "apply:\n  inference:\n    tiling_size: 512\n")
 
     with pytest.raises(ValueError, match="does not define a 'evaluate' section"):
-        resolve_evaluate_options(config="apply_only")
+        resolve_evaluate_config(config="apply_only")
 
 
 def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Path):
@@ -281,7 +285,7 @@ def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Pa
     _write(inference_config_dir / "local" / "invalid.yml", "evaluate:\n  test_loader: bad\n")
 
     with pytest.raises(Exception, match="test_loader"):
-        resolve_evaluate_options(config="invalid")
+        resolve_evaluate_config(config="invalid")
 
 
 def test_resolve_apply_config_fills_local_config_saving_fallbacks(inference_config_dir: Path):
@@ -417,12 +421,12 @@ def test_typed_output_override_has_highest_priority(inference_config_dir: Path):
 def test_builtin_post_training_preset_is_used_if_local_file_is_missing(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: 256\n")
 
-    resolved = resolve_evaluate_options(config="post_training")
+    resolved = resolve_evaluate_config(config="post_training")
 
-    assert resolved["tiling_size"] == 256
-    assert resolved["best_or_last"] == "both"
-    assert resolved["metrics_list"] == ["psnr", "ssim"]
-    assert resolved["overwrite"] is True
+    assert resolved.inference.tiling_size == 256
+    assert resolved.checkpoint.best_or_last == "both"
+    assert resolved.metrics == ["psnr", "ssim"]
+    assert resolved.saving.overwrite is True
 
 
 def test_local_post_training_overrides_builtin_and_inherits_local_defaults(inference_config_dir: Path):
@@ -432,9 +436,9 @@ def test_local_post_training_overrides_builtin_and_inherits_local_defaults(infer
         "evaluate:\n  metrics:\n    - custom_metric\n",
     )
 
-    resolved = resolve_evaluate_options(config="post_training")
+    resolved = resolve_evaluate_config(config="post_training")
 
-    assert resolved["tiling_size"] == 384
-    assert resolved["best_or_last"] == "both"
-    assert resolved["metrics_list"] == ["custom_metric"]
-    assert resolved["overwrite"] is True
+    assert resolved.inference.tiling_size == 384
+    assert resolved.checkpoint.best_or_last == "both"
+    assert resolved.metrics == ["custom_metric"]
+    assert resolved.saving.overwrite is True
