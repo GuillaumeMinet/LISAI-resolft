@@ -1,3 +1,4 @@
+from . import catalog, download
 from .checkpoint import (
     PromotionCheckpointSelector,
     extract_model_weights,
@@ -41,6 +42,8 @@ from .schema import (
 )
 
 __all__ = [
+    "catalog",
+    "download",
     "MODEL_CARD_FILENAME",
     "MODEL_MANIFEST_FILENAME",
     "PROMOTABLE_RUN_STATUSES",

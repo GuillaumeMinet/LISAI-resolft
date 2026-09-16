@@ -55,3 +55,15 @@ def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_pat
         source_name="paper_mito",
         model_name="mito_model",
     ) == tmp_path / "predictions" / "paper_mito" / "mito_model"
+
+
+def test_promoted_model_downloads_dir_uses_project_template(monkeypatch, tmp_path):
+    from lisai.config import settings
+
+    monkeypatch.setitem(
+        settings._ctx.paths.templates,
+        "promoted_model_downloads_dir",
+        str(tmp_path / "custom_downloads"),
+    )
+
+    assert Paths(settings).promoted_model_downloads_dir() == tmp_path / "custom_downloads"

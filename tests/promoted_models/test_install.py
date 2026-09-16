@@ -34,6 +34,9 @@ class FakePaths:
     def promoted_model_exports_dir(self):
         return self.promoted_models_root() / "_exports"
 
+    def promoted_model_downloads_dir(self):
+        return self.promoted_models_root() / "downloads"
+
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -51,7 +54,7 @@ def _make_archive(tmp_path: Path, *, name: str = "demo-model") -> Path:
     manifest = PromotedModelManifest(
         name=name,
         created_at=datetime(2026, 8, 27, tzinfo=timezone.utc),
-        model=PromotedModelDefinition(task="denoising", architecture="unet"),
+        model=PromotedModelDefinition(task="denoising_unetrcan", architecture="unet"),
         training_data=PromotedTrainingData(dataset="DemoData"),
         source=PromotedModelSource(
             run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -192,3 +195,17 @@ def test_install_repairs_stale_registry_entry_when_model_directory_is_missing(tm
     assert reinstalled.model.model_dir.is_dir()
     registry = yaml.safe_load(paths.promoted_model_registry_path().read_text())
     assert registry["models"]["demo-model"]["origin"] == "installed"
+
+
+def test_install_resolves_bare_archive_filename_from_downloads_directory(tmp_path: Path):
+    archive_path = _make_archive(tmp_path)
+    paths = FakePaths(tmp_path / "destination")
+    downloads_dir = paths.promoted_model_downloads_dir()
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    downloaded_archive = downloads_dir / archive_path.name
+    downloaded_archive.write_bytes(archive_path.read_bytes())
+
+    installed = install_model_archive(downloaded_archive.name, paths=paths)
+
+    assert installed.model.manifest.name == "demo-model"
+    assert installed.archive_path == downloaded_archive.resolve()

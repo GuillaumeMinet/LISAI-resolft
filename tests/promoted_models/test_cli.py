@@ -49,6 +49,15 @@ def test_models_cli_contains_library_and_export_commands():
     assert exported.name == "hdn-vimentin"
     assert exported.output is None
 
+    catalog = parser.parse_args(["catalog"])
+    assert catalog.models_command == "catalog"
+
+    downloaded = parser.parse_args(["download", "hdn-vimentin", "--install"])
+    assert downloaded.models_command == "download"
+    assert downloaded.name == "hdn-vimentin"
+    assert downloaded.install is True
+    assert downloaded.overwrite is False
+
 
 def test_top_level_cli_registers_runs_promote_and_models_export():
     from lisai.cli import build_parser as build_top_level_parser
@@ -188,3 +197,124 @@ def test_models_sync_cli_selects_ambiguous_partial_name(monkeypatch, capsys):
     assert "Multiple matching promoted models found:" in output
     assert "demo-denoising" in output
     assert "demo-upsampling" in output
+
+
+def test_models_catalog_cli_renders_remote_models(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    monkeypatch.setattr(
+        models_cli.catalog,
+        "list_models",
+        lambda: [
+            SimpleNamespace(
+                name="demo-model",
+                task="denoising_hdn",
+                description="Demo downloadable model",
+            )
+        ],
+    )
+
+    result = models_cli.main(["catalog"])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert "demo-model" in output
+    assert "denoising_hdn" in output
+    assert "Demo downloadable model" in output
+
+
+def test_models_download_cli_prints_short_install_command(monkeypatch, capsys, tmp_path):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    archive = tmp_path / "demo-model.lisai.zip"
+    monkeypatch.setattr(
+        models_cli,
+        "download_model",
+        lambda name, overwrite=False: SimpleNamespace(
+            name=name,
+            archive_path=archive,
+            archive_sha256="a" * 64,
+            status="downloaded",
+        ),
+    )
+
+    result = models_cli.main(["download", "demo-model"])
+
+    assert result == 0
+    output = capsys.readouterr().out
+    assert f"Archive: {archive}" in output
+    assert "lisai models install demo-model.lisai.zip" in output
+
+
+def test_models_download_cli_install_composes_existing_installer(monkeypatch, capsys, tmp_path):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    archive = tmp_path / "demo-model.lisai.zip"
+    monkeypatch.setattr(
+        models_cli,
+        "download_model",
+        lambda name, overwrite=False: SimpleNamespace(
+            name=name,
+            archive_path=archive,
+            archive_sha256="a" * 64,
+            status="reused",
+        ),
+    )
+    called = []
+    monkeypatch.setattr(
+        models_cli,
+        "install_model_archive",
+        lambda path: called.append(path)
+        or SimpleNamespace(
+            model=SimpleNamespace(
+                manifest=SimpleNamespace(name="demo-model"),
+                model_dir=tmp_path / "models" / "demo-model",
+            )
+        ),
+    )
+
+    result = models_cli.main(["download", "demo-model", "--install"])
+
+    assert result == 0
+    assert called == [archive]
+    output = capsys.readouterr().out
+    assert "Existing archive checksum verified; reusing it." in output
+    assert "Installed model: demo-model" in output
+
+
+def test_models_download_cli_prompts_before_replacing_checksum_conflict(
+    monkeypatch, capsys, tmp_path
+):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+    from lisai.promoted_models.download import DownloadConflictError
+
+    archive = tmp_path / "demo-model.lisai.zip"
+    calls = []
+
+    def fake_download(name, overwrite=False):
+        calls.append(overwrite)
+        if not overwrite:
+            raise DownloadConflictError(
+                path=archive,
+                expected_sha256="a" * 64,
+                actual_sha256="b" * 64,
+            )
+        return SimpleNamespace(
+            name=name,
+            archive_path=archive,
+            archive_sha256="a" * 64,
+            status="overwritten",
+        )
+
+    monkeypatch.setattr(models_cli, "download_model", fake_download)
+    monkeypatch.setattr("builtins.input", lambda prompt: "y")
+
+    result = models_cli.main(["download", "demo-model"])
+
+    assert result == 0
+    assert calls == [False, True]
+    assert "Replaced the existing archive after checksum mismatch." in capsys.readouterr().out

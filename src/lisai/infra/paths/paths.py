@@ -17,6 +17,7 @@ class TemplateKeys:
     promoted_model_registry: str = "promoted_model_registry"
     promoted_model_dir: str = "promoted_model_dir"
     promoted_model_exports_dir: str = "promoted_model_exports_dir"
+    promoted_model_downloads_dir: str = "promoted_model_downloads_dir"
 
 
 class Paths:
@@ -93,6 +94,9 @@ class Paths:
 
     def promoted_model_exports_dir(self) -> Path:
         return self.settings.get_template_path(self.keys.promoted_model_exports_dir)
+
+    def promoted_model_downloads_dir(self) -> Path:
+        return self.settings.get_template_path(self.keys.promoted_model_downloads_dir)
 
     def dataset_dir(
         self,

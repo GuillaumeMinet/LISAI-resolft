@@ -7,6 +7,13 @@ from lisai.config.models.training import TaskName
 from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.infra.cli.selection import resolve_partial_name
 
+from . import catalog
+from .download import (
+    DownloadConflictError,
+    DownloadIntegrityError,
+    ModelDownloadError,
+    download_model,
+)
 from .install import install_model_archive
 from .package import (
     export_promoted_model,
@@ -16,6 +23,7 @@ from .package import (
 )
 from .remove import remove_promoted_model
 from .registry import load_promoted_model_registry
+from .sources.zenodo import ZenodoSourceError
 
 VALID_TASK_NAMES  = ", ".join(get_args(TaskName))
 _MODEL_LIST_HINT = "Use 'lisai models list' to inspect available promoted models."
@@ -59,6 +67,92 @@ def _render_models_table() -> str:
 
 def run_list_from_args(args: argparse.Namespace) -> int:
     print(_render_models_table())
+    return 0
+
+
+def _render_catalog_table() -> str:
+    models = catalog.list_models()
+    if not models:
+        return "No downloadable models found."
+
+    rows = [(model.name, model.task, model.description) for model in models]
+    headers = ("name", "task", "description")
+    widths = [max(len(headers[i]), *(len(row[i]) for row in rows)) for i in range(len(headers))]
+    lines = ["  ".join(headers[i].ljust(widths[i]) for i in range(len(headers)))]
+    lines.append("  ".join("-" * widths[i] for i in range(len(headers))))
+    lines.extend("  ".join(row[i].ljust(widths[i]) for i in range(len(headers))) for row in rows)
+    return "\n".join(lines)
+
+
+def run_catalog_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        table = _render_catalog_table()
+    except (catalog.CatalogUnavailableError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+    print(table)
+    return 0
+
+
+def _print_download_summary(result) -> None:
+    if result.status == "reused":
+        print(f"Model already downloaded: {result.name}")
+        print("Existing archive checksum verified; reusing it.")
+    elif result.status == "overwritten":
+        print(f"Downloaded model: {result.name}")
+        print("Replaced the existing archive after checksum mismatch.")
+    else:
+        print(f"Downloaded model: {result.name}")
+    print(f"Archive: {result.archive_path}")
+    print("SHA256: verified")
+
+
+def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        result = download_model(args.name, overwrite=args.overwrite)
+    except DownloadConflictError as exc:
+        confirmed = prompt_yes_no(
+            "An existing downloaded archive does not match the catalog checksum. "
+            f"Replace it?\n  {exc.path}\n[y/N]: ",
+            input_fn=input,
+        )
+        if not confirmed:
+            print("Download cancelled.")
+            return 0
+        try:
+            result = download_model(args.name, overwrite=True)
+        except (
+            catalog.CatalogUnavailableError,
+            DownloadIntegrityError,
+            ModelDownloadError,
+            ZenodoSourceError,
+            KeyError,
+            ValueError,
+        ) as retry_exc:
+            parser.exit(status=1, message=f"{retry_exc}\n")
+    except (
+        catalog.CatalogUnavailableError,
+        DownloadIntegrityError,
+        ModelDownloadError,
+        ZenodoSourceError,
+        KeyError,
+        ValueError,
+    ) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    _print_download_summary(result)
+
+    if args.install:
+        try:
+            installed = install_model_archive(result.archive_path)
+        except (FileExistsError, FileNotFoundError, ValueError) as exc:
+            parser.exit(status=1, message=f"{exc}\n")
+        print()
+        print(f"Installed model: {installed.model.manifest.name}")
+        print(f"Path: {installed.model.model_dir}")
+    else:
+        print()
+        print("To install:")
+        print(f"  lisai models install {result.archive_path.name}")
     return 0
 
 
@@ -179,6 +273,38 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     list_parser.set_defaults(handler=run_list_from_args)
 
+    catalog_parser = subparsers.add_parser(
+        "catalog",
+        help="List models available from the remote LISAI download catalog.",
+        description="List models available from the remote LISAI download catalog.",
+    )
+    catalog_parser.set_defaults(
+        handler=lambda args, p=catalog_parser: run_catalog_from_args(args, p)
+    )
+
+    download_parser = subparsers.add_parser(
+        "download",
+        help="Download a model from the LISAI model catalog.",
+        description=(
+            "Download a named model from the LISAI model catalog into the configured "
+            "promoted-model downloads directory."
+        ),
+    )
+    download_parser.add_argument("name", help="Exact model name from 'lisai models catalog'.")
+    download_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace an existing downloaded archive when its checksum does not match.",
+    )
+    download_parser.add_argument(
+        "--install",
+        action="store_true",
+        help="Install the verified archive immediately after downloading it.",
+    )
+    download_parser.set_defaults(
+        handler=lambda args, p=download_parser: run_download_from_args(args, p)
+    )
+
     show_parser = subparsers.add_parser(
         "show",
         help="Show one locally promoted model.",
@@ -285,8 +411,10 @@ def add_models_subparser(
 ) -> argparse.ArgumentParser:
     parser = subparsers.add_parser(
         "models",
-        help="Manage locally promoted LISAI models.",
-        description="List, inspect, install, remove, and export locally promoted LISAI models.",
+        help="Manage promoted and downloadable LISAI models.",
+        description=(
+            "List, inspect, download, install, remove, and export LISAI promoted models."
+        ),
     )
     return _add_model_commands(parser)
 
@@ -294,7 +422,7 @@ def add_models_subparser(
 def build_parser(*, prog: str = "lisai models") -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=prog,
-        description="List, inspect, install, remove, and export locally promoted LISAI models.",
+        description="List, inspect, download, install, remove, and export LISAI promoted models.",
     )
     return _add_model_commands(parser)
 

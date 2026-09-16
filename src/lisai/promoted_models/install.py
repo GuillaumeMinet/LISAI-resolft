@@ -125,6 +125,20 @@ def validate_installable_model_dir(model_dir: str | Path) -> PromotedModel:
     return promoted
 
 
+def _resolve_archive_path(archive_path: str | Path, *, paths: Paths) -> Path:
+    raw_path = Path(archive_path).expanduser()
+    if raw_path.is_file():
+        return raw_path.resolve()
+
+    if len(raw_path.parts) == 1:
+        downloaded = paths.promoted_model_downloads_dir() / raw_path.name
+        if downloaded.is_file():
+            return downloaded.resolve()
+
+    attempted = raw_path.resolve()
+    raise FileNotFoundError(f"Promoted-model archive not found: {attempted}")
+
+
 def install_model_archive(
     archive_path: str | Path,
     *,
@@ -132,13 +146,11 @@ def install_model_archive(
     paths: Paths | None = None,
 ) -> PromotedModelInstall:
     """Install a local .lisai.zip archive into the canonical promoted-model library."""
-    archive_path = Path(archive_path).expanduser().resolve()
-    if not archive_path.is_file():
-        raise FileNotFoundError(f"Promoted-model archive not found: {archive_path}")
+    resolved_paths = paths or Paths(settings)
+    archive_path = _resolve_archive_path(archive_path, paths=resolved_paths)
     if not archive_path.name.endswith(".lisai.zip"):
         raise ValueError("Promoted-model archives must use the '.lisai.zip' suffix.")
 
-    resolved_paths = paths or Paths(settings)
     promoted_root = resolved_paths.promoted_models_root()
     promoted_root.mkdir(parents=True, exist_ok=True)
 
@@ -154,8 +166,13 @@ def install_model_archive(
         name = promoted.manifest.name
         model_dir = resolved_paths.promoted_model_dir(model_name=name)
         exports_dir = resolved_paths.promoted_model_exports_dir()
+        downloads_dir = resolved_paths.promoted_model_downloads_dir()
         registry_path = resolved_paths.promoted_model_registry_path()
-        if model_dir.resolve() in {exports_dir.resolve(), registry_path.resolve()}:
+        if model_dir.resolve() in {
+            exports_dir.resolve(),
+            downloads_dir.resolve(),
+            registry_path.resolve(),
+        }:
             raise ValueError(f"Promoted-model name {name!r} is reserved by LISAI.")
 
         registry = load_promoted_model_registry(paths=resolved_paths)
