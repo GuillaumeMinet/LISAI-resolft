@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import tempfile
 import zipfile
@@ -15,6 +16,10 @@ from lisai.infra.paths import Paths
 
 from .card import render_model_card, update_model_card_overview
 from .checkpoint import extract_model_weights
+from .inference_config import (
+    PROMOTED_INFERENCE_CONFIG_FILENAME,
+    resolve_promoted_inference_config_source,
+)
 from .promotion import PromotionPlan, build_promotion_plan
 from .registry import load_promoted_model_registry, register_promoted_model, resolve_registered_model_dir
 from .schema import PromotedModelManifest, PromotedModelRegistryEntry
@@ -39,6 +44,12 @@ class PromotedModel:
     @property
     def weights_path(self) -> Path:
         return self.model_dir / self.manifest.artifacts.weights
+
+    @property
+    def inference_config_path(self) -> Path | None:
+        if self.manifest.artifacts.inference_config is None:
+            return None
+        return self.model_dir / self.manifest.artifacts.inference_config
 
     @property
     def noise_model_path(self) -> Path | None:
@@ -77,6 +88,8 @@ def _copy_plan_files(plan: PromotionPlan, model_dir: Path) -> None:
 
 def _payload_paths(manifest: PromotedModelManifest) -> list[str]:
     paths = [manifest.artifacts.config, manifest.artifacts.weights]
+    if manifest.artifacts.inference_config is not None:
+        paths.append(manifest.artifacts.inference_config)
     if manifest.artifacts.loss is not None:
         paths.append(manifest.artifacts.loss)
     if manifest.artifacts.loss_plot is not None:
@@ -130,6 +143,8 @@ def load_promoted_model_from_dir(model_dir: str | Path) -> PromotedModel:
         model_dir / manifest.artifacts.config,
         model_dir / manifest.artifacts.weights,
     ]
+    if manifest.artifacts.inference_config is not None:
+        required_paths.append(model_dir / manifest.artifacts.inference_config)
     if manifest.artifacts.noise_model is not None:
         required_paths.extend(
             [
@@ -162,6 +177,7 @@ def promote_run(
     *,
     name: str,
     checkpoint: str = "best",
+    inference_config: str | Path | None = None,
     overwrite: bool = False,
     paths: Paths | None = None,
 ) -> PromotedModel:
@@ -171,6 +187,7 @@ def promote_run(
         run_dir,
         name=name,
         checkpoint=checkpoint,
+        inference_config=inference_config,
         paths=resolved_paths,
     )
     model_dir = resolved_paths.promoted_model_dir(model_name=name)
@@ -232,6 +249,116 @@ def promote_run(
         paths=resolved_paths,
     )
     return load_promoted_model_from_dir(model_dir)
+
+
+def _validated_manifest_with_inference_config(
+    manifest: PromotedModelManifest,
+    *,
+    package_path: str | None,
+    checksums: dict[str, str],
+) -> PromotedModelManifest:
+    artifacts = manifest.artifacts.model_copy(update={"inference_config": package_path})
+    updated = manifest.model_copy(update={"artifacts": artifacts, "checksums": checksums})
+    return PromotedModelManifest.model_validate(updated.model_dump(mode="python"))
+
+
+def set_promoted_model_config(
+    name: str,
+    config: str | Path | None,
+    *,
+    paths: Paths | None = None,
+) -> PromotedModel:
+    """Attach, replace, or clear the default apply config of a local promoted model."""
+    resolved_paths = paths or Paths(settings)
+    promoted = load_promoted_model(name, paths=resolved_paths)
+    old_package_path = promoted.manifest.artifacts.inference_config
+    checksums = dict(promoted.manifest.checksums)
+
+    if config is None:
+        if old_package_path is None:
+            return promoted
+
+        checksums.pop(old_package_path, None)
+        updated_manifest = _validated_manifest_with_inference_config(
+            promoted.manifest,
+            package_path=None,
+            checksums=checksums,
+        )
+        old_path = promoted.model_dir / old_package_path
+        remove_old_file = old_package_path not in set(_payload_paths(updated_manifest))
+        backup_path = old_path.with_name(f".{old_path.name}.set-config-backup")
+        if backup_path.exists():
+            backup_path.unlink()
+        if remove_old_file and old_path.is_file():
+            os.replace(old_path, backup_path)
+        try:
+            _write_manifest(promoted.model_dir, updated_manifest)
+        except Exception:
+            if backup_path.exists():
+                os.replace(backup_path, old_path)
+            raise
+        else:
+            if backup_path.exists():
+                backup_path.unlink()
+        return load_promoted_model_from_dir(promoted.model_dir)
+
+    source_path = resolve_promoted_inference_config_source(config)
+    package_path = PROMOTED_INFERENCE_CONFIG_FILENAME
+    destination = promoted.model_dir / package_path
+    tmp_destination = destination.with_name(f".{destination.name}.set-config-tmp")
+    backup_destination = destination.with_name(f".{destination.name}.set-config-backup")
+
+    if tmp_destination.exists():
+        tmp_destination.unlink()
+    if backup_destination.exists():
+        backup_destination.unlink()
+
+    if source_path.resolve() == destination.resolve():
+        new_checksum = sha256_file(destination)
+        checksums[package_path] = new_checksum
+        if old_package_path is not None and old_package_path != package_path:
+            checksums.pop(old_package_path, None)
+        updated_manifest = _validated_manifest_with_inference_config(
+            promoted.manifest,
+            package_path=package_path,
+            checksums=checksums,
+        )
+        _write_manifest(promoted.model_dir, updated_manifest)
+    else:
+        shutil.copy2(source_path, tmp_destination)
+        new_checksum = sha256_file(tmp_destination)
+        checksums[package_path] = new_checksum
+        if old_package_path is not None and old_package_path != package_path:
+            checksums.pop(old_package_path, None)
+        updated_manifest = _validated_manifest_with_inference_config(
+            promoted.manifest,
+            package_path=package_path,
+            checksums=checksums,
+        )
+
+        if destination.is_file():
+            os.replace(destination, backup_destination)
+        try:
+            os.replace(tmp_destination, destination)
+            _write_manifest(promoted.model_dir, updated_manifest)
+        except Exception:
+            if destination.exists():
+                destination.unlink()
+            if backup_destination.exists():
+                os.replace(backup_destination, destination)
+            if tmp_destination.exists():
+                tmp_destination.unlink()
+            raise
+        else:
+            if backup_destination.exists():
+                backup_destination.unlink()
+
+    if old_package_path is not None and old_package_path != package_path:
+        old_path = promoted.model_dir / old_package_path
+        if old_path.is_file() and old_package_path not in set(_payload_paths(updated_manifest)):
+            old_path.unlink()
+
+    return load_promoted_model_from_dir(promoted.model_dir)
 
 
 def _write_zip(source_dir: Path, output_path: Path) -> None:
@@ -361,6 +488,7 @@ __all__ = [
     "load_promoted_model",
     "load_promoted_model_from_dir",
     "promote_run",
+    "set_promoted_model_config",
     "set_promoted_model_task",
     "sync_promoted_model",
     "sha256_file",

@@ -79,7 +79,8 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     def fake_run_apply_model(**kwargs):
         captured.update(kwargs)
 
-    def fake_resolve_apply_config(*, config, overrides):
+    def fake_resolve_apply_config(*, model_config, config, overrides):
+        captured["model_config"] = model_config
         captured["config"] = config
         captured["overrides"] = overrides
         return ApplyDefaults()
@@ -110,6 +111,7 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     assert captured["model_subfolder"] == "Upsamp"
     assert captured["model_name"] == "my_model_00"
     assert captured["data_path"] == Path("/data/images")
+    assert captured["model_config"] is None
     assert captured["config"] == "fast_upsamp"
     assert captured["overrides"].inference.tiling_size == 512
     assert captured["overrides"].inference.crop_size == 200
@@ -526,6 +528,11 @@ def test_apply_cli_accepts_promoted_model_without_run_selector(monkeypatch):
         "load_promoted_model_registry",
         lambda: SimpleNamespace(models={"hdn-vimentin": object()}),
     )
+    monkeypatch.setattr(
+        evaluation_cli,
+        "load_promoted_model",
+        lambda name: SimpleNamespace(inference_config_path=None),
+    )
 
     parser = build_parser()
     args = parser.parse_args(["apply", "--model", "hdn-vimentin", "/data/images"])
@@ -852,6 +859,11 @@ def test_apply_cli_resolves_confirmed_partial_promoted_model(monkeypatch):
             models={"hdn-vimentin-5frames": object(), "rcan-actin": object()}
         ),
     )
+    monkeypatch.setattr(
+        evaluation_cli,
+        "load_promoted_model",
+        lambda name: SimpleNamespace(inference_config_path=None),
+    )
     monkeypatch.setattr(evaluation_cli.sys, "stdin", InteractiveInput("y\n"))
     monkeypatch.setattr(evaluation_cli.sys, "stdout", stdout)
     monkeypatch.setattr(evaluation_cli.sys, "stderr", stderr)
@@ -865,3 +877,32 @@ def test_apply_cli_resolves_confirmed_partial_promoted_model(monkeypatch):
     assert captured["model_name"] == "hdn-vimentin-5frames"
     assert "Did you mean 'hdn-vimentin-5frames'? [y/N]" in stdout.getvalue()
     assert stderr.getvalue() == ""
+
+
+def test_apply_cli_layers_promoted_model_inference_config(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    captured = {}
+    model_config = tmp_path / "config_inference.yaml"
+    model_config.write_text(
+        "apply:\n  inference:\n    lvae_num_samples: 10\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(
+        evaluation_cli,
+        "load_promoted_model_registry",
+        lambda: SimpleNamespace(models={"hdn-vimentin": object()}),
+    )
+    monkeypatch.setattr(
+        evaluation_cli,
+        "load_promoted_model",
+        lambda name: SimpleNamespace(inference_config_path=model_config),
+    )
+
+    parser = build_parser()
+    args = parser.parse_args(["apply", "--model", "hdn-vimentin", "/data/images"])
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["cfg"].inference.lvae_num_samples == 10

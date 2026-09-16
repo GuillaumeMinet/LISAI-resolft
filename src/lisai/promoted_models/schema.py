@@ -127,12 +127,13 @@ class PromotedModelArtifacts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     config: str = "config_train.yaml"
+    inference_config: str | None = None
     weights: str = "weights.pt"
     loss: str | None = None
     loss_plot: str | None = None
     noise_model: PromotedNoiseModelArtifacts | None = None
 
-    @field_validator("config", "weights", "loss", "loss_plot")
+    @field_validator("config", "inference_config", "weights", "loss", "loss_plot")
     @classmethod
     def _validate_package_path(cls, value: str | None) -> str | None:
         if value is None:

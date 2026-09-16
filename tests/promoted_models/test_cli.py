@@ -18,6 +18,7 @@ def test_runs_promote_cli_defaults():
     assert args.run == "run_a"
     assert args.name == "hdn-vimentin"
     assert args.checkpoint == "best"
+    assert args.inference_config is None
     assert args.overwrite is False
 
 
@@ -30,6 +31,15 @@ def test_runs_promote_cli_supports_checkpoint_and_overwrite():
     assert args.checkpoint == "last"
     assert args.overwrite is True
 
+
+
+def test_runs_promote_cli_supports_inference_config():
+    parser = build_runs_parser()
+    args = parser.parse_args(
+        ["promote", "run_a", "--name", "hdn-vimentin", "--inference-config", "hdn_sup"]
+    )
+
+    assert args.inference_config == "hdn_sup"
 
 def test_models_cli_contains_library_and_export_commands():
     parser = build_models_parser()
@@ -48,6 +58,12 @@ def test_models_cli_contains_library_and_export_commands():
     assert exported.models_command == "export"
     assert exported.name == "hdn-vimentin"
     assert exported.output is None
+
+    set_config = parser.parse_args(["set-config", "hdn-vimentin", "hdn_sup"])
+    assert set_config.models_command == "set-config"
+    assert set_config.config == "hdn_sup"
+    assert set_config.clear is False
+    assert parser.parse_args(["set-config", "hdn-vimentin", "--clear"]).clear is True
 
     catalog = parser.parse_args(["catalog"])
     assert catalog.models_command == "catalog"

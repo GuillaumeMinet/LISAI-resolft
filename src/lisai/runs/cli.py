@@ -507,6 +507,7 @@ def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
             selected.run_dir,
             name=args.name,
             checkpoint=args.checkpoint,
+            inference_config=args.inference_config,
             overwrite=args.overwrite,
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
@@ -679,6 +680,13 @@ def _add_runs_promote_arguments(parser: argparse.ArgumentParser) -> argparse.Arg
         choices=["best", "last"],
         default="best",
         help="State-dict checkpoint to promote (default: best).",
+    )
+    parser.add_argument(
+        "--inference-config",
+        help=(
+            "Optional inference config path or config name to store as the promoted model's "
+            "default apply config. It can also be attached later with 'lisai models set-config'."
+        ),
     )
     parser.add_argument(
         "--overwrite",

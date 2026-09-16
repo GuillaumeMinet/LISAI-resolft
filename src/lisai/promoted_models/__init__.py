@@ -15,6 +15,7 @@ from .package import (
     load_promoted_model,
     load_promoted_model_from_dir,
     promote_run,
+    set_promoted_model_config,
     sha256_file,
 )
 from .promotion import PROMOTABLE_RUN_STATUSES, PromotionPlan, build_promotion_plan
@@ -76,6 +77,7 @@ __all__ = [
     "load_promoted_model_from_dir",
     "load_promoted_model_registry",
     "promote_run",
+    "set_promoted_model_config",
     "promoted_source_run_ids",
     "register_promoted_model",
     "remove_promoted_model",

@@ -198,3 +198,54 @@ def test_build_promotion_plan_rejects_dataset_mismatch(tmp_path: Path, monkeypat
 
     with pytest.raises(ValueError, match="disagree on dataset name"):
         promotion.build_promotion_plan(run_dir, name="model-a", paths=paths)
+
+
+def test_build_promotion_plan_can_attach_sparse_inference_config(tmp_path: Path, monkeypatch):
+    run_dir, paths = _prepare_sources(tmp_path)
+    monkeypatch.setattr(
+        promotion,
+        "read_run_metadata",
+        lambda _run_dir: _metadata(run_dir, status="completed"),
+    )
+    monkeypatch.setattr(promotion, "load_yaml", lambda _path: _raw_config())
+    inference_config = tmp_path / "hdn_sup.yml"
+    inference_config.write_text(
+        "apply:\n  inference:\n    lvae_num_samples: 10\n",
+        encoding="utf-8",
+    )
+
+    plan = promotion.build_promotion_plan(
+        run_dir,
+        name="model-a",
+        inference_config=inference_config,
+        paths=paths,
+    )
+
+    assert plan.manifest.artifacts.inference_config == "config_inference.yaml"
+    assert "config_inference.yaml" in [item.package_path for item in plan.copy_files]
+
+
+def test_build_promotion_plan_rejects_inference_config_without_apply_section(
+    tmp_path: Path,
+    monkeypatch,
+):
+    run_dir, paths = _prepare_sources(tmp_path)
+    monkeypatch.setattr(
+        promotion,
+        "read_run_metadata",
+        lambda _run_dir: _metadata(run_dir, status="completed"),
+    )
+    monkeypatch.setattr(promotion, "load_yaml", lambda _path: _raw_config())
+    inference_config = tmp_path / "evaluate_only.yml"
+    inference_config.write_text(
+        "evaluate:\n  inference:\n    tiling_size: 512\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="does not define an 'apply' section"):
+        promotion.build_promotion_plan(
+            run_dir,
+            name="model-a",
+            inference_config=inference_config,
+            paths=paths,
+        )

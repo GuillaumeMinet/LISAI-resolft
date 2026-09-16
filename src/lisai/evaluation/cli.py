@@ -7,6 +7,7 @@ from typing import Sequence
 
 from lisai.config.models.inference import ApplyOverrides, EvaluateOverrides
 from lisai.infra.cli.selection import resolve_partial_name
+from lisai.promoted_models.package import load_promoted_model
 from lisai.promoted_models.registry import load_promoted_model_registry
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.scanner import DiscoveredRun
@@ -189,7 +190,8 @@ def _add_config_argument(parser: argparse.ArgumentParser) -> argparse._ArgumentG
         help=(
             "Inference config path, or a config name from configs/inference with or without "
             ".yml/.yaml. Local configs are looked up first. Defaults to local/defaults.yml; "
-            "named configs may be sparse and inherit unspecified values from local/defaults.yml."
+            "named configs may be sparse and inherit unspecified values from local/defaults.yml. "
+            "With --model, the model's stored inference config is layered in before this config."
         ),
     )
     return group
@@ -368,6 +370,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         parser.error("--overwrite, --reuse-folder, and --skip-existing cannot be combined with in-place apply output.")
 
     promoted_model_name = args.model
+    promoted_model_config = None
     if promoted_model_name is not None:
         if any((args.run, args.run_id, args.dataset, args.model_subfolder)):
             parser.error("--model cannot be combined with a run selector or run filters.")
@@ -386,6 +389,8 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         )
         if promoted_model_name is None:
             return 1
+        promoted = load_promoted_model(promoted_model_name)
+        promoted_model_config = promoted.inference_config_path
         model_dataset = ""
         model_subfolder = "promoted"
         model_name = promoted_model_name
@@ -398,6 +403,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         model_name = selected.run_dir.name
 
     cfg = resolve_apply_config(
+        model_config=promoted_model_config,
         config=args.config,
         overrides=_build_apply_overrides(args),
     )

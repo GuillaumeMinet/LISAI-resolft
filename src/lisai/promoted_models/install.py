@@ -74,6 +74,8 @@ def _safe_extract_archive(archive_path: Path, destination: Path) -> None:
 
 def _declared_artifact_paths(manifest: PromotedModelManifest) -> set[str]:
     paths = {manifest.artifacts.config, manifest.artifacts.weights}
+    if manifest.artifacts.inference_config is not None:
+        paths.add(manifest.artifacts.inference_config)
     if manifest.artifacts.loss is not None:
         paths.add(manifest.artifacts.loss)
     if manifest.artifacts.loss_plot is not None:

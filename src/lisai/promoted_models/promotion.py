@@ -11,6 +11,10 @@ from lisai.runs import RunMetadata, read_run_metadata
 
 from .checkpoint import PromotionCheckpointSelector, resolve_promotion_checkpoint
 from .dependencies import PromotionDependencies, PromotionFile, collect_required_dependencies
+from .inference_config import (
+    PROMOTED_INFERENCE_CONFIG_FILENAME,
+    resolve_promoted_inference_config_source,
+)
 from .schema import (
     PromotedModelArtifacts,
     PromotedModelCodeState,
@@ -64,6 +68,7 @@ def build_promotion_plan(
     *,
     name: str,
     checkpoint: PromotionCheckpointSelector = "best",
+    inference_config: str | Path | None = None,
     paths: Paths | None = None,
 ) -> PromotionPlan:
     """Validate a saved run and project it into the promoted-model domain.
@@ -108,6 +113,12 @@ def build_promotion_plan(
     copy_files: list[PromotionFile] = [
         PromotionFile(config_path, "config_train.yaml"),
     ]
+    inference_config_path: Path | None = None
+    if inference_config is not None:
+        inference_config_path = resolve_promoted_inference_config_source(inference_config)
+        copy_files.append(
+            PromotionFile(inference_config_path, PROMOTED_INFERENCE_CONFIG_FILENAME)
+        )
     if loss_file is not None:
         copy_files.append(loss_file)
     if loss_plot is not None:
@@ -147,6 +158,11 @@ def build_promotion_plan(
             runtime_stats=runtime_stats,
         ),
         artifacts=PromotedModelArtifacts(
+            inference_config=(
+                PROMOTED_INFERENCE_CONFIG_FILENAME
+                if inference_config_path is not None
+                else None
+            ),
             loss=loss_file.package_path if loss_file is not None else None,
             loss_plot=loss_plot.package_path if loss_plot is not None else None,
             noise_model=dependencies.noise_model,

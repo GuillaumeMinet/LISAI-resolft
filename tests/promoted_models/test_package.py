@@ -229,3 +229,58 @@ def test_promote_refuses_duplicate_name_without_overwrite(tmp_path: Path, monkey
         assert "--overwrite" in str(exc)
     else:
         raise AssertionError("Expected duplicate promoted-model name to be rejected.")
+
+
+def test_set_config_updates_promoted_model_and_export(tmp_path: Path, monkeypatch):
+    plan = _plan(tmp_path)
+    paths = FakePaths(tmp_path)
+    monkeypatch.setattr(package_module, "build_promotion_plan", lambda *args, **kwargs: plan)
+    package_module.promote_run(tmp_path / "run", name="demo-model", paths=paths)
+
+    inference_config = tmp_path / "hdn_sup.yml"
+    inference_config.write_text(
+        "apply:\n  inference:\n    lvae_num_samples: 10\n",
+        encoding="utf-8",
+    )
+
+    updated = package_module.set_promoted_model_config(
+        "demo-model",
+        inference_config,
+        paths=paths,
+    )
+
+    assert updated.manifest.artifacts.inference_config == "config_inference.yaml"
+    assert updated.inference_config_path is not None
+    assert updated.inference_config_path.read_text(encoding="utf-8") == inference_config.read_text(
+        encoding="utf-8"
+    )
+    assert updated.manifest.checksums["config_inference.yaml"] == package_module.sha256_file(
+        updated.inference_config_path
+    )
+
+    exported = package_module.export_promoted_model("demo-model", paths=paths)
+    with zipfile.ZipFile(exported.archive_path) as archive:
+        assert "config_inference.yaml" in archive.namelist()
+        manifest = yaml.safe_load(archive.read("lisai_model.yaml"))
+        assert manifest["artifacts"]["inference_config"] == "config_inference.yaml"
+        assert "config_inference.yaml" in manifest["checksums"]
+
+
+def test_set_config_clear_removes_promoted_model_config(tmp_path: Path, monkeypatch):
+    plan = _plan(tmp_path)
+    paths = FakePaths(tmp_path)
+    monkeypatch.setattr(package_module, "build_promotion_plan", lambda *args, **kwargs: plan)
+    package_module.promote_run(tmp_path / "run", name="demo-model", paths=paths)
+    inference_config = tmp_path / "hdn_sup.yml"
+    inference_config.write_text(
+        "apply:\n  inference:\n    lvae_num_samples: 10\n",
+        encoding="utf-8",
+    )
+    package_module.set_promoted_model_config("demo-model", inference_config, paths=paths)
+
+    cleared = package_module.set_promoted_model_config("demo-model", None, paths=paths)
+
+    assert cleared.manifest.artifacts.inference_config is None
+    assert cleared.inference_config_path is None
+    assert "config_inference.yaml" not in cleared.manifest.checksums
+    assert not (cleared.model_dir / "config_inference.yaml").exists()

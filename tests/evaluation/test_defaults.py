@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import warnings
 from types import SimpleNamespace
 
 import pytest
@@ -442,3 +443,86 @@ def test_local_post_training_overrides_builtin_and_inherits_local_defaults(infer
     assert resolved.checkpoint.best_or_last == "both"
     assert resolved.metrics == ["custom_metric"]
     assert resolved.saving.overwrite is True
+
+
+def test_promoted_model_config_layers_between_local_defaults_and_explicit_config(
+    inference_config_dir: Path,
+):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
+    )
+    model_config = inference_config_dir / "model_defaults.yml"
+    _write(model_config, "apply:\n  inference:\n    lvae_num_samples: 10\n")
+    _write(
+        inference_config_dir / "local" / "large_tiles.yml",
+        "apply:\n  inference:\n    tiling_size: 512\n",
+    )
+
+    resolved = resolve_apply_config(
+        model_config=model_config,
+        config="large_tiles",
+    )
+
+    assert resolved.inference.lvae_num_samples == 10
+    assert resolved.inference.tiling_size == 512
+
+
+def test_explicit_config_and_cli_override_promoted_model_config_with_warning(
+    inference_config_dir: Path,
+):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  inference:\n    lvae_num_samples: 30\n",
+    )
+    model_config = inference_config_dir / "model_defaults.yml"
+    _write(model_config, "apply:\n  inference:\n    lvae_num_samples: 10\n")
+    selected_config = inference_config_dir / "selected.yml"
+    _write(selected_config, "apply:\n  inference:\n    lvae_num_samples: 20\n")
+
+    with pytest.warns(UserWarning, match=r"lvae_num_samples=10.*CLI override.*5.*Using 5"):
+        resolved = resolve_apply_config(
+            model_config=model_config,
+            config=selected_config,
+            overrides=ApplyOverrides(
+                inference=ApplyInferenceOverrides(lvae_num_samples=5),
+            ),
+        )
+
+    assert resolved.inference.lvae_num_samples == 5
+
+
+def test_explicit_config_override_promoted_model_config_warns_without_cli_override(
+    inference_config_dir: Path,
+):
+    _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
+    model_config = inference_config_dir / "model_defaults.yml"
+    _write(model_config, "apply:\n  inference:\n    lvae_num_samples: 10\n")
+    selected_config = inference_config_dir / "selected.yml"
+    _write(selected_config, "apply:\n  inference:\n    lvae_num_samples: 20\n")
+
+    with pytest.warns(UserWarning, match=r"lvae_num_samples=10.*selected.yml.*20.*Using 20"):
+        resolved = resolve_apply_config(
+            model_config=model_config,
+            config=selected_config,
+        )
+
+    assert resolved.inference.lvae_num_samples == 20
+
+
+def test_local_defaults_do_not_warn_when_promoted_model_overrides_them(
+    inference_config_dir: Path,
+):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  inference:\n    lvae_num_samples: 30\n",
+    )
+    model_config = inference_config_dir / "model_defaults.yml"
+    _write(model_config, "apply:\n  inference:\n    lvae_num_samples: 10\n")
+
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        resolved = resolve_apply_config(model_config=model_config)
+
+    assert captured == []
+    assert resolved.inference.lvae_num_samples == 10

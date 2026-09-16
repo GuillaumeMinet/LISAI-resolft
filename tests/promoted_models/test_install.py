@@ -42,11 +42,21 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _make_archive(tmp_path: Path, *, name: str = "demo-model") -> Path:
+def _make_archive(
+    tmp_path: Path,
+    *,
+    name: str = "demo-model",
+    with_inference_config: bool = False,
+) -> Path:
     source = tmp_path / "archive-source"
     source.mkdir()
     (source / "weights.pt").write_bytes(b"weights")
     (source / "config_train.yaml").write_text("not: necessarily-current-schema\n", encoding="utf-8")
+    if with_inference_config:
+        (source / "config_inference.yaml").write_text(
+            "apply:\n  inference:\n    lvae_num_samples: 10\n",
+            encoding="utf-8",
+        )
     training = source / "training"
     training.mkdir()
     (training / "loss.txt").write_text("loss history\n", encoding="utf-8")
@@ -63,11 +73,19 @@ def _make_archive(tmp_path: Path, *, name: str = "demo-model") -> Path:
             checkpoint_selector="best",
             checkpoint_filename="model_best_state_dict.pt",
         ),
-        artifacts=PromotedModelArtifacts(loss="training/loss.txt"),
+        artifacts=PromotedModelArtifacts(
+            loss="training/loss.txt",
+            inference_config="config_inference.yaml" if with_inference_config else None,
+        ),
         checksums={
             "weights.pt": _sha(source / "weights.pt"),
             "config_train.yaml": _sha(source / "config_train.yaml"),
             "training/loss.txt": _sha(training / "loss.txt"),
+            **(
+                {"config_inference.yaml": _sha(source / "config_inference.yaml")}
+                if with_inference_config
+                else {}
+            ),
         },
     )
     (source / "lisai_model.yaml").write_text(
@@ -98,6 +116,17 @@ def test_install_archive_registers_same_canonical_model_representation(tmp_path:
     assert entry["source_run_id"] == "01ARZ3NDEKTSV4RRFFQ69G5FAV"
     assert entry["installed_at"] is not None
 
+
+
+def test_install_preserves_optional_inference_config(tmp_path: Path):
+    archive_path = _make_archive(tmp_path, with_inference_config=True)
+    paths = FakePaths(tmp_path / "destination")
+
+    installed = install_model_archive(archive_path, paths=paths)
+
+    assert installed.model.manifest.artifacts.inference_config == "config_inference.yaml"
+    assert installed.model.inference_config_path is not None
+    assert "lvae_num_samples: 10" in installed.model.inference_config_path.read_text()
 
 def test_install_does_not_require_runtime_config_to_validate(tmp_path: Path):
     archive_path = _make_archive(tmp_path)

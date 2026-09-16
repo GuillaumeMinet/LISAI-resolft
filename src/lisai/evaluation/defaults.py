@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -110,49 +111,128 @@ def _load_selected_config(
         raise
 
 
-def _resolve_section_nested(
+def _explicit_selected_section(
+    config: str | Path,
     section: Literal["apply", "evaluate"],
-    *,
-    config: str | Path | None = None,
-) -> ApplyDefaults | EvaluateDefaults:
-    # Base config precedence is intentionally one-way:
-    # canonical typed defaults < local/defaults.yml < built-in preset (if any)
-    # < selected config. Typed invocation overrides are layered by the public
-    # section resolvers below. A selected config may therefore stay sparse;
-    # local defaults only fill values that it does not explicitly provide.
-    resolved_section = deepcopy(ResolvedInferenceConfig().model_dump()[section])
-
-    local_defaults = _load_local_defaults_section(section)
-    if local_defaults:
-        resolved_section = _merge_section_config(section, resolved_section, local_defaults)
-
-    if config is None:
-        return _validate_resolved_section(section, resolved_section)
-
+) -> dict[str, Any]:
+    """Return only values explicitly supplied by one selected inference config."""
     selected_cfg, cfg_path = _load_selected_config(config)
+    explicit: dict[str, Any] = {}
 
     if cfg_path is None:
-        # Built-in post-training preset remains usable even if the local file was removed.
         preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
         preset_section = _section_overrides(preset_cfg, section)
         if preset_section is None:
-            raise ValueError(f"Built-in post-training preset does not define a '{section}' section.")
-        resolved_section = _merge_section_config(section, resolved_section, preset_section)
-        return _validate_resolved_section(section, resolved_section)
-
-    selected_section = _section_overrides(selected_cfg, section) if selected_cfg is not None else None
+            raise ValueError(
+                f"Built-in post-training preset does not define a '{section}' section."
+            )
+        return preset_section
 
     if _is_post_training_name(config, cfg_path):
         preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
         preset_section = _section_overrides(preset_cfg, section)
         if preset_section:
-            resolved_section = _merge_section_config(section, resolved_section, preset_section)
+            explicit = _merge_section_config(section, explicit, preset_section)
 
+    selected_section = _section_overrides(selected_cfg, section) if selected_cfg is not None else None
     if selected_section is None:
         raise ValueError(f"Inference config '{cfg_path}' does not define a '{section}' section.")
+    return _merge_section_config(section, explicit, selected_section)
 
-    resolved_section = _merge_section_config(section, resolved_section, selected_section)
+
+def _explicit_model_section(
+    model_config: str | Path | None,
+    section: Literal["apply", "evaluate"],
+) -> dict[str, Any] | None:
+    """Load one promoted-model config section without resolving inherited defaults."""
+    if model_config is None:
+        return None
+
+    promoted_cfg, promoted_cfg_path = load_inference_config(model_config)
+    if promoted_cfg_path is None:
+        raise FileNotFoundError(f"Promoted-model inference config not found: {model_config}")
+
+    promoted_section = _section_overrides(promoted_cfg, section)
+    if promoted_section is None:
+        raise ValueError(
+            f"Promoted-model inference config '{promoted_cfg_path}' does not define "
+            f"a '{section}' section."
+        )
+    return promoted_section
+
+
+def _resolve_section_nested(
+    section: Literal["apply", "evaluate"],
+    *,
+    model_section: dict[str, Any] | None = None,
+    selected_section: dict[str, Any] | None = None,
+) -> ApplyDefaults | EvaluateDefaults:
+    # Base config precedence is intentionally one-way:
+    # canonical typed defaults < local/defaults.yml < promoted-model config
+    # < selected config. Typed invocation overrides are layered by the public
+    # section resolvers below. Every authored config may therefore stay sparse.
+    resolved_section = deepcopy(ResolvedInferenceConfig().model_dump()[section])
+
+    local_defaults = _load_local_defaults_section(section)
+    if local_defaults:
+        resolved_section = _merge_section_config(section, resolved_section, local_defaults)
+    if model_section:
+        resolved_section = _merge_section_config(section, resolved_section, model_section)
+    if selected_section:
+        resolved_section = _merge_section_config(section, resolved_section, selected_section)
+
     return _validate_resolved_section(section, resolved_section)
+
+
+def _flatten_explicit_values(
+    value: Mapping[str, Any],
+    *,
+    prefix: tuple[str, ...] = (),
+) -> dict[str, Any]:
+    flattened: dict[str, Any] = {}
+    for key, child in value.items():
+        path = (*prefix, str(key))
+        if isinstance(child, Mapping):
+            flattened.update(_flatten_explicit_values(child, prefix=path))
+        else:
+            flattened[".".join(path)] = child
+    return flattened
+
+
+def _warn_apply_model_config_overrides(
+    *,
+    model_section: Mapping[str, Any] | None,
+    selected_section: Mapping[str, Any] | None,
+    config: str | Path | None,
+    overrides: ApplyOverrides | None,
+) -> None:
+    """Warn when an explicit per-invocation choice replaces a model default."""
+    if not model_section:
+        return
+    model_values = _flatten_explicit_values(model_section)
+
+    effective_overrides: dict[str, tuple[str, Any]] = {}
+    if selected_section is not None:
+        for path, value in _flatten_explicit_values(selected_section).items():
+            effective_overrides[path] = (f"inference config {str(config)!r}", value)
+
+    if overrides is not None:
+        cli_values = overrides.model_dump(exclude_unset=True)
+        for path, value in _flatten_explicit_values(cli_values).items():
+            effective_overrides[path] = ("CLI override", value)
+
+    for path in sorted(set(model_values) & set(effective_overrides)):
+        source, override_value = effective_overrides[path]
+        model_value = model_values[path]
+        if override_value == model_value:
+            continue
+        warnings.warn(
+            "Promoted-model inference config sets "
+            f"apply.{path}={model_value!r}, but {source} sets {override_value!r}. "
+            f"Using {override_value!r}.",
+            UserWarning,
+            stacklevel=3,
+        )
 
 
 def _finalize_apply_local_fallbacks(
@@ -182,12 +262,21 @@ def _finalize_apply_local_fallbacks(
 
 def resolve_apply_config(
     *,
+    model_config: str | Path | None = None,
     config: str | Path | None = None,
     overrides: ApplyOverrides | None = None,
     stg=None,
 ) -> ApplyDefaults:
     """Resolve one apply invocation to the complete typed runtime config."""
-    resolved = _resolve_section_nested("apply", config=config)
+    model_section = _explicit_model_section(model_config, "apply")
+    selected_section = (
+        _explicit_selected_section(config, "apply") if config is not None else None
+    )
+    resolved = _resolve_section_nested(
+        "apply",
+        model_section=model_section,
+        selected_section=selected_section,
+    )
     if not isinstance(resolved, ApplyDefaults):
         raise TypeError("Internal error: apply resolution did not produce ApplyDefaults.")
 
@@ -200,7 +289,14 @@ def resolve_apply_config(
                 raise TypeError("Internal error: apply overrides did not produce ApplyDefaults.")
             resolved = validated
 
-    return _finalize_apply_local_fallbacks(resolved, stg=stg)
+    resolved = _finalize_apply_local_fallbacks(resolved, stg=stg)
+    _warn_apply_model_config_overrides(
+        model_section=model_section,
+        selected_section=selected_section,
+        config=config,
+        overrides=overrides,
+    )
+    return resolved
 
 
 def resolve_apply_output_policy(cfg: ApplyDefaults) -> ApplyOutputPolicy:
@@ -237,7 +333,10 @@ def resolve_evaluate_config(
     overrides: EvaluateOverrides | None = None,
 ) -> EvaluateDefaults:
     """Resolve one evaluate invocation to the canonical typed nested config."""
-    resolved = _resolve_section_nested("evaluate", config=config)
+    selected_section = (
+        _explicit_selected_section(config, "evaluate") if config is not None else None
+    )
+    resolved = _resolve_section_nested("evaluate", selected_section=selected_section)
     if not isinstance(resolved, EvaluateDefaults):
         raise TypeError("Internal error: evaluate resolution did not produce EvaluateDefaults.")
 

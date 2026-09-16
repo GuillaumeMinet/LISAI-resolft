@@ -18,6 +18,7 @@ from .install import install_model_archive
 from .package import (
     export_promoted_model,
     load_promoted_model, 
+    set_promoted_model_config,
     set_promoted_model_task,
     sync_promoted_model
 )
@@ -172,6 +173,29 @@ def run_set_task_from_args(
     print(f"Task: {promoted.manifest.model.task}")
     return 0
 
+def run_set_config_from_args(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+) -> int:
+    if args.clear and args.config is not None:
+        parser.error("CONFIG cannot be provided together with --clear.")
+    if not args.clear and args.config is None:
+        parser.error("Provide CONFIG, or use --clear to remove the model inference config.")
+
+    name = _resolve_model_name(args.name, parser=parser)
+    try:
+        promoted = set_promoted_model_config(
+            name,
+            None if args.clear else args.config,
+        )
+    except (KeyError, FileNotFoundError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    print(f"Updated model: {promoted.manifest.name}")
+    print(f"Inference config: {promoted.manifest.artifacts.inference_config or 'none'}")
+    return 0
+
+
 def run_sync_from_args(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
@@ -208,6 +232,7 @@ def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
     if manifest.source.code is not None:
         print(f"Git commit: {manifest.source.code.git_commit or '-'}")
         print(f"LISAI version: {manifest.source.code.lisai_version or '-'}")
+    print(f"Inference config: {manifest.artifacts.inference_config or '-'}")
     return 0
 
 
@@ -332,6 +357,35 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     set_task_parser.set_defaults(
         handler=lambda args, p=set_task_parser: run_set_task_from_args(args, p)
+    )
+
+    set_config_parser = subparsers.add_parser(
+        "set-config",
+        help="Set the default inference config of a promoted model.",
+        description=(
+            "Attach, replace, or clear the sparse default apply config stored with a promoted "
+            "model. The stored config is included automatically in later model exports."
+        ),
+    )
+    set_config_parser.add_argument(
+        "name",
+        help="Public promoted-model name or partial name.",
+    )
+    set_config_parser.add_argument(
+        "config",
+        nargs="?",
+        help=(
+            "Inference config path or name from configs/inference. The source config is copied "
+            "into the promoted model as config_inference.yaml."
+        ),
+    )
+    set_config_parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Remove the promoted model's default inference config.",
+    )
+    set_config_parser.set_defaults(
+        handler=lambda args, p=set_config_parser: run_set_config_from_args(args, p)
     )
 
     sync_parser = subparsers.add_parser(
