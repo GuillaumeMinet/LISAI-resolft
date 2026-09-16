@@ -5,6 +5,7 @@ from pathlib import Path
 
 from lisai.infra.paths import Paths as LisaiPaths
 
+from .output_folders import prepare_output_folder
 from .run_naming import (
     allocate_run_dir_name,
     format_run_dir_name,
@@ -74,15 +75,15 @@ def create_run_dir(paths: LisaiPaths, ds_name: str, exp_name: str, subfolder: st
     ensure_folder(runs_root,mode="exist_ok")
 
     if overwrite:
-        mode = "overwrite"
         final_name = format_run_dir_name(exp_name, 0, width=run_dir_index_width())
+        if_exists_policy = "overwrite"
     else:
-        mode = "strict"
         final_name, _ = allocate_run_dir_name(runs_root, exp_name, width=run_dir_index_width())
+        if_exists_policy = "error"
 
     final_run_dir = runs_root / final_name
-    final_run_dir = ensure_folder(final_run_dir, mode=mode)
-    return final_run_dir, final_name
+    resolution = prepare_output_folder(final_run_dir, if_exists_policy=if_exists_policy)
+    return resolution.path, final_name
 
 
 def create_tb_folder(tb_folder: Path, exp_name: str, exist_ok: bool = True):
@@ -102,5 +103,8 @@ def create_tb_folder(tb_folder: Path, exp_name: str, exist_ok: bool = True):
         exp_name = get_unique_exp_name(tb_folder, exp_name)
 
     path = tb_folder / exp_name
-    path = ensure_folder(path, mode="exist_ok")
-    return path, exp_name
+    resolution = prepare_output_folder(
+        path,
+        if_exists_policy="reuse" if exist_ok else "error",
+    )
+    return resolution.path, exp_name

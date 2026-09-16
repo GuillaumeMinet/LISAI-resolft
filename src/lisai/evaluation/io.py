@@ -8,34 +8,6 @@ import numpy as np
 from tifffile import imwrite
 
 from lisai.data.utils import get_saving_shape
-from lisai.infra.fs import ensure_folder
-from lisai.infra.fs.run_naming import get_unique_exp_name
-
-
-def create_save_folder(path: Path, overwrite: bool = False, parent_exists_check: bool = False) -> Path | None:
-    """Create a new output folder, optionally overwriting or uniquifying it."""
-    path = Path(path)
-    parent = path.parent
-
-    if parent_exists_check and not parent.exists():
-        return None
-
-    ensure_folder(parent, mode="exist_ok")
-
-    if path.exists():
-        if overwrite:
-            return ensure_folder(path, mode="overwrite")
-        unique_name = get_unique_exp_name(parent, path.name)
-        path = parent / unique_name
-
-    return ensure_folder(path, mode="strict")
-
-
-def ensure_save_folder(path: Path) -> Path:
-    """Ensure an output folder exists and return it as a Path."""
-    path = Path(path)
-    ensure_folder(path, mode="exist_ok")
-    return path
 
 
 def resolve_prediction_inputs(

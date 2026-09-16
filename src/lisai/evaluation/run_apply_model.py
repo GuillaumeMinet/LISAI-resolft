@@ -26,7 +26,7 @@ from lisai.evaluation.inference.normalization import denormalize_pred, normalize
 from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
-from lisai.evaluation.io import create_save_folder, resolve_prediction_inputs, save_outputs
+from lisai.evaluation.io import resolve_prediction_inputs, save_outputs
 from lisai.evaluation.runtime import TilingSizePolicy, initialize_runtime
 from lisai.evaluation.saved_run import load_saved_run, resolve_run_dir
 from lisai.evaluation.visualization.z_projection import (
@@ -34,7 +34,7 @@ from lisai.evaluation.visualization.z_projection import (
     create_color_coded_image,
     enhance_contrast,
 )
-from lisai.infra.fs import ensure_folder
+from lisai.infra.fs import prepare_output_folder
 from lisai.infra.paths import Paths
 from lisai.lib.upsamp.inp_generators import (
     _deterministic_mltpl_sampling,
@@ -129,31 +129,19 @@ def _create_apply_save_folder(
     if overwrite and reuse_folder:
         raise ValueError("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
 
-    existed = requested.exists()
-    if reuse_folder:
-        resolved = ensure_folder(requested, mode="exist_ok")
-        if existed:
-            progress.write(f"\nSAVING: Reusing output folder: {resolved}\n")
-        else:
-            progress.write(f"\nSAVING: Saving outputs to: {resolved}\n")
-        return Path(resolved)
-
-    resolved = create_save_folder(path=requested, overwrite=overwrite)
-    if resolved is None:
-        raise FileNotFoundError(f"Could not create apply output folder: {requested}")
-    resolved = Path(resolved)
-
-    if existed and overwrite:
-        progress.write(f"Folder {requested} already exists; --overwrite enabled, replacing it.")
-    elif existed and resolved != requested:
-        progress.write(
-            f"\nSAVING: Folder {requested} already exists; saving to {resolved} instead. "
-            "Use --overwrite to replace the existing folder.\n"
-        )
+    if overwrite:
+        if_exists_policy = "overwrite"
+    elif reuse_folder:
+        if_exists_policy = "reuse"
     else:
-        progress.write(f"\nSAVING: Saving outputs to: {resolved}\n")
+        if_exists_policy = "numbered"
 
-    return resolved
+    resolution = prepare_output_folder(
+        requested,
+        if_exists_policy=if_exists_policy,
+    )
+    progress.write(f"\n{resolution.message()}\n")
+    return resolution.path
 
 
 def _apply_img_name(file: str, name_file: str | None) -> str:

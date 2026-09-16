@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from lisai.infra.fs import OutputFolderResolution
+
 apply_mod = importlib.import_module("lisai.evaluation.run_apply_model")
 
 
@@ -36,6 +38,41 @@ def _base_apply_options(**updates):
     }
     options.update(updates)
     return options
+
+
+def _output_folder_resolution(
+    path: Path,
+    *,
+    if_exists_policy: str = "numbered",
+) -> OutputFolderResolution:
+    path = Path(path)
+    requested_existed = path.exists()
+    if requested_existed and if_exists_policy == "reuse":
+        action = "reused"
+    elif requested_existed and if_exists_policy == "overwrite":
+        action = "overwritten"
+    else:
+        action = "created"
+
+    return OutputFolderResolution(
+        requested=path,
+        path=path,
+        action=action,
+        requested_existed=requested_existed,
+    )
+
+
+def _patch_prepare_output_folder(
+    monkeypatch: pytest.MonkeyPatch,
+    captured: dict,
+) -> None:
+    def _fake_prepare_output_folder(path, *, if_exists_policy, parent_policy="create"):
+        captured["save_folder"] = Path(path)
+        captured["if_exists_policy"] = if_exists_policy
+        captured["parent_policy"] = parent_policy
+        return _output_folder_resolution(Path(path), if_exists_policy=if_exists_policy)
+
+    monkeypatch.setattr(apply_mod, "prepare_output_folder", _fake_prepare_output_folder)
 
 
 def _patch_common_runtime(
@@ -77,7 +114,14 @@ def _patch_common_runtime(
         lambda *_args, **_kwargs: (tmp_path, ["input.tif"], None),
     )
     monkeypatch.setattr(apply_mod, "imread", lambda *_: input_image.copy())
-    monkeypatch.setattr(apply_mod, "create_save_folder", lambda path, overwrite=False: Path(path))
+    monkeypatch.setattr(
+        apply_mod,
+        "prepare_output_folder",
+        lambda path, **kwargs: _output_folder_resolution(
+            Path(path),
+            if_exists_policy=kwargs.get("if_exists_policy", "numbered"),
+        ),
+    )
     monkeypatch.setattr(apply_mod, "save_outputs", lambda *_args, **_kwargs: None)
 
 
@@ -485,11 +529,7 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
             return tmp_path / "inference" / source_name / model_name
 
     monkeypatch.setattr(apply_mod, "Paths", _FakePaths)
-    monkeypatch.setattr(
-        apply_mod,
-        "create_save_folder",
-        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
-    )
+    _patch_prepare_output_folder(monkeypatch, captured)
     monkeypatch.setattr(
         apply_mod,
         "save_outputs",
@@ -545,11 +585,7 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
             return tmp_path / "inference" / source_name / model_name
 
     monkeypatch.setattr(apply_mod, "Paths", _FakePaths)
-    monkeypatch.setattr(
-        apply_mod,
-        "create_save_folder",
-        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
-    )
+    _patch_prepare_output_folder(monkeypatch, captured)
     monkeypatch.setattr(
         apply_mod,
         "predict_4d_stack",
@@ -588,11 +624,7 @@ def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
         lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
     )
     captured = {}
-    monkeypatch.setattr(
-        apply_mod,
-        "create_save_folder",
-        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
-    )
+    _patch_prepare_output_folder(monkeypatch, captured)
     monkeypatch.setattr(
         apply_mod,
         "predict_4d_stack",
@@ -628,11 +660,7 @@ def test_run_apply_model_folder_outside_directory_includes_source_name(
         lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
     )
     captured = {}
-    monkeypatch.setattr(
-        apply_mod,
-        "create_save_folder",
-        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
-    )
+    _patch_prepare_output_folder(monkeypatch, captured)
     monkeypatch.setattr(
         apply_mod,
         "predict_4d_stack",
@@ -672,11 +700,7 @@ def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name
         lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
     )
     captured = {}
-    monkeypatch.setattr(
-        apply_mod,
-        "create_save_folder",
-        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
-    )
+    _patch_prepare_output_folder(monkeypatch, captured)
     monkeypatch.setattr(
         apply_mod,
         "predict_4d_stack",
@@ -716,11 +740,7 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
         lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
     )
     captured = {}
-    monkeypatch.setattr(
-        apply_mod,
-        "create_save_folder",
-        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
-    )
+    _patch_prepare_output_folder(monkeypatch, captured)
     monkeypatch.setattr(
         apply_mod,
         "predict_4d_stack",

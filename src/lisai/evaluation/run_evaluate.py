@@ -20,15 +20,11 @@ from lisai.evaluation.data import (
 from lisai.evaluation.defaults import UNSET, UnsetType, resolve_evaluate_options
 from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.stack import infer_batch
-from lisai.evaluation.io import (
-    EvalItemOutputWriter,
-    create_save_folder,
-    ensure_save_folder,
-    save_metrics_json,
-)
+from lisai.evaluation.io import EvalItemOutputWriter, save_metrics_json
 from lisai.evaluation.metrics import compute as metrics
 from lisai.evaluation.runtime import TilingSizePolicy, initialize_runtime
 from lisai.evaluation.saved_run import SavedTrainingRun, load_saved_run, resolve_run_dir
+from lisai.infra.fs import prepare_output_folder
 
 
 def _build_evaluation_folder_name(
@@ -174,15 +170,18 @@ def _run_single_evaluation(
             requested_epoch=options["epoch_number"],
             resolved_epoch=runtime.resolved_epoch,
         )
-        save_folder = create_save_folder(
+        resolution = prepare_output_folder(
             path=Path(output_root) / dataset_folder / checkpoint_folder,
-            overwrite=options["overwrite"],
+            if_exists_policy="overwrite" if options["overwrite"] else "numbered",
         )
     else:
-        save_folder = ensure_save_folder(Path(options["save_folder"]))
+        resolution = prepare_output_folder(
+            Path(options["save_folder"]),
+            if_exists_policy="reuse",
+        )
 
-    if save_folder is None:
-        raise FileNotFoundError("Could not create evaluation output folder.")
+    save_folder = resolution.path
+    print(resolution.message())
 
     if saved_run.is_lvae:
         assert options["lvae_num_samples"] is not None, (
