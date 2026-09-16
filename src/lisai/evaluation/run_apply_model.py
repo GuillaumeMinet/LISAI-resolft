@@ -7,27 +7,20 @@ run stack inference, and save outputs.
 
 import warnings
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 from tifffile import imread
 
-from lisai.config.models.inference import ApplyOutputMode
+from lisai.config.models.inference import ApplyDefaults, TilingSizePolicy
 from lisai.config.progress import resolve_progress_bar
 from lisai.data.utils import center_pad, crop_center
-from lisai.evaluation.defaults import (
-    UNSET,
-    UnsetType,
-    resolve_apply_options,
-    resolve_apply_output_policy,
-    resolve_apply_save_input,
-)
+from lisai.evaluation.defaults import resolve_apply_output_policy, resolve_apply_save_input
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_inp
 from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
 from lisai.evaluation.io import resolve_prediction_inputs, save_outputs
-from lisai.evaluation.runtime import TilingSizePolicy, initialize_runtime
+from lisai.evaluation.runtime import initialize_runtime
 from lisai.evaluation.saved_run import load_saved_run, resolve_run_dir
 from lisai.evaluation.visualization.z_projection import (
     add_colorbar,
@@ -269,77 +262,23 @@ def _resolve_apply_files_for_output(
     return selected
 
 
-def run_apply_model(model_dataset: str,
-                model_subfolder: str,
-                model_name: str,
-                data_path: Path,
-                save_folder: str | Path | None | UnsetType = UNSET,
-                output_mode: ApplyOutputMode | UnsetType = UNSET,
-                in_place: bool | UnsetType = UNSET,
-                epoch_number: int | None | UnsetType = UNSET,
-                best_or_last: str | UnsetType = UNSET,
-                filters: list[str] | str | UnsetType = UNSET,
-                skip_if_contain: list[str] | None | UnsetType = UNSET,
-                crop_size: Union[int, tuple[int, int], None, UnsetType] = UNSET,
-                keep_original_shape: bool | UnsetType = UNSET,
-                tiling_size: TilingSizePolicy | UnsetType = UNSET,
-                stack_selection_idx: int | None | UnsetType = UNSET,
-                limit_n_imgs: int | None | UnsetType = UNSET,
-                timelapse_max: int | None | UnsetType = UNSET,
-                lvae_num_samples: int | None | UnsetType = UNSET,
-                lvae_save_samples: bool | UnsetType = UNSET,
-                denormalize_output: bool | UnsetType = UNSET,
-                save_input: bool | UnsetType = UNSET,
-                downsamp: int | None | UnsetType = UNSET,
-                fill_factor: float | None | UnsetType = UNSET,
-                apply_color_code: bool | UnsetType = UNSET,
-                color_code_prm: dict | None | UnsetType = UNSET,
-                dark_frame_context_length: bool | UnsetType = UNSET,
-                config: str | Path | None = None,
-                promoted_model_name: str | None = None,
-                progress_bar: bool | None = None,
-                overwrite: bool = False,
-                reuse_folder: bool = False,
-                skip_existing: bool = False):
-    """Apply a saved model checkpoint to one file or a directory of files.
-
-    Omitted processing options are resolved from inference defaults or the named
-    inference config. Output placement and input-saving policies additionally use
-    local inference settings.
-    """
-    options = resolve_apply_options(
-        config=config,
-        epoch_number=epoch_number,
-        best_or_last=best_or_last,
-        filters=filters,
-        skip_if_contain=skip_if_contain,
-        crop_size=crop_size,
-        keep_original_shape=keep_original_shape,
-        tiling_size=tiling_size,
-        stack_selection_idx=stack_selection_idx,
-        limit_n_imgs=limit_n_imgs,
-        timelapse_max=timelapse_max,
-        lvae_num_samples=lvae_num_samples,
-        lvae_save_samples=lvae_save_samples,
-        denormalize_output=denormalize_output,
-        downsamp=downsamp,
-        fill_factor=fill_factor,
-        apply_color_code=apply_color_code,
-        color_code_prm=color_code_prm,
-        dark_frame_context_length=dark_frame_context_length,
-    )
-    color_code_prm = options["color_code_prm"] or {}
-    output_policy = resolve_apply_output_policy(
-        config=config,
-        save_folder=save_folder,
-        output_mode=output_mode,
-        in_place=in_place,
-    )
-    save_input = resolve_apply_save_input(
-        config=config,
-        output_policy=output_policy,
-        save_input=save_input,
-    )
+def run_apply_model(
+    cfg: ApplyDefaults,
+    *,
+    model_dataset: str,
+    model_subfolder: str,
+    model_name: str,
+    data_path: Path,
+    promoted_model_name: str | None = None,
+    progress_bar: bool | None = None,
+    overwrite: bool = False,
+    reuse_folder: bool = False,
+    skip_existing: bool = False,
+):
+    """Apply a saved model using a fully resolved typed apply config."""
+    output_policy = resolve_apply_output_policy(cfg)
+    save_input = resolve_apply_save_input(cfg, output_policy=output_policy)
+    color_code_cfg = cfg.postprocess.color_code
     progress = InferenceProgress(
         enabled=resolve_progress_bar(True, progress_bar)
     )
@@ -355,7 +294,7 @@ def run_apply_model(model_dataset: str,
         model_name = promoted.manifest.name
         runtime = initialize_runtime(
             saved_run=saved_run,
-            tiling_size=options["tiling_size"],
+            tiling_size=cfg.inference.tiling_size,
             checkpoint_path=promoted.weights_path,
             noise_model_path=promoted.noise_model_path,
             noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
@@ -365,12 +304,12 @@ def run_apply_model(model_dataset: str,
         saved_run = load_saved_run(run_dir)
         runtime = initialize_runtime(
             saved_run=saved_run,
-            best_or_last=options["best_or_last"],
-            epoch_number=options["epoch_number"],
-            tiling_size=options["tiling_size"],
+            best_or_last=cfg.checkpoint.best_or_last,
+            epoch_number=cfg.checkpoint.epoch_number,
+            tiling_size=cfg.inference.tiling_size,
         )
     if saved_run.is_lvae:
-        assert options["lvae_num_samples"] is not None, (
+        assert cfg.inference.lvae_num_samples is not None, (
             "for LVAE prediction, number of samples needs to be specified"
         )
 
@@ -385,7 +324,7 @@ def run_apply_model(model_dataset: str,
     tiling_size = runtime.tiling_size
     upsamp = saved_run.upsampling_factor
     print(f"Found upsampling factor to be: {upsamp}\n")
-    print(f"Tiling size: {_format_tiling_size_for_display(options['tiling_size'], tiling_size)}\n")
+    print(f"Tiling size: {_format_tiling_size_for_display(cfg.inference.tiling_size, tiling_size)}\n")
 
     context_length = saved_run.context_length
     if context_length is not None:
@@ -393,8 +332,8 @@ def run_apply_model(model_dataset: str,
 
     data_path, list_files, name_file = resolve_prediction_inputs(
         data_path,
-        filters=options["filters"],
-        skip_if_contain=options["skip_if_contain"],
+        filters=cfg.input.filters,
+        skip_if_contain=cfg.input.skip_if_contain,
     )
 
     input_dir = data_path if data_path.is_dir() else data_path.parent
@@ -464,7 +403,7 @@ def run_apply_model(model_dataset: str,
         list_files,
         save_folder=save_folder,
         name_file=name_file,
-        limit_n_imgs=options["limit_n_imgs"],
+        limit_n_imgs=cfg.input.limit_n_imgs,
         reuse_folder=reuse_folder,
         skip_existing=skip_existing,
         progress=progress,
@@ -480,32 +419,32 @@ def run_apply_model(model_dataset: str,
         file_path = data_path / file
         img = imread(file_path)
         img = normalize_inp(img, clip, data_norm, model_norm)
-        img, timelapse, volumetric = make_4d(img, options["stack_selection_idx"], options["timelapse_max"])
+        img, timelapse, volumetric = make_4d(img, cfg.input.stack_selection_idx, cfg.input.timelapse_max)
         print(img.shape)
 
-        crop_size = options["crop_size"]
+        crop_size = cfg.inference.crop_size
         if crop_size is not None:
             if isinstance(crop_size, int):
                 crop_size = (crop_size, crop_size)
             original_size = img.shape[-2:]
             img = crop_center(img, crop_size)
 
-        if options["fill_factor"] is not None and options["downsamp"] is None:
+        if cfg.inference.fill_factor is not None and cfg.inference.downsamp is None:
             raise ValueError(
                 "`apply.fill_factor` requires `apply.downsamp` to be set."
             )
 
-        if options["downsamp"] is not None:
-            img = _ensure_shape(img, options["downsamp"])
-            if options["fill_factor"] is None:
-                img = img[..., :: options["downsamp"], :: options["downsamp"]]
+        if cfg.inference.downsamp is not None:
+            img = _ensure_shape(img, cfg.inference.downsamp)
+            if cfg.inference.fill_factor is None:
+                img = img[..., :: cfg.inference.downsamp, :: cfg.inference.downsamp]
             else:
                 resolved_fill_factor = _resolve_fill_factor_for_multiple_apply_downsampling(
-                    downsamp=options["downsamp"],
-                    fill_factor=options["fill_factor"],
+                    downsamp=cfg.inference.downsamp,
+                    fill_factor=cfg.inference.fill_factor,
                 )
                 downsampling_prm = {
-                    "downsamp_factor": int(options["downsamp"]),
+                    "downsamp_factor": int(cfg.inference.downsamp),
                     "downsamp_method": "multiple",
                     "multiple_prm": {
                         "fill_factor": resolved_fill_factor,
@@ -527,55 +466,55 @@ def run_apply_model(model_dataset: str,
             device=runtime.device,
             is_lvae=saved_run.is_lvae,
             tiling_size=tiling_size,
-            lvae_num_samples=options["lvae_num_samples"],
-            lvae_save_samples=options["lvae_save_samples"],
+            lvae_num_samples=cfg.inference.lvae_num_samples,
+            lvae_save_samples=cfg.saving.lvae_save_samples,
             upsamp=upsamp,
             context_length=context_length,
-            dark_frame_context_length=options["dark_frame_context_length"],
+            dark_frame_context_length=cfg.inference.dark_frame_context_length,
             verbose=True,
             progress=progress,
         )
 
-        if crop_size is not None and options["keep_original_shape"]:
+        if crop_size is not None and cfg.inference.keep_original_shape:
             pad_width = (
                 max(0, original_size[0] - crop_size[0]),
                 max(0, original_size[1] - crop_size[1]),
             )
             pred_stack = center_pad(pred_stack, pad_width)
 
-            if saved_run.is_lvae and options["lvae_save_samples"] and samples_stack is not None:
+            if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
                 samples_stack = center_pad(samples_stack, pad_width)
 
-        if options["denormalize_output"]:
+        if cfg.postprocess.denormalize:
             pred_stack = denormalize_pred(pred_stack, data_norm, model_norm)
-            if saved_run.is_lvae and options["lvae_save_samples"] and samples_stack is not None:
+            if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
                 for sample_id in range(samples_stack.shape[0]):
                     samples_stack[sample_id] = denormalize_pred(samples_stack[sample_id], data_norm, model_norm)
         pred_stack = inverse_make_4d(pred_stack, volumetric, timelapse, lvae_samples=False)
         tosave = {"pred": pred_stack.astype(np.float32)}
 
-        if options["apply_color_code"] and volumetric:
+        if color_code_cfg.enabled and volumetric:
             try:
-                if context_length is not None and not options["dark_frame_context_length"]:
+                if context_length is not None and not cfg.inference.dark_frame_context_length:
                     pred_stack = pred_stack[:, context_length // 2 : -context_length // 2]
                 pred_stack_color_coded = create_color_coded_image(
                     pred_stack,
-                    colormap=color_code_prm.get("colormap", "turbo"),
+                    colormap=color_code_cfg.colormap,
                     stack_order="ZTYX",
                 )
                 pred_stack_color_coded = enhance_contrast(
                     pred_stack_color_coded,
-                    color_code_prm.get("saturation", 0.35),
+                    color_code_cfg.saturation,
                 )
-                if color_code_prm.get("add_colorbar", True):
-                    zmax = (pred_stack.shape[0] - 1) * color_code_prm.get("zstep", 0)
+                if color_code_cfg.add_colorbar:
+                    zmax = (pred_stack.shape[0] - 1) * color_code_cfg.zstep
                     pred_stack_color_coded = add_colorbar(pred_stack_color_coded, zmax=zmax)
                 tosave["pred_colorCoded"] = pred_stack_color_coded
 
             except Exception as e:
                 warnings.warn(f"Failed to apply color coding: {e}")
 
-        if saved_run.is_lvae and options["lvae_save_samples"] and samples_stack is not None:
+        if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
             samples_stack = inverse_make_4d(samples_stack, volumetric, timelapse, lvae_samples=True)
             tosave["samples"] = samples_stack.astype(np.float32)
 

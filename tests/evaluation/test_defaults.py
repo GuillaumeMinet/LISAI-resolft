@@ -18,7 +18,6 @@ from lisai.config.models.inference import (
 )
 from lisai.evaluation.defaults import (
     resolve_apply_config,
-    resolve_apply_options,
     resolve_apply_save_input,
     resolve_evaluate_config,
     resolve_evaluate_options,
@@ -131,13 +130,18 @@ apply:
 """.strip() + "\n",
     )
 
-    resolved = resolve_apply_options(config="fast_upsamp", crop_size=200)
+    resolved = resolve_apply_config(
+        config="fast_upsamp",
+        overrides=ApplyOverrides(
+            inference=ApplyInferenceOverrides(crop_size=200),
+        ),
+    )
 
-    assert resolved["tiling_size"] == 512
-    assert resolved["crop_size"] == 200
-    assert resolved["fill_factor"] == pytest.approx(0.75)
-    assert resolved["denormalize_output"] is False
-    assert resolved["color_code_prm"]["colormap"] == "turbo"
+    assert resolved.inference.tiling_size == 512
+    assert resolved.inference.crop_size == 200
+    assert resolved.inference.fill_factor == pytest.approx(0.75)
+    assert resolved.postprocess.denormalize is False
+    assert resolved.postprocess.color_code.colormap == "turbo"
 
 
 def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: Path):
@@ -193,10 +197,10 @@ apply:
 """.strip() + "\n",
     )
 
-    resolved = resolve_apply_options()
+    resolved = resolve_apply_config()
 
-    assert resolved["downsamp"] == 2
-    assert resolved["fill_factor"] is None
+    assert resolved.inference.downsamp == 2
+    assert resolved.inference.fill_factor is None
 
 
 def test_named_nonlocal_config_inherits_local_defaults_without_being_overridden(
@@ -211,10 +215,10 @@ def test_named_nonlocal_config_inherits_local_defaults_without_being_overridden(
         "apply:\n  inference:\n    tiling_size: 1024\n",
     )
 
-    resolved = resolve_apply_options(config="examples/portable")
+    resolved = resolve_apply_config(config="examples/portable")
 
-    assert resolved["tiling_size"] == 1024
-    assert resolved["denormalize_output"] is False
+    assert resolved.inference.tiling_size == 1024
+    assert resolved.postprocess.denormalize is False
 
 
 def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path):
@@ -227,10 +231,10 @@ def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path):
         "apply:\n  inference:\n    lvae_num_samples: 10\n",
     )
 
-    resolved = resolve_apply_options(config="examples/hdn_sup")
+    resolved = resolve_apply_config(config="examples/hdn_sup")
 
-    assert resolved["lvae_num_samples"] == 10
-    assert resolved["tiling_size"] == 256
+    assert resolved.inference.lvae_num_samples == 10
+    assert resolved.inference.tiling_size == 256
 
 
 def test_named_config_explicit_null_overrides_local_default(inference_config_dir: Path):
@@ -243,9 +247,9 @@ def test_named_config_explicit_null_overrides_local_default(inference_config_dir
         "apply:\n  inference:\n    lvae_num_samples: null\n",
     )
 
-    resolved = resolve_apply_options(config="examples/no_lvae_sampling")
+    resolved = resolve_apply_config(config="examples/no_lvae_sampling")
 
-    assert resolved["lvae_num_samples"] is None
+    assert resolved.inference.lvae_num_samples is None
 
 
 def test_named_nonlocal_evaluate_preserves_tiling_policy_and_cli_override(
@@ -280,52 +284,95 @@ def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Pa
         resolve_evaluate_options(config="invalid")
 
 
-def test_resolve_apply_save_input_uses_local_config_policy(inference_config_dir: Path):
+def test_resolve_apply_config_fills_local_config_saving_fallbacks(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
-    in_place = defaults_mod.ApplyOutputPolicy(mode="in_place")
-    default = defaults_mod.ApplyOutputPolicy(mode="default")
-    local = SimpleNamespace(INFERENCE_SAVE_INPUT_MODE="if_not_in_place")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="folder_outside",
+        INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
+    )
 
-    assert resolve_apply_save_input(output_policy=in_place, stg=local) is False
-    assert resolve_apply_save_input(output_policy=default, stg=local) is True
+    resolved = resolve_apply_config(stg=local)
+
+    assert resolved.saving.mode == "folder_outside"
+    assert resolved.saving.save_input_mode == "if_not_in_place"
 
 
-def test_local_named_saving_override_overrides_local_config_policy(inference_config_dir: Path):
+def test_resolve_apply_save_input_interprets_resolved_policy():
+    in_place_cfg = ApplyDefaults.model_validate(
+        {"saving": {"mode": "in_place", "save_input_mode": "if_not_in_place"}}
+    )
+    default_cfg = ApplyDefaults.model_validate(
+        {"saving": {"mode": "default", "save_input_mode": "if_not_in_place"}}
+    )
+
+    in_place = defaults_mod.resolve_apply_output_policy(in_place_cfg)
+    default = defaults_mod.resolve_apply_output_policy(default_cfg)
+
+    assert resolve_apply_save_input(in_place_cfg, output_policy=in_place) is False
+    assert resolve_apply_save_input(default_cfg, output_policy=default) is True
+
+
+def test_named_saving_override_overrides_local_config_policy(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
     _write(
         inference_config_dir / "local" / "no_input.yml",
         "apply:\n  saving:\n    save_input_mode: never\n",
     )
-    policy = defaults_mod.ApplyOutputPolicy(mode="default")
-    local = SimpleNamespace(INFERENCE_SAVE_INPUT_MODE="always")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="default",
+        INFERENCE_SAVE_INPUT_MODE="always",
+    )
 
-    assert resolve_apply_save_input(output_policy=policy, config="no_input", stg=local) is False
+    resolved = resolve_apply_config(config="no_input", stg=local)
+    policy = defaults_mod.resolve_apply_output_policy(resolved)
+
+    assert resolved.saving.save_input_mode == "never"
+    assert resolve_apply_save_input(resolved, output_policy=policy) is False
 
 
-def test_cli_save_input_override_has_priority(inference_config_dir: Path):
+def test_typed_save_input_override_has_priority(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
-    policy = defaults_mod.ApplyOutputPolicy(mode="in_place")
-    local = SimpleNamespace(INFERENCE_SAVE_INPUT_MODE="never")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="in_place",
+        INFERENCE_SAVE_INPUT_MODE="never",
+    )
 
-    assert resolve_apply_save_input(output_policy=policy, save_input=True, stg=local) is True
-    assert resolve_apply_save_input(output_policy=policy, save_input=False, stg=local) is False
+    resolved = resolve_apply_config(
+        overrides=ApplyOverrides.model_validate(
+            {"saving": {"save_input_mode": "always"}}
+        ),
+        stg=local,
+    )
+    policy = defaults_mod.resolve_apply_output_policy(resolved)
+
+    assert resolved.saving.save_input_mode == "always"
+    assert resolve_apply_save_input(resolved, output_policy=policy) is True
 
 
 def test_apply_saving_config_overrides_local_config_route(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
-    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_outside")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="folder_outside",
+        INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
+    )
 
-    policy = defaults_mod.resolve_apply_output_policy(stg=local)
+    resolved = resolve_apply_config(stg=local)
+    policy = defaults_mod.resolve_apply_output_policy(resolved)
 
+    assert resolved.saving.mode == "folder_inside"
     assert policy.mode == "folder_inside"
 
 
 def test_named_local_saving_override_has_priority_over_local_defaults(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
     _write(inference_config_dir / "local" / "special.yml", "apply:\n  saving:\n    mode: in_place\n")
-    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="folder_outside")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="folder_outside",
+        INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
+    )
 
-    policy = defaults_mod.resolve_apply_output_policy(config="special", stg=local)
+    resolved = resolve_apply_config(config="special", stg=local)
+    policy = defaults_mod.resolve_apply_output_policy(resolved)
 
     assert policy.mode == "in_place"
 
@@ -338,21 +385,31 @@ def test_named_nonlocal_saving_override_has_priority_over_local_defaults(
         inference_config_dir / "examples" / "portable.yml",
         "apply:\n  saving:\n    mode: folder_outside\n",
     )
-    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="in_place",
+        INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
+    )
 
-    policy = defaults_mod.resolve_apply_output_policy(config="examples/portable", stg=local)
+    resolved = resolve_apply_config(config="examples/portable", stg=local)
+    policy = defaults_mod.resolve_apply_output_policy(resolved)
 
     assert policy.mode == "folder_outside"
 
 
-def test_cli_output_override_has_highest_priority(inference_config_dir: Path):
+def test_typed_output_override_has_highest_priority(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_outside\n")
-    local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
+    local = SimpleNamespace(
+        INFERENCE_OUTPUT_MODE="in_place",
+        INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
+    )
 
-    policy = defaults_mod.resolve_apply_output_policy(
-        output_mode="folder_inside",
+    resolved = resolve_apply_config(
+        overrides=ApplyOverrides.model_validate(
+            {"saving": {"mode": "folder_inside"}}
+        ),
         stg=local,
     )
+    policy = defaults_mod.resolve_apply_output_policy(resolved)
 
     assert policy.mode == "folder_inside"
 

@@ -5,13 +5,14 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from lisai.config.models.inference import ApplyOverrides
 from lisai.infra.cli.selection import resolve_partial_name
 from lisai.promoted_models.registry import load_promoted_model_registry
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.scanner import DiscoveredRun
 from lisai.runs.selection import resolve_discovered_run_selector
 
-from .defaults import UNSET
+from .defaults import UNSET, resolve_apply_config
 from .run_apply_model import run_apply_model
 from .run_evaluate import run_evaluate
 
@@ -49,6 +50,66 @@ def _parse_tiling_size(value: str) -> int | str:
 
 def _maybe_unset(value):
     return UNSET if value is None else value
+
+
+def _build_apply_overrides(args: argparse.Namespace) -> ApplyOverrides:
+    """Translate explicit apply CLI choices into sparse typed config overrides."""
+    payload: dict[str, object] = {}
+
+    checkpoint = {}
+    if args.epoch_number is not None:
+        checkpoint["epoch_number"] = args.epoch_number
+    if args.best_or_last is not None:
+        checkpoint["best_or_last"] = args.best_or_last
+    if checkpoint:
+        payload["checkpoint"] = checkpoint
+
+    input_cfg = {}
+    if args.filters is not None:
+        input_cfg["filters"] = args.filters
+    if args.skip_if_contain is not None:
+        input_cfg["skip_if_contain"] = args.skip_if_contain
+    if args.limit_n_imgs is not None:
+        input_cfg["limit_n_imgs"] = args.limit_n_imgs
+    if args.timelapse_max is not None:
+        input_cfg["timelapse_max"] = args.timelapse_max
+    if input_cfg:
+        payload["input"] = input_cfg
+
+    inference = {}
+    if args.crop_size is not None:
+        inference["crop_size"] = args.crop_size
+    if args.tiling_size is not None:
+        inference["tiling_size"] = args.tiling_size
+    if args.lvae_num_samples is not None:
+        inference["lvae_num_samples"] = args.lvae_num_samples
+    if inference:
+        payload["inference"] = inference
+
+    postprocess = {}
+    if args.apply_color_code is not None:
+        postprocess["color_code"] = {"enabled": args.apply_color_code}
+    if postprocess:
+        payload["postprocess"] = postprocess
+
+    saving = {}
+    if args.save_folder is not None:
+        saving["save_folder"] = args.save_folder
+    elif args.output_mode is not None:
+        saving["mode"] = args.output_mode
+    elif args.in_place is not None:
+        saving["in_place"] = args.in_place
+
+    if args.save_input is True:
+        saving["save_input_mode"] = "always"
+    elif args.save_input is False:
+        saving["save_input_mode"] = "never"
+    if args.lvae_save_samples is not None:
+        saving["lvae_save_samples"] = args.lvae_save_samples
+    if saving:
+        payload["saving"] = saving
+
+    return ApplyOverrides.model_validate(payload)
 
 
 def _add_model_selection_arguments(
@@ -292,27 +353,16 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         model_subfolder = selected.model_subfolder
         model_name = selected.run_dir.name
 
+    cfg = resolve_apply_config(
+        config=args.config,
+        overrides=_build_apply_overrides(args),
+    )
     run_apply_model(
+        cfg=cfg,
         model_dataset=model_dataset,
         model_subfolder=model_subfolder,
         model_name=model_name,
         data_path=Path(args.data_path),
-        config=args.config,
-        save_folder=_maybe_unset(args.save_folder),
-        output_mode=_maybe_unset(args.output_mode),
-        in_place=_maybe_unset(args.in_place),
-        epoch_number=_maybe_unset(args.epoch_number),
-        best_or_last=_maybe_unset(args.best_or_last),
-        filters=_maybe_unset(args.filters),
-        skip_if_contain=_maybe_unset(args.skip_if_contain),
-        limit_n_imgs=_maybe_unset(args.limit_n_imgs),
-        timelapse_max=_maybe_unset(args.timelapse_max),
-        crop_size=_maybe_unset(args.crop_size),
-        tiling_size=_maybe_unset(args.tiling_size),
-        lvae_num_samples=_maybe_unset(args.lvae_num_samples),
-        lvae_save_samples=_maybe_unset(args.lvae_save_samples),
-        save_input=_maybe_unset(args.save_input),
-        apply_color_code=_maybe_unset(args.apply_color_code),
         overwrite=overwrite,
         reuse_folder=reuse_folder,
         skip_existing=skip_existing,

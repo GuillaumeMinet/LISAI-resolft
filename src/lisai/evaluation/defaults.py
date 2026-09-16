@@ -16,7 +16,6 @@ from lisai.config.models.inference import (
     EvaluateOverrides,
     InferenceOverrides,
     ResolvedInferenceConfig,
-    SaveInputMode,
 )
 from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
 
@@ -179,39 +178,6 @@ def _resolve_section_nested(
     return _validate_resolved_section(section, resolved_section)
 
 
-def _flatten_apply_section(section: ApplyDefaults) -> dict[str, Any]:
-    """Temporary adapter for the pre-refactor flat apply runtime."""
-    section_dict = section.model_dump()
-    checkpoint = section_dict["checkpoint"]
-    input_cfg = section_dict["input"]
-    inference = section_dict["inference"]
-    postprocess = section_dict["postprocess"]
-    color_code = dict(postprocess["color_code"])
-    saving = section_dict["saving"]
-
-    enabled = color_code.pop("enabled")
-    return {
-        "epoch_number": checkpoint["epoch_number"],
-        "best_or_last": checkpoint["best_or_last"],
-        "filters": input_cfg["filters"],
-        "skip_if_contain": input_cfg["skip_if_contain"],
-        "crop_size": inference["crop_size"],
-        "keep_original_shape": inference["keep_original_shape"],
-        "tiling_size": inference["tiling_size"],
-        "stack_selection_idx": input_cfg["stack_selection_idx"],
-        "limit_n_imgs": input_cfg["limit_n_imgs"],
-        "timelapse_max": input_cfg["timelapse_max"],
-        "lvae_num_samples": inference["lvae_num_samples"],
-        "lvae_save_samples": saving["lvae_save_samples"],
-        "denormalize_output": postprocess["denormalize"],
-        "downsamp": inference["downsamp"],
-        "fill_factor": inference["fill_factor"],
-        "apply_color_code": enabled,
-        "color_code_prm": color_code,
-        "dark_frame_context_length": inference["dark_frame_context_length"],
-    }
-
-
 def _flatten_evaluate_section(section: EvaluateDefaults) -> dict[str, Any]:
     """Temporary adapter for the pre-refactor flat evaluate runtime."""
     section_dict = section.model_dump()
@@ -238,118 +204,80 @@ def _flatten_evaluate_section(section: EvaluateDefaults) -> dict[str, Any]:
     }
 
 
+def _finalize_apply_local_fallbacks(
+    resolved: ApplyDefaults,
+    *,
+    stg=None,
+) -> ApplyDefaults:
+    """Fill apply saving policies that intentionally fall back to local_config.
+
+    Inference YAML owns model/workflow-specific saving overrides, while
+    local_config owns the machine-local baseline for output routing and input
+    saving. This finalization happens only after all inference-config and typed
+    invocation overrides have been merged, so any explicit inference choice
+    keeps priority over the local fallback.
+    """
+    if stg is None:
+        from lisai.config.settings import settings as stg
+
+    values = resolved.model_dump()
+    saving = values["saving"]
+    if all(saving[key] is None for key in ("mode", "save_folder", "in_place")):
+        saving["mode"] = stg.INFERENCE_OUTPUT_MODE
+    if saving["save_input_mode"] is None:
+        saving["save_input_mode"] = stg.INFERENCE_SAVE_INPUT_MODE
+    return ApplyDefaults.model_validate(values)
+
+
 def resolve_apply_config(
     *,
     config: str | Path | None = None,
     overrides: ApplyOverrides | None = None,
+    stg=None,
 ) -> ApplyDefaults:
-    """Resolve one apply invocation to the canonical typed nested config."""
+    """Resolve one apply invocation to the complete typed runtime config."""
     resolved = _resolve_section_nested("apply", config=config)
     if not isinstance(resolved, ApplyDefaults):
         raise TypeError("Internal error: apply resolution did not produce ApplyDefaults.")
 
-    if overrides is None:
-        return resolved
+    if overrides is not None:
+        override_values = overrides.model_dump(exclude_unset=True)
+        if override_values:
+            merged = _merge_section_config("apply", resolved.model_dump(), override_values)
+            validated = _validate_resolved_section("apply", merged)
+            if not isinstance(validated, ApplyDefaults):
+                raise TypeError("Internal error: apply overrides did not produce ApplyDefaults.")
+            resolved = validated
 
-    override_values = overrides.model_dump(exclude_unset=True)
-    if not override_values:
-        return resolved
-
-    merged = _merge_section_config("apply", resolved.model_dump(), override_values)
-    validated = _validate_resolved_section("apply", merged)
-    if not isinstance(validated, ApplyDefaults):
-        raise TypeError("Internal error: apply overrides did not produce ApplyDefaults.")
-    return validated
+    return _finalize_apply_local_fallbacks(resolved, stg=stg)
 
 
-def resolve_apply_options(
-    *,
-    defaults: ResolvedInferenceConfig | None = None,
-    defaults_path: str | Path | None = None,
-    config: str | Path | None = None,
-    **overrides: Any,
-) -> dict[str, Any]:
-    """Temporary flat adapter kept until the apply runtime is converted to typed config."""
-    if defaults is not None or defaults_path is not None:
-        loaded_defaults = load_inference_defaults(defaults_path) if defaults is None else defaults
-        section_defaults = _flatten_apply_section(loaded_defaults.apply)
-    else:
-        section_defaults = _flatten_apply_section(resolve_apply_config(config=config))
-    return _resolve_task_options(section_defaults, overrides)
-
-
-def _resolved_apply_saving(config: str | Path | None) -> dict[str, Any]:
-    return resolve_apply_config(config=config).saving.model_dump()
-
-
-def resolve_apply_output_policy(
-    *,
-    config: str | Path | None = None,
-    save_folder: str | Path | None | UnsetType = UNSET,
-    output_mode: ApplyOutputMode | UnsetType = UNSET,
-    in_place: bool | UnsetType = UNSET,
-    stg=None,
-) -> ApplyOutputPolicy:
-    """Resolve apply output routing as CLI > inference saving config > local_config."""
-    cli_choices = [
-        save_folder is not UNSET,
-        output_mode is not UNSET,
-        in_place is not UNSET,
-    ]
-    if sum(cli_choices) > 1:
-        raise ValueError(
-            "save_folder, output_mode, and in_place are mutually exclusive output overrides."
-        )
-
-    if save_folder is not UNSET:
-        if save_folder is None or not str(save_folder).strip():
-            raise ValueError("save_folder must not be empty when explicitly provided.")
-        return ApplyOutputPolicy(mode="folder", save_folder=Path(save_folder))
-    if output_mode is not UNSET:
-        return ApplyOutputPolicy(mode=output_mode)
-    if in_place is not UNSET:
-        return ApplyOutputPolicy(mode="in_place" if in_place else "default")
-
-    saving = _resolved_apply_saving(config)
-    if saving["save_folder"] is not None:
-        return ApplyOutputPolicy(mode="folder", save_folder=Path(saving["save_folder"]))
-    if saving["mode"] is not None:
-        return ApplyOutputPolicy(mode=saving["mode"])
-    if saving["in_place"] is not None:
-        return ApplyOutputPolicy(mode="in_place" if saving["in_place"] else "default")
-
-    if stg is None:
-        from lisai.config.settings import settings as stg
-
-    return ApplyOutputPolicy(mode=stg.INFERENCE_OUTPUT_MODE)
+def resolve_apply_output_policy(cfg: ApplyDefaults) -> ApplyOutputPolicy:
+    """Interpret the already-resolved apply saving route."""
+    saving = cfg.saving
+    if saving.save_folder is not None:
+        return ApplyOutputPolicy(mode="folder", save_folder=Path(saving.save_folder))
+    if saving.mode is not None:
+        return ApplyOutputPolicy(mode=saving.mode)
+    if saving.in_place is not None:
+        return ApplyOutputPolicy(mode="in_place" if saving.in_place else "default")
+    raise ValueError("Resolved apply config does not define an output route.")
 
 
 def resolve_apply_save_input(
+    cfg: ApplyDefaults,
     *,
     output_policy: ApplyOutputPolicy,
-    config: str | Path | None = None,
-    save_input: bool | UnsetType = UNSET,
-    stg=None,
 ) -> bool:
-    """Resolve whether apply saves its input as CLI > inference saving config > local_config."""
-    if save_input is not UNSET:
-        return bool(save_input)
-
-    save_input_mode: SaveInputMode | None = _resolved_apply_saving(config)["save_input_mode"]
-
-    if stg is None:
-        from lisai.config.settings import settings as stg
-
-    if save_input_mode is None:
-        save_input_mode = stg.INFERENCE_SAVE_INPUT_MODE
-
+    """Interpret the resolved input-saving policy for the chosen output route."""
+    save_input_mode = cfg.saving.save_input_mode
     if save_input_mode == "always":
         return True
     if save_input_mode == "never":
         return False
     if save_input_mode == "if_not_in_place":
         return output_policy.mode != "in_place"
-    raise ValueError(f"Unknown save_input_mode: {save_input_mode!r}")
+    raise ValueError(f"Resolved apply config has no valid save_input_mode: {save_input_mode!r}")
 
 
 def resolve_evaluate_config(
@@ -417,7 +345,6 @@ __all__ = [
     "load_inference_config",
     "load_inference_defaults",
     "resolve_apply_config",
-    "resolve_apply_options",
     "resolve_apply_output_policy",
     "resolve_apply_save_input",
     "resolve_evaluate_config",

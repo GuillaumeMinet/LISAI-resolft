@@ -7,37 +7,48 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from lisai.config.models.inference import ApplyDefaults
 from lisai.infra.fs import OutputFolderResolution
 
 apply_mod = importlib.import_module("lisai.evaluation.run_apply_model")
 
 
-def _base_apply_options(**updates):
-    options = {
-        "save_folder": "default",
-        "in_place": False,
-        "epoch_number": None,
-        "best_or_last": "best",
-        "filters": ["tif", "tiff"],
-        "skip_if_contain": None,
-        "crop_size": None,
-        "keep_original_shape": True,
-        "tiling_size": 64,
-        "stack_selection_idx": None,
-        "limit_n_imgs": None,
-        "timelapse_max": None,
-        "lvae_num_samples": 20,
-        "lvae_save_samples": True,
-        "denormalize_output": False,
-        "save_input": False,
-        "downsamp": 2,
-        "fill_factor": None,
-        "apply_color_code": False,
-        "color_code_prm": {},
-        "dark_frame_context_length": False,
-    }
-    options.update(updates)
-    return options
+def _base_apply_config(
+    *,
+    downsamp: int | None = 2,
+    fill_factor: float | None = None,
+    limit_n_imgs: int | None = None,
+) -> ApplyDefaults:
+    return ApplyDefaults.model_validate(
+        {
+            "checkpoint": {"epoch_number": None, "best_or_last": "best"},
+            "input": {
+                "filters": ["tif", "tiff"],
+                "skip_if_contain": None,
+                "stack_selection_idx": None,
+                "limit_n_imgs": limit_n_imgs,
+                "timelapse_max": None,
+            },
+            "inference": {
+                "crop_size": None,
+                "keep_original_shape": True,
+                "tiling_size": 64,
+                "lvae_num_samples": 20,
+                "downsamp": downsamp,
+                "fill_factor": fill_factor,
+                "dark_frame_context_length": False,
+            },
+            "postprocess": {
+                "denormalize": False,
+                "color_code": {"enabled": False},
+            },
+            "saving": {
+                "lvae_save_samples": True,
+                "mode": "default",
+                "save_input_mode": "never",
+            },
+        }
+    )
 
 
 def _output_folder_resolution(
@@ -79,18 +90,11 @@ def _patch_common_runtime(
     monkeypatch: pytest.MonkeyPatch,
     *,
     tmp_path: Path,
-    options: dict,
     input_image: np.ndarray | None = None,
 ) -> None:
     if input_image is None:
         input_image = np.ones((8, 8), dtype=np.float32)
 
-    monkeypatch.setattr(apply_mod, "resolve_apply_options", lambda **_: options)
-    monkeypatch.setattr(
-        apply_mod,
-        "resolve_apply_save_input",
-        lambda **_: options["save_input"],
-    )
     monkeypatch.setattr(apply_mod, "resolve_run_dir", lambda **_: tmp_path / "run")
     monkeypatch.setattr(
         apply_mod,
@@ -255,16 +259,17 @@ def test_run_apply_model_rejects_overwrite_with_in_place_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="in_place", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="in_place", save_folder=None),
     )
 
     with pytest.raises(ValueError, match="in-place apply output"):
         apply_mod.run_apply_model(
+            cfg=cfg,
             model_dataset="dataset",
             model_subfolder="Upsamp",
             model_name="model",
@@ -277,16 +282,17 @@ def test_run_apply_model_rejects_reuse_folder_with_in_place_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="in_place", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="in_place", save_folder=None),
     )
 
     with pytest.raises(ValueError, match="in-place apply output"):
         apply_mod.run_apply_model(
+            cfg=cfg,
             model_dataset="dataset",
             model_subfolder="Upsamp",
             model_name="model",
@@ -305,8 +311,8 @@ def test_run_apply_model_skip_existing_reuses_folder_and_only_processes_remainin
     save_folder = tmp_path / "predictions"
     save_folder.mkdir()
     (save_folder / "first_pred.tif").touch()
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -315,7 +321,7 @@ def test_run_apply_model_skip_existing_reuses_folder_and_only_processes_remainin
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="folder", save_folder=save_folder),
+        lambda _cfg: SimpleNamespace(mode="folder", save_folder=save_folder),
     )
     read_files = []
     saved_names = []
@@ -340,6 +346,7 @@ def test_run_apply_model_skip_existing_reuses_folder_and_only_processes_remainin
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="model",
@@ -358,8 +365,8 @@ def test_run_apply_model_keeps_legacy_stride_downsampling_when_fill_factor_is_no
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=2, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=2, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
 
     captured = {}
 
@@ -377,6 +384,7 @@ def test_run_apply_model_keeps_legacy_stride_downsampling_when_fill_factor_is_no
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="model",
@@ -391,8 +399,8 @@ def test_run_apply_model_limits_number_of_input_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=None, fill_factor=None, limit_n_imgs=2)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None, limit_n_imgs=2)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -420,6 +428,7 @@ def test_run_apply_model_limits_number_of_input_files(
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="model",
@@ -433,8 +442,8 @@ def test_run_apply_model_uses_deterministic_multiple_downsampling_when_fill_fact
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=2, fill_factor=0.5)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=2, fill_factor=0.5)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
 
     captured = {}
 
@@ -453,6 +462,7 @@ def test_run_apply_model_uses_deterministic_multiple_downsampling_when_fill_fact
     monkeypatch.setattr(apply_mod, "predict_4d_stack", _fake_predict)
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="model",
@@ -473,12 +483,13 @@ def test_run_apply_model_rejects_fill_factor_without_downsamp(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=None, fill_factor=0.5)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=0.5)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(apply_mod, "predict_4d_stack", lambda *_args, **_kwargs: (None, None))
 
     with pytest.raises(ValueError, match="requires `apply.downsamp`"):
         apply_mod.run_apply_model(
+            cfg=cfg,
             model_dataset="dataset",
             model_subfolder="Upsamp",
             model_name="model",
@@ -490,8 +501,8 @@ def test_run_apply_model_rejects_unsupported_deterministic_multiple_sampling(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=4, fill_factor=0.75)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=4, fill_factor=0.75)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "generate_downsamp_inp",
@@ -501,6 +512,7 @@ def test_run_apply_model_rejects_unsupported_deterministic_multiple_sampling(
 
     with pytest.raises(ValueError, match="not implemented"):
         apply_mod.run_apply_model(
+            cfg=cfg,
             model_dataset="dataset",
             model_subfolder="Upsamp",
             model_name="model",
@@ -512,13 +524,13 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ):
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
 
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="default", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="default", save_folder=None),
     )
     captured = {}
 
@@ -544,6 +556,7 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="mito_model_03",
@@ -565,8 +578,8 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
     source_dir.mkdir()
     source_file = source_dir / "c01.tiff"
     source_file.touch()
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -575,7 +588,7 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="default", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="default", save_folder=None),
     )
     captured = {}
 
@@ -593,6 +606,7 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="mito_model_03",
@@ -611,8 +625,8 @@ def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
 ):
     source_dir = tmp_path / "source"
     source_dir.mkdir()
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -621,7 +635,7 @@ def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="folder_inside", save_folder=None),
     )
     captured = {}
     _patch_prepare_output_folder(monkeypatch, captured)
@@ -632,6 +646,7 @@ def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="mito_model_03",
@@ -647,8 +662,8 @@ def test_run_apply_model_folder_outside_directory_includes_source_name(
 ):
     source_dir = tmp_path / "source"
     source_dir.mkdir()
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -657,7 +672,7 @@ def test_run_apply_model_folder_outside_directory_includes_source_name(
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="folder_outside", save_folder=None),
     )
     captured = {}
     _patch_prepare_output_folder(monkeypatch, captured)
@@ -668,6 +683,7 @@ def test_run_apply_model_folder_outside_directory_includes_source_name(
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="mito_model_03",
@@ -687,8 +703,8 @@ def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name
     source_dir.mkdir()
     source_file = source_dir / "c01.tiff"
     source_file.touch()
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -697,7 +713,7 @@ def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="folder_inside", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="folder_inside", save_folder=None),
     )
     captured = {}
     _patch_prepare_output_folder(monkeypatch, captured)
@@ -708,6 +724,7 @@ def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="mito_model_03",
@@ -727,8 +744,8 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
     source_dir.mkdir()
     source_file = source_dir / "c01.tiff"
     source_file.touch()
-    options = _base_apply_options(downsamp=None, fill_factor=None)
-    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path)
     monkeypatch.setattr(
         apply_mod,
         "resolve_prediction_inputs",
@@ -737,7 +754,7 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
     monkeypatch.setattr(
         apply_mod,
         "resolve_apply_output_policy",
-        lambda **_: SimpleNamespace(mode="folder_outside", save_folder=None),
+        lambda _cfg: SimpleNamespace(mode="folder_outside", save_folder=None),
     )
     captured = {}
     _patch_prepare_output_folder(monkeypatch, captured)
@@ -748,6 +765,7 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
     )
 
     apply_mod.run_apply_model(
+        cfg=cfg,
         model_dataset="dataset",
         model_subfolder="Upsamp",
         model_name="mito_model_03",

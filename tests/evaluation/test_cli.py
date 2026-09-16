@@ -10,6 +10,7 @@ import pytest
 import lisai.evaluation.cli as evaluation_cli
 import lisai.runs.selection as selection_mod
 from lisai.cli import build_parser
+from lisai.config.models.inference import ApplyDefaults
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.runs.io import write_run_metadata_atomic
 from lisai.runs.scanner import scan_runs
@@ -78,7 +79,13 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     def fake_run_apply_model(**kwargs):
         captured.update(kwargs)
 
+    def fake_resolve_apply_config(*, config, overrides):
+        captured["config"] = config
+        captured["overrides"] = overrides
+        return ApplyDefaults()
+
     monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "resolve_apply_config", fake_resolve_apply_config)
     monkeypatch.setattr(evaluation_cli, "run_apply_model", fake_run_apply_model)
 
     parser = build_parser()
@@ -104,8 +111,8 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     assert captured["model_name"] == "my_model_00"
     assert captured["data_path"] == Path("/data/images")
     assert captured["config"] == "fast_upsamp"
-    assert captured["tiling_size"] == 512
-    assert captured["crop_size"] == 200
+    assert captured["overrides"].inference.tiling_size == 512
+    assert captured["overrides"].inference.crop_size == 200
     assert captured["progress_bar"] is False
 
 
@@ -130,13 +137,43 @@ def test_apply_cli_passes_limit_n_imgs(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["limit_n_imgs"] == 7
+    assert captured["cfg"].input.limit_n_imgs == 7
 
 
 def test_cli_parses_tiling_policy_values():
     assert evaluation_cli._parse_tiling_size("auto") == "auto"
     assert evaluation_cli._parse_tiling_size("off") == "off"
     assert evaluation_cli._parse_tiling_size("2000") == 2000
+
+
+def test_build_apply_overrides_is_sparse():
+    parser = build_parser()
+    args = parser.parse_args(["apply", "run_00", "/data/images"])
+
+    overrides = evaluation_cli._build_apply_overrides(args)
+
+    assert overrides.model_dump(exclude_unset=True) == {}
+
+
+def test_build_apply_overrides_translates_cli_aliases_to_nested_config():
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "apply",
+            "run_00",
+            "/data/images",
+            "--no-save-input",
+            "--apply-color-code",
+            "--output-mode",
+            "folder_inside",
+        ]
+    )
+
+    overrides = evaluation_cli._build_apply_overrides(args)
+
+    assert overrides.saving.save_input_mode == "never"
+    assert overrides.saving.mode == "folder_inside"
+    assert overrides.postprocess.color_code.enabled is True
 
 
 def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
@@ -158,7 +195,7 @@ def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["tiling_size"] == "off"
+    assert captured["cfg"].inference.tiling_size == "off"
 
 
 def test_apply_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
@@ -191,7 +228,7 @@ def test_apply_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["best_or_last"] == "both"
+    assert captured["cfg"].checkpoint.best_or_last == "both"
     assert captured["model_name"] == "my_model_00"
 
 
@@ -511,7 +548,7 @@ def test_apply_cli_accepts_output_mode(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["output_mode"] == "folder_inside"
+    assert captured["cfg"].saving.mode == "folder_inside"
 
 
 def test_apply_cli_output_arguments_are_mutually_exclusive():
@@ -558,7 +595,7 @@ def test_apply_cli_passes_save_folder_and_overwrite(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["save_folder"] == "/tmp/predictions"
+    assert captured["cfg"].saving.save_folder == "/tmp/predictions"
     assert captured["overwrite"] is True
 
 
@@ -591,7 +628,7 @@ def test_apply_cli_passes_reuse_folder_and_skip_existing(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["save_folder"] == "/tmp/predictions"
+    assert captured["cfg"].saving.save_folder == "/tmp/predictions"
     assert captured["reuse_folder"] is True
     assert captured["skip_existing"] is True
 
@@ -664,7 +701,7 @@ def test_apply_cli_save_input_override(monkeypatch, tmp_path):
     result = args.handler(args)
 
     assert result == 0
-    assert captured["save_input"] is False
+    assert captured["cfg"].saving.save_input_mode == "never"
 
 
 def test_apply_help_has_output_location_group():
