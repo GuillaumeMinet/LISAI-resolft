@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import importlib
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -119,6 +119,94 @@ def test_create_apply_save_folder_reports_overwrite_existing_destination(tmp_pat
     assert "--overwrite enabled, replacing it." in captured.out
 
 
+def test_create_apply_save_folder_reuses_existing_destination_without_deleting(tmp_path: Path, capsys):
+    requested = tmp_path / "predictions"
+    requested.mkdir()
+    old_file = requested / "old_prediction.tif"
+    old_file.write_text("old")
+
+    resolved = apply_mod._create_apply_save_folder(
+        requested,
+        overwrite=False,
+        reuse_folder=True,
+        progress=apply_mod.InferenceProgress(enabled=False),
+    )
+
+    assert resolved == requested
+    assert old_file.exists()
+    captured = capsys.readouterr()
+    assert f"Reusing output folder: {requested}" in captured.out
+
+
+def test_create_apply_save_folder_reuse_existing_file_delegates_directory_check(tmp_path: Path):
+    requested = tmp_path / "predictions"
+    requested.write_text("not a directory")
+
+    with pytest.raises(NotADirectoryError, match="not a directory"):
+        apply_mod._create_apply_save_folder(
+            requested,
+            overwrite=False,
+            reuse_folder=True,
+            progress=apply_mod.InferenceProgress(enabled=False),
+        )
+
+
+def test_reuse_folder_refuses_existing_apply_outputs(tmp_path: Path):
+    save_folder = tmp_path / "predictions"
+    save_folder.mkdir()
+    (save_folder / "first_pred.tif").touch()
+
+    with pytest.raises(FileExistsError, match="Use --skip-existing to continue"):
+        apply_mod._resolve_apply_files_for_output(
+            ["first.tif", "second.tif"],
+            save_folder=save_folder,
+            name_file=None,
+            limit_n_imgs=None,
+            reuse_folder=True,
+            skip_existing=False,
+            progress=apply_mod.InferenceProgress(enabled=False),
+        )
+
+
+def test_skip_existing_filters_completed_predictions_and_limits_remaining(tmp_path: Path, capsys):
+    save_folder = tmp_path / "predictions"
+    save_folder.mkdir()
+    (save_folder / "first_pred.tif").touch()
+
+    selected = apply_mod._resolve_apply_files_for_output(
+        ["first.tif", "second.tif", "third.tif"],
+        save_folder=save_folder,
+        name_file=None,
+        limit_n_imgs=1,
+        reuse_folder=True,
+        skip_existing=True,
+        progress=apply_mod.InferenceProgress(enabled=False),
+    )
+
+    assert selected == ["second.tif"]
+    captured = capsys.readouterr()
+    assert "Found #3 candidate files." in captured.out
+    assert "Skipping 1 file(s) with existing predictions." in captured.out
+    assert "Processing 1 remaining file(s)." in captured.out
+
+
+def test_skip_existing_rejects_partial_apply_outputs(tmp_path: Path):
+    save_folder = tmp_path / "predictions"
+    save_folder.mkdir()
+    (save_folder / "first_samples.tif").touch()
+
+    with pytest.raises(FileExistsError, match="Partial existing apply outputs"):
+        apply_mod._resolve_apply_files_for_output(
+            ["first.tif", "second.tif"],
+            save_folder=save_folder,
+            name_file=None,
+            limit_n_imgs=None,
+            reuse_folder=True,
+            skip_existing=True,
+            progress=apply_mod.InferenceProgress(enabled=False),
+        )
+
+
 def test_run_apply_model_rejects_overwrite_with_in_place_output(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -139,6 +227,87 @@ def test_run_apply_model_rejects_overwrite_with_in_place_output(
             data_path=tmp_path,
             overwrite=True,
         )
+
+
+def test_run_apply_model_rejects_reuse_folder_with_in_place_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="in_place", save_folder=None),
+    )
+
+    with pytest.raises(ValueError, match="in-place apply output"):
+        apply_mod.run_apply_model(
+            model_dataset="dataset",
+            model_subfolder="Upsamp",
+            model_name="model",
+            data_path=tmp_path,
+            reuse_folder=True,
+        )
+
+
+def test_run_apply_model_skip_existing_reuses_folder_and_only_processes_remaining(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys,
+):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    save_folder = tmp_path / "predictions"
+    save_folder.mkdir()
+    (save_folder / "first_pred.tif").touch()
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_prediction_inputs",
+        lambda *_args, **_kwargs: (source_dir, ["first.tif", "second.tif"], None),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="folder", save_folder=save_folder),
+    )
+    read_files = []
+    saved_names = []
+    monkeypatch.setattr(
+        apply_mod,
+        "imread",
+        lambda path: read_files.append(Path(path).name)
+        or np.ones((8, 8), dtype=np.float32),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "predict_4d_stack",
+        lambda *_args, **_kwargs: (
+            np.zeros((1, 1, 8, 8), dtype=np.float32),
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        apply_mod,
+        "save_outputs",
+        lambda _tosave, _save_folder, img_name: saved_names.append(img_name),
+    )
+
+    apply_mod.run_apply_model(
+        model_dataset="dataset",
+        model_subfolder="Upsamp",
+        model_name="model",
+        data_path=source_dir,
+        skip_existing=True,
+    )
+
+    assert read_files == ["second.tif"]
+    assert saved_names == ["second"]
+    captured = capsys.readouterr()
+    assert f"Reusing output folder: {save_folder}" in captured.out
+    assert "Skipping 1 file(s) with existing predictions." in captured.out
 
 
 def test_run_apply_model_keeps_legacy_stride_downsampling_when_fill_factor_is_none(

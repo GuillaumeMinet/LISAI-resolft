@@ -12,8 +12,8 @@ from typing import Union
 import numpy as np
 from tifffile import imread
 
-from lisai.config.progress import resolve_progress_bar
 from lisai.config.models.inference import ApplyOutputMode
+from lisai.config.progress import resolve_progress_bar
 from lisai.data.utils import center_pad, crop_center
 from lisai.evaluation.defaults import (
     UNSET,
@@ -34,6 +34,7 @@ from lisai.evaluation.visualization.z_projection import (
     create_color_coded_image,
     enhance_contrast,
 )
+from lisai.infra.fs import ensure_folder
 from lisai.infra.paths import Paths
 from lisai.lib.upsamp.inp_generators import (
     _deterministic_mltpl_sampling,
@@ -121,10 +122,22 @@ def _create_apply_save_folder(
     path: Path,
     *,
     overwrite: bool,
+    reuse_folder: bool = False,
     progress: InferenceProgress,
 ) -> Path:
     requested = Path(path)
+    if overwrite and reuse_folder:
+        raise ValueError("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
+
     existed = requested.exists()
+    if reuse_folder:
+        resolved = ensure_folder(requested, mode="exist_ok")
+        if existed:
+            progress.write(f"\nSAVING: Reusing output folder: {resolved}\n")
+        else:
+            progress.write(f"\nSAVING: Saving outputs to: {resolved}\n")
+        return Path(resolved)
+
     resolved = create_save_folder(path=requested, overwrite=overwrite)
     if resolved is None:
         raise FileNotFoundError(f"Could not create apply output folder: {requested}")
@@ -141,6 +154,131 @@ def _create_apply_save_folder(
         progress.write(f"\nSAVING: Saving outputs to: {resolved}\n")
 
     return resolved
+
+
+def _apply_img_name(file: str, name_file: str | None) -> str:
+    source = name_file if name_file is not None else file
+    return source.split(".")[0]
+
+
+def _existing_apply_outputs(save_folder: Path, img_name: str) -> list[Path]:
+    save_folder = Path(save_folder)
+    if not save_folder.exists():
+        return []
+    prefix = f"{img_name}_"
+    return sorted(
+        path
+        for path in save_folder.iterdir()
+        if path.is_file() and path.name.startswith(prefix) and path.suffix.lower() == ".tif"
+    )
+
+
+def _prediction_output_path(save_folder: Path, img_name: str) -> Path:
+    return Path(save_folder) / f"{img_name}_pred.tif"
+
+
+def _format_existing_output_summary(collisions: list[tuple[str, list[Path]]]) -> str:
+    formatted = []
+    for img_name, paths in collisions[:5]:
+        formatted.append(f"{img_name} ({len(paths)} file{'s' if len(paths) != 1 else ''})")
+    if len(collisions) > 5:
+        formatted.append(f"... and {len(collisions) - 5} more")
+    return ", ".join(formatted)
+
+
+def _raise_if_reuse_folder_would_overwrite(
+    list_files: list[str],
+    *,
+    save_folder: Path,
+    name_file: str | None,
+) -> None:
+    collisions = []
+    for file in list_files:
+        img_name = _apply_img_name(file, name_file)
+        existing = _existing_apply_outputs(save_folder, img_name)
+        if existing:
+            collisions.append((img_name, existing))
+
+    if collisions:
+        summary = _format_existing_output_summary(collisions)
+        raise FileExistsError(
+            f"Existing apply outputs found in {save_folder} for selected input(s): {summary}. "
+            "Use --skip-existing to continue, --overwrite to replace the folder, "
+            "or choose another save folder."
+        )
+
+
+def _filter_existing_apply_outputs(
+    list_files: list[str],
+    *,
+    save_folder: Path,
+    name_file: str | None,
+    progress: InferenceProgress,
+) -> list[str]:
+    remaining = []
+    skipped = []
+    partial = []
+
+    for file in list_files:
+        img_name = _apply_img_name(file, name_file)
+        existing = _existing_apply_outputs(save_folder, img_name)
+        if not existing:
+            remaining.append(file)
+            continue
+        if _prediction_output_path(save_folder, img_name).exists():
+            skipped.append(file)
+            continue
+        partial.append((img_name, existing))
+
+    if partial:
+        summary = _format_existing_output_summary(partial)
+        raise FileExistsError(
+            f"Partial existing apply outputs found in {save_folder}: {summary}. "
+            "Refusing to guess whether these inputs are complete. Remove those files, "
+            "use --overwrite, or choose another save folder."
+        )
+
+    if skipped:
+        progress.write(f"Skipping {len(skipped)} file(s) with existing predictions.")
+    return remaining
+
+
+def _resolve_apply_files_for_output(
+    list_files: list[str],
+    *,
+    save_folder: Path,
+    name_file: str | None,
+    limit_n_imgs: int | None,
+    reuse_folder: bool,
+    skip_existing: bool,
+    progress: InferenceProgress,
+) -> list[str]:
+    selected = list(list_files)
+    if skip_existing:
+        progress.write(f"Found #{len(selected)} candidate files.")
+        selected = _filter_existing_apply_outputs(
+            selected,
+            save_folder=save_folder,
+            name_file=name_file,
+            progress=progress,
+        )
+        if limit_n_imgs is not None:
+            selected = selected[:limit_n_imgs]
+        if not selected:
+            progress.write(f"All candidate files already have predictions in {save_folder}.")
+        else:
+            progress.write(f"Processing {len(selected)} remaining file(s).")
+        return selected
+
+    if limit_n_imgs is not None:
+        selected = selected[:limit_n_imgs]
+    if reuse_folder:
+        _raise_if_reuse_folder_would_overwrite(
+            selected,
+            save_folder=save_folder,
+            name_file=name_file,
+        )
+    return selected
 
 
 def run_apply_model(model_dataset: str,
@@ -172,7 +310,9 @@ def run_apply_model(model_dataset: str,
                 config: str | Path | None = None,
                 promoted_model_name: str | None = None,
                 progress_bar: bool | None = None,
-                overwrite: bool = False):
+                overwrite: bool = False,
+                reuse_folder: bool = False,
+                skip_existing: bool = False):
     """Apply a saved model checkpoint to one file or a directory of files.
 
     Omitted processing options are resolved from inference defaults or the named
@@ -268,18 +408,20 @@ def run_apply_model(model_dataset: str,
         filters=options["filters"],
         skip_if_contain=options["skip_if_contain"],
     )
-    if options["limit_n_imgs"] is not None:
-        list_files = list_files[: options["limit_n_imgs"]]
-    print(f"Found #{len(list_files)} files.")
 
     input_dir = data_path if data_path.is_dir() else data_path.parent
     source_name = _source_name(data_path)
     overwrite = bool(overwrite)
+    skip_existing = bool(skip_existing)
+    reuse_folder = bool(reuse_folder) or skip_existing
+    if overwrite and reuse_folder:
+        raise ValueError("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
 
     if output_policy.mode == "in_place":
-        if overwrite:
+        if overwrite or reuse_folder:
             raise ValueError(
-                "--overwrite cannot be used with in-place apply output because it would target the input folder."
+                "--overwrite, --reuse-folder, and --skip-existing cannot be used with "
+                "in-place apply output because it targets the input folder."
             )
         save_folder = input_dir
         progress.write(f"Saving outputs in place: {save_folder}")
@@ -296,6 +438,7 @@ def run_apply_model(model_dataset: str,
         save_folder = _create_apply_save_folder(
             input_dir / prediction_folder_name,
             overwrite=overwrite,
+            reuse_folder=reuse_folder,
             progress=progress,
         )
     elif output_policy.mode == "folder_outside":
@@ -307,6 +450,7 @@ def run_apply_model(model_dataset: str,
         save_folder = _create_apply_save_folder(
             input_dir.parent / prediction_folder_name,
             overwrite=overwrite,
+            reuse_folder=reuse_folder,
             progress=progress,
         )
     elif output_policy.mode == "folder":
@@ -314,6 +458,7 @@ def run_apply_model(model_dataset: str,
         save_folder = _create_apply_save_folder(
             output_policy.save_folder,
             overwrite=overwrite,
+            reuse_folder=reuse_folder,
             progress=progress,
         )
     else:
@@ -323,8 +468,23 @@ def run_apply_model(model_dataset: str,
                 model_name=model_name,
             ),
             overwrite=overwrite,
+            reuse_folder=reuse_folder,
             progress=progress,
         )
+
+    list_files = _resolve_apply_files_for_output(
+        list_files,
+        save_folder=save_folder,
+        name_file=name_file,
+        limit_n_imgs=options["limit_n_imgs"],
+        reuse_folder=reuse_folder,
+        skip_existing=skip_existing,
+        progress=progress,
+    )
+    if not skip_existing:
+        print(f"Found #{len(list_files)} files.")
+    if not list_files:
+        return
 
     for idx, file in enumerate(list_files):
         print(f"File {idx+1}/{max(1, len(list_files))}: {file}")
@@ -431,10 +591,7 @@ def run_apply_model(model_dataset: str,
             samples_stack = inverse_make_4d(samples_stack, volumetric, timelapse, lvae_samples=True)
             tosave["samples"] = samples_stack.astype(np.float32)
 
-        if name_file is None:
-            img_name = file.split('.')[0]
-        else:
-            img_name = name_file.split('.')[0]
+        img_name = _apply_img_name(file, name_file)
         if save_input:
             tosave["inp"] = img.astype(np.float32)
 

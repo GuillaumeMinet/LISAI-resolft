@@ -562,11 +562,64 @@ def test_apply_cli_passes_save_folder_and_overwrite(monkeypatch, tmp_path):
     assert captured["overwrite"] is True
 
 
+def test_apply_cli_passes_reuse_folder_and_skip_existing(monkeypatch, tmp_path):
+    captured = {}
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G7ACK",
+        dataset="Gag",
+        model_subfolder="Upsamp",
+    )
+
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "apply",
+            "my_model_00",
+            "/data/images",
+            "--save-folder",
+            "/tmp/predictions",
+            "--reuse-folder",
+            "--skip-existing",
+        ]
+    )
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["save_folder"] == "/tmp/predictions"
+    assert captured["reuse_folder"] is True
+    assert captured["skip_existing"] is True
+
+
 def test_apply_cli_rejects_overwrite_with_in_place_output():
     parser = build_parser()
     args = parser.parse_args(
         ["apply", "run_00", "/data/images", "--in-place", "--overwrite"]
     )
+
+    with pytest.raises(SystemExit) as exc_info:
+        args.handler(args)
+
+    assert exc_info.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "flags",
+    [
+        ["--overwrite", "--reuse-folder"],
+        ["--overwrite", "--skip-existing"],
+        ["--in-place", "--reuse-folder"],
+        ["--in-place", "--skip-existing"],
+    ],
+)
+def test_apply_cli_rejects_conflicting_reuse_flags(flags):
+    parser = build_parser()
+    args = parser.parse_args(["apply", "run_00", "/data/images", *flags])
 
     with pytest.raises(SystemExit) as exc_info:
         args.handler(args)
@@ -633,6 +686,8 @@ def test_apply_help_has_output_location_group():
     assert "Output contents" in help_text
     assert "--save-folder" in help_text
     assert "--overwrite" in help_text
+    assert "--reuse-folder" in help_text
+    assert "--skip-existing" in help_text
     assert "--output-mode" in help_text
     assert "--in-place" in help_text
     assert "--no-in-place" in help_text

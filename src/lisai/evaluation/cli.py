@@ -16,7 +16,6 @@ from .run_apply_model import run_apply_model
 from .run_evaluate import run_evaluate
 
 
-
 def _parse_csv_list(value: str) -> list[str]:
     items = [item.strip() for item in value.split(",") if item.strip()]
     if not items:
@@ -145,7 +144,7 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         metavar="PATH",
         help=(
             "Save predictions to PATH. If PATH already exists, LISAI creates a "
-            "numbered sibling unless --overwrite is set."
+            "numbered sibling unless --overwrite, --reuse-folder, or --skip-existing is set."
         ),
     )
     output_choice.add_argument(
@@ -176,6 +175,22 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help=(
             "Replace an existing apply output folder instead of creating a numbered sibling. "
             "Cannot be used with in-place output."
+        ),
+    )
+    output_location_group.add_argument(
+        "--reuse-folder",
+        action="store_true",
+        help=(
+            "Use the resolved output folder exactly without deleting it. Refuses to run "
+            "if selected inputs already have outputs in that folder."
+        ),
+    )
+    output_location_group.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help=(
+            "Continue an apply run by reusing the output folder and skipping inputs whose "
+            "_pred.tif output already exists."
         ),
     )
 
@@ -235,11 +250,17 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
 
 
 def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    if getattr(args, "overwrite", False) and (
+    overwrite = getattr(args, "overwrite", False)
+    reuse_folder = getattr(args, "reuse_folder", False)
+    skip_existing = getattr(args, "skip_existing", False)
+    in_place_requested = (
         getattr(args, "in_place", None) is True
         or getattr(args, "output_mode", None) == "in_place"
-    ):
-        parser.error("--overwrite cannot be combined with in-place apply output.")
+    )
+    if overwrite and (reuse_folder or skip_existing):
+        parser.error("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
+    if in_place_requested and (overwrite or reuse_folder or skip_existing):
+        parser.error("--overwrite, --reuse-folder, and --skip-existing cannot be combined with in-place apply output.")
 
     promoted_model_name = args.model
     if promoted_model_name is not None:
@@ -292,7 +313,9 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         lvae_save_samples=_maybe_unset(args.lvae_save_samples),
         save_input=_maybe_unset(args.save_input),
         apply_color_code=_maybe_unset(args.apply_color_code),
-        overwrite=getattr(args, "overwrite", False),
+        overwrite=overwrite,
+        reuse_folder=reuse_folder,
+        skip_existing=skip_existing,
         progress_bar=getattr(args, "progress_bar", None),
         promoted_model_name=promoted_model_name,
     )
