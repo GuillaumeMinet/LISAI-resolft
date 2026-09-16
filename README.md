@@ -15,6 +15,10 @@ LISAI is the Python package implementing the full image restoration workflow: da
 model training, run tracking, evaluation, and applying trained models to image files. The current
 codebase is centered on YAML-driven command line workflows and the package under `src/lisai`.
 
+While LISAI is structured as a Python package, the current release still assumes the repository layout 
+and configuration files; support for fully standalone installation and use through a stable Python API 
+is planned for a future release.
+
 The main supported tasks are denoising and upsampling, with configuration examples for U-Net,
 UNet-RCAN, RCAN, and LVAE/HDN-style models.
 
@@ -155,13 +159,14 @@ All main workflows are configured with YAML files:
 - `configs/training/examples/*.yml`: tracked training examples
 - `configs/training/local/*.yml`: local training configs, ignored by Git
 - `configs/inference/local/*.yml`: personal inference defaults and workflow overrides, ignored by Git
-- `configs/inference/*.yml`: tracked standalone inference configs; non-local configs must be complete apart from saving settings
+- `configs/inference/**/*.yml`: tracked inference configs may stay sparse; unspecified values inherit from `local/defaults.yml`
 - `configs/schema/*.json`: generated JSON schemas for supported config types
 
 Short config names are resolved from their workflow folder. For example, `lisai train
 examples/vim_denoising_unet` resolves under `configs/training/`, and `lisai preprocess single`
 resolves under `configs/preprocess/`. Inference config names check `configs/inference/local/` first,
-then `configs/inference/`.
+then `configs/inference/`. Explicit values in the selected inference config override
+`local/defaults.yml`, and explicit CLI options override both.
 
 Training presets and templates are catalog inputs, not direct training inputs. Use `lisai configs
 new ...` to instantiate a preset or template into `configs/training/local/`, then train the local

@@ -77,8 +77,68 @@ def _patch_common_runtime(
         lambda *_args, **_kwargs: (tmp_path, ["input.tif"], None),
     )
     monkeypatch.setattr(apply_mod, "imread", lambda *_: input_image.copy())
-    monkeypatch.setattr(apply_mod, "create_save_folder", lambda path: Path(path))
+    monkeypatch.setattr(apply_mod, "create_save_folder", lambda path, overwrite=False: Path(path))
     monkeypatch.setattr(apply_mod, "save_outputs", lambda *_args, **_kwargs: None)
+
+
+def test_create_apply_save_folder_reports_numbered_existing_destination(tmp_path: Path, capsys):
+    requested = tmp_path / "predictions"
+    requested.mkdir()
+
+    resolved = apply_mod._create_apply_save_folder(
+        requested,
+        overwrite=False,
+        progress=apply_mod.InferenceProgress(enabled=False),
+    )
+
+    assert resolved == tmp_path / "predictions_01"
+    assert resolved.is_dir()
+    captured = capsys.readouterr()
+    assert f"Folder {requested} already exists" in captured.out
+    assert f"saving to {resolved} instead" in captured.out
+    assert "Use --overwrite to replace the existing folder." in captured.out
+
+
+def test_create_apply_save_folder_reports_overwrite_existing_destination(tmp_path: Path, capsys):
+    requested = tmp_path / "predictions"
+    requested.mkdir()
+    old_file = requested / "old_prediction.tif"
+    old_file.write_text("old")
+
+    resolved = apply_mod._create_apply_save_folder(
+        requested,
+        overwrite=True,
+        progress=apply_mod.InferenceProgress(enabled=False),
+    )
+
+    assert resolved == requested
+    assert resolved.is_dir()
+    assert not old_file.exists()
+    captured = capsys.readouterr()
+    assert f"Folder {requested} already exists" in captured.out
+    assert "--overwrite enabled, replacing it." in captured.out
+
+
+def test_run_apply_model_rejects_overwrite_with_in_place_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    options = _base_apply_options(downsamp=None, fill_factor=None)
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, options=options)
+    monkeypatch.setattr(
+        apply_mod,
+        "resolve_apply_output_policy",
+        lambda **_: SimpleNamespace(mode="in_place", save_folder=None),
+    )
+
+    with pytest.raises(ValueError, match="in-place apply output"):
+        apply_mod.run_apply_model(
+            model_dataset="dataset",
+            model_subfolder="Upsamp",
+            model_name="model",
+            data_path=tmp_path,
+            overwrite=True,
+        )
 
 
 def test_run_apply_model_keeps_legacy_stride_downsampling_when_fill_factor_is_none(
@@ -259,7 +319,7 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
     monkeypatch.setattr(
         apply_mod,
         "create_save_folder",
-        lambda path: captured.setdefault("save_folder", Path(path)),
+        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
     )
     monkeypatch.setattr(
         apply_mod,
@@ -319,7 +379,7 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
     monkeypatch.setattr(
         apply_mod,
         "create_save_folder",
-        lambda path: captured.setdefault("save_folder", Path(path)),
+        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
     )
     monkeypatch.setattr(
         apply_mod,
@@ -362,7 +422,7 @@ def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
     monkeypatch.setattr(
         apply_mod,
         "create_save_folder",
-        lambda path: captured.setdefault("save_folder", Path(path)),
+        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
     )
     monkeypatch.setattr(
         apply_mod,
@@ -402,7 +462,7 @@ def test_run_apply_model_folder_outside_directory_includes_source_name(
     monkeypatch.setattr(
         apply_mod,
         "create_save_folder",
-        lambda path: captured.setdefault("save_folder", Path(path)),
+        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
     )
     monkeypatch.setattr(
         apply_mod,
@@ -446,7 +506,7 @@ def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name
     monkeypatch.setattr(
         apply_mod,
         "create_save_folder",
-        lambda path: captured.setdefault("save_folder", Path(path)),
+        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
     )
     monkeypatch.setattr(
         apply_mod,
@@ -490,7 +550,7 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
     monkeypatch.setattr(
         apply_mod,
         "create_save_folder",
-        lambda path: captured.setdefault("save_folder", Path(path)),
+        lambda path, overwrite=False: captured.setdefault("save_folder", Path(path)),
     )
     monkeypatch.setattr(
         apply_mod,

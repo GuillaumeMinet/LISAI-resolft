@@ -40,7 +40,7 @@ def ensure_folder(path: Path, mode: str = "exist_ok") -> Path:
             raise FileExistsError(f"Folder already exists at '{path}' but mode is STRICT.")
 
         elif mode == "overwrite":
-            logger.warning(f"Overwriting existing folder: {path}")
+            logger.warning(f"\nSAVING: Overwriting existing folder: {path}\n")
             shutil.rmtree(path)
 
         elif mode == "exist_ok":

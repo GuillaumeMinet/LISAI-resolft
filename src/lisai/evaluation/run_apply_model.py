@@ -117,6 +117,32 @@ def _prediction_folder_name(
     return "_".join(parts)
 
 
+def _create_apply_save_folder(
+    path: Path,
+    *,
+    overwrite: bool,
+    progress: InferenceProgress,
+) -> Path:
+    requested = Path(path)
+    existed = requested.exists()
+    resolved = create_save_folder(path=requested, overwrite=overwrite)
+    if resolved is None:
+        raise FileNotFoundError(f"Could not create apply output folder: {requested}")
+    resolved = Path(resolved)
+
+    if existed and overwrite:
+        progress.write(f"Folder {requested} already exists; --overwrite enabled, replacing it.")
+    elif existed and resolved != requested:
+        progress.write(
+            f"\nSAVING: Folder {requested} already exists; saving to {resolved} instead. "
+            "Use --overwrite to replace the existing folder.\n"
+        )
+    else:
+        progress.write(f"\nSAVING: Saving outputs to: {resolved}\n")
+
+    return resolved
+
+
 def run_apply_model(model_dataset: str,
                 model_subfolder: str,
                 model_name: str,
@@ -145,7 +171,8 @@ def run_apply_model(model_dataset: str,
                 dark_frame_context_length: bool | UnsetType = UNSET,
                 config: str | Path | None = None,
                 promoted_model_name: str | None = None,
-                progress_bar: bool | None = None):
+                progress_bar: bool | None = None,
+                overwrite: bool = False):
     """Apply a saved model checkpoint to one file or a directory of files.
 
     Omitted processing options are resolved from inference defaults or the named
@@ -247,9 +274,15 @@ def run_apply_model(model_dataset: str,
 
     input_dir = data_path if data_path.is_dir() else data_path.parent
     source_name = _source_name(data_path)
+    overwrite = bool(overwrite)
 
     if output_policy.mode == "in_place":
+        if overwrite:
+            raise ValueError(
+                "--overwrite cannot be used with in-place apply output because it would target the input folder."
+            )
         save_folder = input_dir
+        progress.write(f"Saving outputs in place: {save_folder}")
     elif output_policy.mode == "folder_inside":
         # Directory inputs already provide their own source context. Single-file
         # inputs need source identity in the generated folder name so multiple
@@ -260,23 +293,37 @@ def run_apply_model(model_dataset: str,
             model_subfolder=model_subfolder,
             model_name=model_name,
         )
-        save_folder = create_save_folder(path=input_dir / prediction_folder_name)
+        save_folder = _create_apply_save_folder(
+            input_dir / prediction_folder_name,
+            overwrite=overwrite,
+            progress=progress,
+        )
     elif output_policy.mode == "folder_outside":
         prediction_folder_name = _prediction_folder_name(
             source_name=source_name,
             model_subfolder=model_subfolder,
             model_name=model_name,
         )
-        save_folder = create_save_folder(path=input_dir.parent / prediction_folder_name)
+        save_folder = _create_apply_save_folder(
+            input_dir.parent / prediction_folder_name,
+            overwrite=overwrite,
+            progress=progress,
+        )
     elif output_policy.mode == "folder":
         assert output_policy.save_folder is not None
-        save_folder = create_save_folder(path=output_policy.save_folder)
+        save_folder = _create_apply_save_folder(
+            output_policy.save_folder,
+            overwrite=overwrite,
+            progress=progress,
+        )
     else:
-        save_folder = create_save_folder(
-            path=Paths().inference_output_dir(
+        save_folder = _create_apply_save_folder(
+            Paths().inference_output_dir(
                 source_name=source_name,
                 model_name=model_name,
-            )
+            ),
+            overwrite=overwrite,
+            progress=progress,
         )
 
     for idx, file in enumerate(list_files):

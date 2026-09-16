@@ -78,27 +78,6 @@ def _complete_apply_config(*, tiling_size=512, crop_size=128, saving=None) -> di
     return {"apply": apply}
 
 
-def _complete_evaluate_config(*, tiling_size="off") -> dict:
-    return {
-        "evaluate": {
-            "checkpoint": {"epoch_number": None, "best_or_last": "best"},
-            "data": {
-                "split": "test",
-                "eval_gt": None,
-                "overrides": None,
-                "limit_n_imgs": None,
-                "timelapse_max": None,
-            },
-            "inference": {
-                "tiling_size": tiling_size,
-                "crop_size": None,
-                "lvae_num_samples": 20,
-                "ch_out": 1,
-            },
-            "metrics": None,
-        }
-    }
-
 
 def test_resolve_inference_config_path_defaults_to_local_defaults(inference_config_dir: Path):
     defaults_path = _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
@@ -168,34 +147,66 @@ apply:
     assert resolved["fill_factor"] is None
 
 
-def test_standalone_config_does_not_inherit_local_defaults(inference_config_dir: Path):
+def test_named_nonlocal_config_inherits_local_defaults_without_being_overridden(
+    inference_config_dir: Path,
+):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    tiling_size: 256\n  postprocess:\n    denormalize: false\n",
     )
-    standalone = _complete_apply_config(tiling_size=1024)
-    save_yaml(standalone, inference_config_dir / "portable.yml")
+    _write(
+        inference_config_dir / "examples" / "portable.yml",
+        "apply:\n  inference:\n    tiling_size: 1024\n",
+    )
 
-    resolved = resolve_apply_options(config="portable")
+    resolved = resolve_apply_options(config="examples/portable")
 
     assert resolved["tiling_size"] == 1024
-    assert resolved["denormalize_output"] is True
+    assert resolved["denormalize_output"] is False
 
 
-def test_standalone_config_must_be_complete(inference_config_dir: Path):
-    _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
-    _write(inference_config_dir / "partial.yml", "apply:\n  inference:\n    tiling_size: 512\n")
+def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
+    )
+    _write(
+        inference_config_dir / "examples" / "hdn_sup.yml",
+        "apply:\n  inference:\n    lvae_num_samples: 10\n",
+    )
 
-    with pytest.raises(ValueError, match="Standalone inference config.*incomplete"):
-        resolve_apply_options(config="partial")
+    resolved = resolve_apply_options(config="examples/hdn_sup")
+
+    assert resolved["lvae_num_samples"] == 10
+    assert resolved["tiling_size"] == 256
 
 
-def test_standalone_evaluate_preserves_tiling_policy_and_cli_override(inference_config_dir: Path):
+def test_named_config_explicit_null_overrides_local_default(inference_config_dir: Path):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  inference:\n    lvae_num_samples: 30\n",
+    )
+    _write(
+        inference_config_dir / "examples" / "no_lvae_sampling.yml",
+        "apply:\n  inference:\n    lvae_num_samples: null\n",
+    )
+
+    resolved = resolve_apply_options(config="examples/no_lvae_sampling")
+
+    assert resolved["lvae_num_samples"] is None
+
+
+def test_named_nonlocal_evaluate_preserves_tiling_policy_and_cli_override(
+    inference_config_dir: Path,
+):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: auto\n")
-    save_yaml(_complete_evaluate_config(tiling_size="off"), inference_config_dir / "no_tiling.yml")
+    _write(
+        inference_config_dir / "examples" / "no_tiling.yml",
+        "evaluate:\n  inference:\n    tiling_size: off\n",
+    )
 
-    resolved = resolve_evaluate_options(config="no_tiling")
-    forced = resolve_evaluate_options(config="no_tiling", tiling_size=512)
+    resolved = resolve_evaluate_options(config="examples/no_tiling")
+    forced = resolve_evaluate_options(config="examples/no_tiling", tiling_size=512)
 
     assert resolved["tiling_size"] == "off"
     assert forced["tiling_size"] == 512
@@ -267,13 +278,17 @@ def test_named_local_saving_override_has_priority_over_local_defaults(inference_
     assert policy.mode == "in_place"
 
 
-def test_standalone_saving_can_override_local_config_without_local_defaults(inference_config_dir: Path):
+def test_named_nonlocal_saving_override_has_priority_over_local_defaults(
+    inference_config_dir: Path,
+):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
-    cfg = _complete_apply_config(saving={"mode": "folder_outside"})
-    save_yaml(cfg, inference_config_dir / "portable.yml")
+    _write(
+        inference_config_dir / "examples" / "portable.yml",
+        "apply:\n  saving:\n    mode: folder_outside\n",
+    )
     local = SimpleNamespace(INFERENCE_OUTPUT_MODE="in_place")
 
-    policy = defaults_mod.resolve_apply_output_policy(config="portable", stg=local)
+    policy = defaults_mod.resolve_apply_output_policy(config="examples/portable", stg=local)
 
     assert policy.mode == "folder_outside"
 

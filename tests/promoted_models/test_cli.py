@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import io
+
 from lisai.promoted_models.cli import build_parser as build_models_parser
 from lisai.runs.cli import build_parser as build_runs_parser
+
+
+class InteractiveInput(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 def test_runs_promote_cli_defaults():
@@ -122,3 +129,62 @@ def test_models_remove_cli_yes_skips_confirmation(monkeypatch, capsys):
 
     assert result == 0
     assert "Removed model: demo-model" in capsys.readouterr().out
+
+
+def test_models_sync_cli_confirms_unique_partial_name(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    registry = SimpleNamespace(models={"demo-model": object(), "other-model": object()})
+    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda: registry)
+    monkeypatch.setattr("sys.stdin", InteractiveInput("y\n"))
+    called = []
+    promoted = SimpleNamespace(
+        manifest=SimpleNamespace(
+            name="demo-model",
+            model=SimpleNamespace(task="denoising"),
+        )
+    )
+    monkeypatch.setattr(
+        models_cli,
+        "sync_promoted_model",
+        lambda name: called.append(name) or promoted,
+    )
+
+    result = models_cli.main(["sync", "demo"])
+
+    assert result == 0
+    assert called == ["demo-model"]
+    assert "Did you mean 'demo-model'? [y/N]" in capsys.readouterr().out
+
+
+def test_models_sync_cli_selects_ambiguous_partial_name(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    registry = SimpleNamespace(
+        models={"demo-denoising": object(), "demo-upsampling": object()}
+    )
+    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda: registry)
+    monkeypatch.setattr("sys.stdin", InteractiveInput("02\n"))
+    called = []
+    promoted = SimpleNamespace(
+        manifest=SimpleNamespace(
+            name="demo-upsampling",
+            model=SimpleNamespace(task="upsampling"),
+        )
+    )
+    monkeypatch.setattr(
+        models_cli,
+        "sync_promoted_model",
+        lambda name: called.append(name) or promoted,
+    )
+
+    result = models_cli.main(["sync", "demo"])
+
+    assert result == 0
+    assert called == ["demo-upsampling"]
+    output = capsys.readouterr().out
+    assert "Multiple matching promoted models found:" in output
+    assert "demo-denoising" in output
+    assert "demo-upsampling" in output

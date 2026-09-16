@@ -74,3 +74,16 @@ def test_create_save_folder_numbers_existing_apply_destination(tmp_path: Path):
 
     assert resolved == tmp_path / "source" / "model_01"
     assert resolved.is_dir()
+
+
+def test_create_save_folder_overwrites_existing_apply_destination(tmp_path: Path):
+    base = tmp_path / "source" / "model"
+    base.mkdir(parents=True)
+    old_file = base / "old_prediction.tif"
+    old_file.write_text("old")
+
+    resolved = create_save_folder(base, overwrite=True)
+
+    assert resolved == base
+    assert resolved.is_dir()
+    assert not old_file.exists()

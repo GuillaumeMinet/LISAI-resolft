@@ -312,13 +312,15 @@ def test_datasets_open_readme_does_not_recreate_missing_dataset(monkeypatch, tmp
     assert "Dataset directory does not exist" in captured.err
 
 
-def test_datasets_show_accepts_unique_partial_name(monkeypatch, tmp_path: Path, capsys):
+def test_datasets_show_accepts_confirmed_unique_partial_name(monkeypatch, tmp_path: Path, capsys):
     _write_registry(tmp_path)
     _patch_paths(monkeypatch, tmp_path)
+    monkeypatch.setattr("sys.stdin", InteractiveInput("y\n"))
 
     assert root_cli.main(["datasets", "show", "vim_fix"]) == 0
 
     captured = capsys.readouterr()
+    assert "Did you mean 'vim_fixed'? [y/N]" in captured.out
     assert "Dataset: vim_fixed" in captured.out
 
 

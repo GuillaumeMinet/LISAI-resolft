@@ -746,7 +746,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Sparse user-authored inference YAML overrides.\n\nAny omitted section or field means \"leave the resolved default as-is\".\nLocal configs may stay sparse; the resolver separately enforces completeness\nfor standalone configs outside `configs/inference/local/`.",
+  "description": "Sparse user-authored inference YAML overrides.\n\nAny omitted section or field means \"leave the resolved default as-is\".\nAll inference configs may stay sparse: the resolver layers them over the\nlocal inference defaults, while explicitly authored values always win.",
   "properties": {
     "apply": {
       "anyOf": [

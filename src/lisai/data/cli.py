@@ -7,15 +7,16 @@ from typing import Any, Mapping, Sequence
 from lisai.config import settings
 from lisai.infra.cli.open_path import try_open_path as _try_open_path
 from lisai.infra.cli.prompts import prompt_yes_no
+from lisai.infra.cli.selection import resolve_partial_name
 from lisai.infra.paths import Paths
 
 from .dataset_registry import load_dataset_registry
 from .readme import dataset_readme_path, ensure_dataset_readme
 from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
-from .selection import resolve_dataset_name
 
 
 DESCRIPTION_PREVIEW_MAX_CHARS = 20
+_DATASET_LIST_HINT = "Use 'lisai datasets list' to inspect available datasets."
 
 
 def _paths() -> Paths:
@@ -237,7 +238,12 @@ def _require_dataset(
     parser: argparse.ArgumentParser,
 ) -> tuple[str, dict[str, Any], Path]:
     registry = _registry_from_paths(paths)
-    resolved_name = resolve_dataset_name(name, registry)
+    resolved_name = resolve_partial_name(
+        name,
+        registry,
+        entity_name="dataset",
+        help_hint=_DATASET_LIST_HINT,
+    )
     if resolved_name is None:
         parser.exit(status=1)
     info = registry[resolved_name]
@@ -382,7 +388,12 @@ def rename_dataset(
 ) -> int:
     paths = paths or _paths()
     registry = _registry_from_paths(paths)
-    resolved_old_name = resolve_dataset_name(old_name, registry)
+    resolved_old_name = resolve_partial_name(
+        old_name,
+        registry,
+        entity_name="dataset",
+        help_hint=_DATASET_LIST_HINT,
+    )
     if resolved_old_name is None:
         return 1
 

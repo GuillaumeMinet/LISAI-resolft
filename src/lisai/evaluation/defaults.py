@@ -79,16 +79,6 @@ def _section_overrides(
     return None if section_raw is None else dict(section_raw)
 
 
-def _is_local_inference_path(path: Path | None) -> bool:
-    if path is None:
-        return False
-    try:
-        path.resolve().relative_to((inference_config_paths.root / "local").resolve())
-    except ValueError:
-        return False
-    return True
-
-
 def _is_post_training_name(config: str | Path | None, path: Path | None = None) -> bool:
     if path is not None and path.stem == POST_TRAINING_CONFIG_NAME:
         return True
@@ -96,49 +86,6 @@ def _is_post_training_name(config: str | Path | None, path: Path | None = None) 
         return False
     config_path = Path(config)
     return config_path.parent == Path(".") and config_path.stem == POST_TRAINING_CONFIG_NAME
-
-
-def _missing_required_paths(expected: Any, authored: Any, prefix: str = "") -> list[str]:
-    if not isinstance(expected, Mapping):
-        return []
-    if not isinstance(authored, Mapping):
-        return [prefix.rstrip(".")]
-
-    missing: list[str] = []
-    for key, expected_value in expected.items():
-        path = f"{prefix}{key}"
-        if key not in authored:
-            missing.append(path)
-            continue
-        if isinstance(expected_value, Mapping):
-            missing.extend(_missing_required_paths(expected_value, authored[key], f"{path}."))
-    return missing
-
-
-def _validate_standalone_complete(
-    section: Literal["apply", "evaluate"],
-    section_overrides: dict[str, Any] | None,
-    *,
-    cfg_path: Path | None,
-) -> None:
-    if section_overrides is None:
-        raise ValueError(f"Inference config '{cfg_path}' does not define a '{section}' section.")
-
-    expected = deepcopy(ResolvedInferenceConfig().model_dump()[section])
-    # Saving is intentionally machine/workflow dependent and is not required for
-    # a portable standalone inference config.
-    expected.pop("saving", None)
-    missing = _missing_required_paths(expected, section_overrides, prefix=f"{section}.")
-    if missing:
-        lines = [
-            f"Standalone inference config '{cfg_path}' is incomplete for '{section}'.",
-            "Configs outside configs/inference/local/ must explicitly define all non-saving inference settings.",
-            "Missing:",
-        ]
-        lines.extend(f"  - {item}" for item in missing)
-        raise ValueError("\n".join(lines))
-
-
 
 
 def _merge_section_config(
@@ -156,6 +103,7 @@ def _merge_section_config(
             base_saving.update({"mode": None, "save_folder": None, "in_place": None})
             base["saving"] = base_saving
     return deep_merge(base, overrides)
+
 
 def _validate_resolved_section(
     section: Literal["apply", "evaluate"],
@@ -189,21 +137,24 @@ def _resolve_section_nested(
     *,
     config: str | Path | None = None,
 ) -> dict[str, Any]:
+    # Precedence is intentionally one-way:
+    # canonical typed defaults < local/defaults.yml < built-in preset (if any)
+    # < selected config < CLI.
+    # A selected config may therefore stay sparse; local defaults only fill
+    # values that it does not explicitly provide.
     resolved_section = deepcopy(ResolvedInferenceConfig().model_dump()[section])
 
+    local_defaults = _load_local_defaults_section(section)
+    if local_defaults:
+        resolved_section = _merge_section_config(section, resolved_section, local_defaults)
+
     if config is None:
-        local_defaults = _load_local_defaults_section(section)
-        if local_defaults:
-            resolved_section = _merge_section_config(section, resolved_section, local_defaults)
         return _validate_resolved_section(section, resolved_section)
 
     selected_cfg, cfg_path = _load_selected_config(config)
 
     if cfg_path is None:
         # Built-in post-training preset remains usable even if the local file was removed.
-        local_defaults = _load_local_defaults_section(section)
-        if local_defaults:
-            resolved_section = _merge_section_config(section, resolved_section, local_defaults)
         preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
         preset_section = _section_overrides(preset_cfg, section)
         if preset_section is None:
@@ -213,24 +164,15 @@ def _resolve_section_nested(
 
     selected_section = _section_overrides(selected_cfg, section) if selected_cfg is not None else None
 
-    if _is_local_inference_path(cfg_path):
-        local_defaults = _load_local_defaults_section(section)
-        if local_defaults:
-            resolved_section = _merge_section_config(section, resolved_section, local_defaults)
+    if _is_post_training_name(config, cfg_path):
+        preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
+        preset_section = _section_overrides(preset_cfg, section)
+        if preset_section:
+            resolved_section = _merge_section_config(section, resolved_section, preset_section)
 
-        if _is_post_training_name(config, cfg_path):
-            preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
-            preset_section = _section_overrides(preset_cfg, section)
-            if preset_section:
-                resolved_section = _merge_section_config(section, resolved_section, preset_section)
+    if selected_section is None:
+        raise ValueError(f"Inference config '{cfg_path}' does not define a '{section}' section.")
 
-        if selected_section is None:
-            raise ValueError(f"Inference config '{cfg_path}' does not define a '{section}' section.")
-        resolved_section = _merge_section_config(section, resolved_section, selected_section)
-        return _validate_resolved_section(section, resolved_section)
-
-    _validate_standalone_complete(section, selected_section, cfg_path=cfg_path)
-    assert selected_section is not None
     resolved_section = _merge_section_config(section, resolved_section, selected_section)
     return _validate_resolved_section(section, resolved_section)
 

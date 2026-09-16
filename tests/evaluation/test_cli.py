@@ -431,8 +431,15 @@ def test_evaluate_cli_rejects_split_run_name_and_index_selector():
 
 
 def test_apply_cli_accepts_promoted_model_without_run_selector(monkeypatch):
+    from types import SimpleNamespace
+
     captured = {}
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(
+        evaluation_cli,
+        "load_promoted_model_registry",
+        lambda: SimpleNamespace(models={"hdn-vimentin": object()}),
+    )
 
     parser = build_parser()
     args = parser.parse_args(["apply", "--model", "hdn-vimentin", "/data/images"])
@@ -523,6 +530,50 @@ def test_apply_cli_output_arguments_are_mutually_exclusive():
         )
 
 
+def test_apply_cli_passes_save_folder_and_overwrite(monkeypatch, tmp_path):
+    captured = {}
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "my_model_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G7ACJ",
+        dataset="Gag",
+        model_subfolder="Upsamp",
+    )
+
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+
+    parser = build_parser()
+    args = parser.parse_args(
+        [
+            "apply",
+            "my_model_00",
+            "/data/images",
+            "--save-folder",
+            "/tmp/predictions",
+            "--overwrite",
+        ]
+    )
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["save_folder"] == "/tmp/predictions"
+    assert captured["overwrite"] is True
+
+
+def test_apply_cli_rejects_overwrite_with_in_place_output():
+    parser = build_parser()
+    args = parser.parse_args(
+        ["apply", "run_00", "/data/images", "--in-place", "--overwrite"]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        args.handler(args)
+
+    assert exc_info.value.code == 2
+
+
 def test_apply_cli_output_mode_is_mutually_exclusive_with_legacy_output_flags():
     parser = build_parser()
 
@@ -581,6 +632,7 @@ def test_apply_help_has_output_location_group():
     assert "Output location" in help_text
     assert "Output contents" in help_text
     assert "--save-folder" in help_text
+    assert "--overwrite" in help_text
     assert "--output-mode" in help_text
     assert "--in-place" in help_text
     assert "--no-in-place" in help_text
@@ -643,3 +695,32 @@ def test_evaluate_help_hides_config_only_options(technical_option):
     )
 
     assert technical_option not in evaluate_parser.format_help()
+
+
+def test_apply_cli_resolves_confirmed_partial_promoted_model(monkeypatch):
+    from types import SimpleNamespace
+
+    captured = {}
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
+    monkeypatch.setattr(
+        evaluation_cli,
+        "load_promoted_model_registry",
+        lambda: SimpleNamespace(
+            models={"hdn-vimentin-5frames": object(), "rcan-actin": object()}
+        ),
+    )
+    monkeypatch.setattr(evaluation_cli.sys, "stdin", InteractiveInput("y\n"))
+    monkeypatch.setattr(evaluation_cli.sys, "stdout", stdout)
+    monkeypatch.setattr(evaluation_cli.sys, "stderr", stderr)
+
+    parser = build_parser()
+    args = parser.parse_args(["apply", "--model", "hdn-vim", "/data/images"])
+    result = args.handler(args)
+
+    assert result == 0
+    assert captured["promoted_model_name"] == "hdn-vimentin-5frames"
+    assert captured["model_name"] == "hdn-vimentin-5frames"
+    assert "Did you mean 'hdn-vimentin-5frames'? [y/N]" in stdout.getvalue()
+    assert stderr.getvalue() == ""

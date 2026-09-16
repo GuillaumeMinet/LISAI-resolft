@@ -3,8 +3,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
-from lisai.data.selection import resolve_dataset_name
-from lisai.infra.cli.selection import resolve_ambiguous_matches
+from lisai.infra.cli.selection import resolve_ambiguous_matches, resolve_partial_name
 
 from .listing import filter_runs, matches_exp_name, render_runs_table, write_invalid_run_warnings
 from .scanner import DiscoveredRun, ScanResults, scan_runs
@@ -77,9 +76,10 @@ def resolve_discovered_run_selector(
 
     resolved_dataset = dataset
     if dataset is not None:
-        resolved_dataset = resolve_dataset_name(
+        resolved_dataset = resolve_partial_name(
             dataset,
             (run.dataset for run in resolved_scan.runs),
+            entity_name="dataset",
             stdin=stdin,
             stdout=out,
             stderr=err,

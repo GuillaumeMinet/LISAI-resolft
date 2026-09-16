@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
+from lisai.infra.cli.selection import resolve_partial_name
+from lisai.promoted_models.registry import load_promoted_model_registry
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.scanner import DiscoveredRun
 from lisai.runs.selection import resolve_discovered_run_selector
@@ -69,7 +71,7 @@ def _add_model_selection_arguments(
     if allow_promoted_model:
         group.add_argument(
             "--model",
-            help="Use a locally promoted model by public name instead of a training run.",
+            help="Use a locally promoted model by public or partial name instead of a training run.",
         )
     add_run_filter_arguments(group, include_identity=False, include_status=False)
     return group
@@ -83,7 +85,7 @@ def _add_config_argument(parser: argparse.ArgumentParser) -> argparse._ArgumentG
         help=(
             "Inference config path, or a config name from configs/inference with or without "
             ".yml/.yaml. Local configs are looked up first. Defaults to local/defaults.yml; "
-            "configs outside local/ are standalone and must be complete."
+            "named configs may be sparse and inherit unspecified values from local/defaults.yml."
         ),
     )
     return group
@@ -143,7 +145,7 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         metavar="PATH",
         help=(
             "Save predictions to PATH. If PATH already exists, LISAI creates a "
-            "numbered sibling instead of overwriting it."
+            "numbered sibling unless --overwrite is set."
         ),
     )
     output_choice.add_argument(
@@ -166,6 +168,14 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help=(
             "Save predictions alongside the input data. Use --no-in-place to "
             "explicitly force normal inference-directory routing."
+        ),
+    )
+    output_location_group.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Replace an existing apply output folder instead of creating a numbered sibling. "
+            "Cannot be used with in-place output."
         ),
     )
 
@@ -225,12 +235,31 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
 
 
 def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if getattr(args, "overwrite", False) and (
+        getattr(args, "in_place", None) is True
+        or getattr(args, "output_mode", None) == "in_place"
+    ):
+        parser.error("--overwrite cannot be combined with in-place apply output.")
+
     promoted_model_name = args.model
     if promoted_model_name is not None:
         if any((args.run, args.run_id, args.dataset, args.model_subfolder)):
             parser.error("--model cannot be combined with a run selector or run filters.")
         if args.epoch_number is not None or args.best_or_last is not None:
             parser.error("--epoch-number/--best-or-last do not apply to promoted models; promotion already fixes the checkpoint.")
+        registry = load_promoted_model_registry()
+        promoted_model_name = resolve_partial_name(
+            promoted_model_name,
+            registry.models,
+            entity_name="promoted model",
+            column_name="model",
+            help_hint="Use 'lisai models list' to inspect available promoted models.",
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
+        if promoted_model_name is None:
+            return 1
         model_dataset = ""
         model_subfolder = "promoted"
         model_name = promoted_model_name
@@ -263,6 +292,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         lvae_save_samples=_maybe_unset(args.lvae_save_samples),
         save_input=_maybe_unset(args.save_input),
         apply_color_code=_maybe_unset(args.apply_color_code),
+        overwrite=getattr(args, "overwrite", False),
         progress_bar=getattr(args, "progress_bar", None),
         promoted_model_name=promoted_model_name,
     )

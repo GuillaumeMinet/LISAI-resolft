@@ -29,8 +29,8 @@ class InferenceOverrides(BaseModel):
     """Sparse user-authored inference YAML overrides.
 
     Any omitted section or field means "leave the resolved default as-is".
-    Local configs may stay sparse; the resolver separately enforces completeness
-    for standalone configs outside `configs/inference/local/`.
+    All inference configs may stay sparse: the resolver layers them over the
+    local inference defaults, while explicitly authored values always win.
     """
 
     model_config = ConfigDict(extra="forbid")

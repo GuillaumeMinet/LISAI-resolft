@@ -14,6 +14,11 @@ from lisai.data.dataset_registry import load_dataset_registry
 from lisai.runs.schema import RunMetadata
 
 
+class InteractiveInput(StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
 class FakePaths:
     def __init__(self, root: Path):
         self.root = root
@@ -313,7 +318,7 @@ def test_datasets_rename_accepts_unique_partial_source_name(
     _write_registry(paths)
     paths.dataset_dir(dataset_name="OldDataset", usage="training").mkdir(parents=True)
     monkeypatch.setattr(dataset_cli, "Paths", lambda _settings: paths)
-    monkeypatch.setattr("sys.stdin", StringIO("yes\n"))
+    monkeypatch.setattr("sys.stdin", InteractiveInput("yes\nyes\n"))
 
     assert root_cli.main(["datasets", "rename", "Old", "NewDataset"]) == 0
     output = capsys.readouterr().out

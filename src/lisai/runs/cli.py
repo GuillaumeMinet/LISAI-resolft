@@ -7,9 +7,9 @@ import time
 from collections.abc import Iterable
 from typing import Sequence
 
-from lisai.data.selection import resolve_dataset_name
 from lisai.infra.cli.open_path import try_open_path as _try_open_path
 from lisai.infra.cli.prompts import is_interactive, prompt_yes_no
+from lisai.infra.cli.selection import resolve_partial_name
 
 from .listing import (
     filter_runs,
@@ -69,9 +69,10 @@ def list_runs(
     resolved_dataset = dataset
     if dataset is not None:
         initial_scan = scan_runs()
-        resolved_dataset = resolve_dataset_name(
+        resolved_dataset = resolve_partial_name(
             dataset,
             (run.dataset for run in initial_scan.runs),
+            entity_name="dataset",
             stdin=in_stream,
             stdout=out,
             stderr=err,
@@ -402,9 +403,10 @@ def run_prune_from_args(args: argparse.Namespace) -> int:
     scan_result = scan_runs()
     resolved_dataset = args.dataset
     if args.dataset is not None:
-        resolved_dataset = resolve_dataset_name(
+        resolved_dataset = resolve_partial_name(
             args.dataset,
             (run.dataset for run in scan_result.runs),
+            entity_name="dataset",
             stdin=sys.stdin,
             stdout=sys.stdout,
             stderr=sys.stderr,

@@ -255,6 +255,7 @@ def test_resolve_discovered_run_selector_accepts_partial_dataset_filter(tmp_path
         selector="duplicate_00",
         dataset="actin_fixed",
         scan_result=scan_runs(datasets_root),
+        stdin=InteractiveInput("y\n"),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )

@@ -770,11 +770,13 @@ def test_runs_list_accepts_unique_partial_dataset_name(monkeypatch, tmp_path, ca
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB1",
     )
     monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli.sys, "stdin", InteractiveInput("y\n"))
 
     exit_code = root_main(["runs", "list", "--dataset", "actin_fixed"])
     captured = capsys.readouterr()
 
     assert exit_code == 0
+    assert "Did you mean 'actin_fixed_multi_snr'? [y/N]" in captured.out
     assert "Dataset: 'actin_fixed_multi_snr'" in captured.out
     assert "run_a" in captured.out
     assert "run_b" not in captured.out

@@ -5,6 +5,7 @@ from typing import Sequence, get_args
 
 from lisai.config.models.training import TaskName
 from lisai.infra.cli.prompts import prompt_yes_no
+from lisai.infra.cli.selection import resolve_partial_name
 
 from .install import install_model_archive
 from .package import (
@@ -17,6 +18,25 @@ from .remove import remove_promoted_model
 from .registry import load_promoted_model_registry
 
 VALID_TASK_NAMES  = ", ".join(get_args(TaskName))
+_MODEL_LIST_HINT = "Use 'lisai models list' to inspect available promoted models."
+
+
+def _resolve_model_name(
+    name: str,
+    *,
+    parser: argparse.ArgumentParser,
+) -> str:
+    registry = load_promoted_model_registry()
+    resolved = resolve_partial_name(
+        name,
+        registry.models,
+        entity_name="promoted model",
+        column_name="model",
+        help_hint=_MODEL_LIST_HINT,
+    )
+    if resolved is None:
+        parser.exit(status=1)
+    return resolved
 
 def _render_models_table() -> str:
     registry = load_promoted_model_registry()
@@ -46,9 +66,10 @@ def run_set_task_from_args(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> int:
+    name = _resolve_model_name(args.name, parser=parser)
     try: 
         promoted = set_promoted_model_task(
-            args.name, args.task
+            name, args.task
         )
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
@@ -61,8 +82,9 @@ def run_sync_from_args(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> int:
+    name = _resolve_model_name(args.name, parser=parser)
     try:
-        promoted = sync_promoted_model(args.name)
+        promoted = sync_promoted_model(name)
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
 
@@ -71,8 +93,9 @@ def run_sync_from_args(
     return 0
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    name = _resolve_model_name(args.name, parser=parser)
     try:
-        promoted = load_promoted_model(args.name)
+        promoted = load_promoted_model(name)
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     manifest = promoted.manifest
@@ -95,9 +118,10 @@ def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
 
 
 def run_export_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    name = _resolve_model_name(args.name, parser=parser)
     try:
         exported = export_promoted_model(
-            args.name,
+            name,
             output=args.output,
             overwrite=args.overwrite,
         )
@@ -123,14 +147,11 @@ def run_install_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
 
 
 def run_remove_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    registry = load_promoted_model_registry()
-    entry = registry.models.get(args.name)
-    if entry is None:
-        parser.exit(status=1, message=f"Unknown promoted model {args.name!r}.\n")
+    name = _resolve_model_name(args.name, parser=parser)
 
     if not args.yes:
         confirmed = prompt_yes_no(
-            f"Remove promoted model {args.name!r} from the local library? "
+            f"Remove promoted model {name!r} from the local library? "
             "Exported archives will be kept. [y/N]: ",
             input_fn=input,
         )
@@ -139,7 +160,7 @@ def run_remove_from_args(args: argparse.Namespace, parser: argparse.ArgumentPars
             return 0
 
     try:
-        removed = remove_promoted_model(args.name)
+        removed = remove_promoted_model(name)
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     print(f"Removed model: {removed.name}")
@@ -163,7 +184,7 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help="Show one locally promoted model.",
         description="Show metadata for one locally promoted model.",
     )
-    show_parser.add_argument("name", help="Public promoted-model name.")
+    show_parser.add_argument("name", help="Public promoted-model name or partial name.")
     show_parser.set_defaults(handler=lambda args, p=show_parser: run_show_from_args(args, p))
 
     set_task_parser = subparsers.add_parser(
@@ -177,7 +198,7 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     set_task_parser.add_argument(
         "name",
-        help="Public promoted-model name.",
+        help="Public promoted-model name or partial name.",
     )
     set_task_parser.add_argument(
         "task",
@@ -197,7 +218,7 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     )
     sync_parser.add_argument(
         "name",
-        help="Public promoted-model name.",
+        help="Public promoted-model name or partial name.",
     )
     sync_parser.set_defaults(
         handler=lambda args, p=sync_parser: run_sync_from_args(args, p)
@@ -227,7 +248,7 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
             "are left untouched."
         ),
     )
-    remove_parser.add_argument("name", help="Public promoted-model name.")
+    remove_parser.add_argument("name", help="Public promoted-model name or partial name.")
     remove_parser.add_argument(
         "--yes",
         action="store_true",
@@ -242,7 +263,7 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         help="Export a locally promoted model as a portable .lisai.zip archive.",
         description="Export a locally promoted model for publication or transfer.",
     )
-    export_parser.add_argument("name", help="Public promoted-model name.")
+    export_parser.add_argument("name", help="Public promoted-model name or partial name.")
     export_parser.add_argument(
         "--output",
         help=(
