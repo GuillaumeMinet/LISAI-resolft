@@ -11,7 +11,9 @@ from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.config.models.inference import (
     ApplyDefaults,
     ApplyOutputMode,
+    ApplyOverrides,
     EvaluateDefaults,
+    EvaluateOverrides,
     InferenceOverrides,
     ResolvedInferenceConfig,
     SaveInputMode,
@@ -108,10 +110,10 @@ def _merge_section_config(
 def _validate_resolved_section(
     section: Literal["apply", "evaluate"],
     value: dict[str, Any],
-) -> dict[str, Any]:
+) -> ApplyDefaults | EvaluateDefaults:
     if section == "apply":
-        return ApplyDefaults.model_validate(value).model_dump()
-    return EvaluateDefaults.model_validate(value).model_dump()
+        return ApplyDefaults.model_validate(value)
+    return EvaluateDefaults.model_validate(value)
 
 
 def _load_local_defaults_section(section: Literal["apply", "evaluate"]) -> dict[str, Any] | None:
@@ -136,12 +138,12 @@ def _resolve_section_nested(
     section: Literal["apply", "evaluate"],
     *,
     config: str | Path | None = None,
-) -> dict[str, Any]:
-    # Precedence is intentionally one-way:
+) -> ApplyDefaults | EvaluateDefaults:
+    # Base config precedence is intentionally one-way:
     # canonical typed defaults < local/defaults.yml < built-in preset (if any)
-    # < selected config < CLI.
-    # A selected config may therefore stay sparse; local defaults only fill
-    # values that it does not explicitly provide.
+    # < selected config. Typed invocation overrides are layered by the public
+    # section resolvers below. A selected config may therefore stay sparse;
+    # local defaults only fill values that it does not explicitly provide.
     resolved_section = deepcopy(ResolvedInferenceConfig().model_dump()[section])
 
     local_defaults = _load_local_defaults_section(section)
@@ -177,13 +179,15 @@ def _resolve_section_nested(
     return _validate_resolved_section(section, resolved_section)
 
 
-def _flatten_apply_section(section: dict[str, Any]) -> dict[str, Any]:
-    checkpoint = section["checkpoint"]
-    input_cfg = section["input"]
-    inference = section["inference"]
-    postprocess = section["postprocess"]
+def _flatten_apply_section(section: ApplyDefaults) -> dict[str, Any]:
+    """Temporary adapter for the pre-refactor flat apply runtime."""
+    section_dict = section.model_dump()
+    checkpoint = section_dict["checkpoint"]
+    input_cfg = section_dict["input"]
+    inference = section_dict["inference"]
+    postprocess = section_dict["postprocess"]
     color_code = dict(postprocess["color_code"])
-    saving = section["saving"]
+    saving = section_dict["saving"]
 
     enabled = color_code.pop("enabled")
     return {
@@ -208,17 +212,19 @@ def _flatten_apply_section(section: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _flatten_evaluate_section(section: dict[str, Any]) -> dict[str, Any]:
-    checkpoint = section["checkpoint"]
-    data = section["data"]
-    inference = section["inference"]
-    saving = section["saving"]
+def _flatten_evaluate_section(section: EvaluateDefaults) -> dict[str, Any]:
+    """Temporary adapter for the pre-refactor flat evaluate runtime."""
+    section_dict = section.model_dump()
+    checkpoint = section_dict["checkpoint"]
+    data = section_dict["data"]
+    inference = section_dict["inference"]
+    saving = section_dict["saving"]
     return {
         "best_or_last": checkpoint["best_or_last"],
         "epoch_number": checkpoint["epoch_number"],
         "tiling_size": inference["tiling_size"],
         "crop_size": inference["crop_size"],
-        "metrics_list": section["metrics"],
+        "metrics_list": section_dict["metrics"],
         "lvae_num_samples": inference["lvae_num_samples"],
         "results": None,
         "save_folder": saving["save_folder"],
@@ -232,6 +238,30 @@ def _flatten_evaluate_section(section: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def resolve_apply_config(
+    *,
+    config: str | Path | None = None,
+    overrides: ApplyOverrides | None = None,
+) -> ApplyDefaults:
+    """Resolve one apply invocation to the canonical typed nested config."""
+    resolved = _resolve_section_nested("apply", config=config)
+    if not isinstance(resolved, ApplyDefaults):
+        raise TypeError("Internal error: apply resolution did not produce ApplyDefaults.")
+
+    if overrides is None:
+        return resolved
+
+    override_values = overrides.model_dump(exclude_unset=True)
+    if not override_values:
+        return resolved
+
+    merged = _merge_section_config("apply", resolved.model_dump(), override_values)
+    validated = _validate_resolved_section("apply", merged)
+    if not isinstance(validated, ApplyDefaults):
+        raise TypeError("Internal error: apply overrides did not produce ApplyDefaults.")
+    return validated
+
+
 def resolve_apply_options(
     *,
     defaults: ResolvedInferenceConfig | None = None,
@@ -239,16 +269,17 @@ def resolve_apply_options(
     config: str | Path | None = None,
     **overrides: Any,
 ) -> dict[str, Any]:
+    """Temporary flat adapter kept until the apply runtime is converted to typed config."""
     if defaults is not None or defaults_path is not None:
         loaded_defaults = load_inference_defaults(defaults_path) if defaults is None else defaults
-        section_defaults = _flatten_apply_section(loaded_defaults.apply.model_dump())
+        section_defaults = _flatten_apply_section(loaded_defaults.apply)
     else:
-        section_defaults = _flatten_apply_section(_resolve_section_nested("apply", config=config))
+        section_defaults = _flatten_apply_section(resolve_apply_config(config=config))
     return _resolve_task_options(section_defaults, overrides)
 
 
 def _resolved_apply_saving(config: str | Path | None) -> dict[str, Any]:
-    return _resolve_section_nested("apply", config=config)["saving"]
+    return resolve_apply_config(config=config).saving.model_dump()
 
 
 def resolve_apply_output_policy(
@@ -321,6 +352,30 @@ def resolve_apply_save_input(
     raise ValueError(f"Unknown save_input_mode: {save_input_mode!r}")
 
 
+def resolve_evaluate_config(
+    *,
+    config: str | Path | None = None,
+    overrides: EvaluateOverrides | None = None,
+) -> EvaluateDefaults:
+    """Resolve one evaluate invocation to the canonical typed nested config."""
+    resolved = _resolve_section_nested("evaluate", config=config)
+    if not isinstance(resolved, EvaluateDefaults):
+        raise TypeError("Internal error: evaluate resolution did not produce EvaluateDefaults.")
+
+    if overrides is None:
+        return resolved
+
+    override_values = overrides.model_dump(exclude_unset=True)
+    if not override_values:
+        return resolved
+
+    merged = _merge_section_config("evaluate", resolved.model_dump(), override_values)
+    validated = _validate_resolved_section("evaluate", merged)
+    if not isinstance(validated, EvaluateDefaults):
+        raise TypeError("Internal error: evaluate overrides did not produce EvaluateDefaults.")
+    return validated
+
+
 def resolve_evaluate_options(
     *,
     defaults: ResolvedInferenceConfig | None = None,
@@ -328,11 +383,12 @@ def resolve_evaluate_options(
     config: str | Path | None = None,
     **overrides: Any,
 ) -> dict[str, Any]:
+    """Temporary flat adapter kept until the evaluate runtime is converted to typed config."""
     if defaults is not None or defaults_path is not None:
         loaded_defaults = load_inference_defaults(defaults_path) if defaults is None else defaults
-        section_defaults = _flatten_evaluate_section(loaded_defaults.evaluate.model_dump())
+        section_defaults = _flatten_evaluate_section(loaded_defaults.evaluate)
     else:
-        section_defaults = _flatten_evaluate_section(_resolve_section_nested("evaluate", config=config))
+        section_defaults = _flatten_evaluate_section(resolve_evaluate_config(config=config))
     return _resolve_task_options(section_defaults, overrides)
 
 
@@ -360,9 +416,11 @@ __all__ = [
     "InferenceDefaults",
     "load_inference_config",
     "load_inference_defaults",
+    "resolve_apply_config",
     "resolve_apply_options",
     "resolve_apply_output_policy",
     "resolve_apply_save_input",
+    "resolve_evaluate_config",
     "resolve_evaluate_options",
     "resolve_inference_config_path",
 ]

@@ -8,9 +8,19 @@ import pytest
 import lisai.evaluation.defaults as defaults_mod
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.config.io.yaml import save_yaml
+from lisai.config.models.inference import (
+    ApplyDefaults,
+    ApplyInferenceOverrides,
+    ApplyOverrides,
+    EvaluateDefaults,
+    EvaluateInferenceOverrides,
+    EvaluateOverrides,
+)
 from lisai.evaluation.defaults import (
+    resolve_apply_config,
     resolve_apply_options,
     resolve_apply_save_input,
+    resolve_evaluate_config,
     resolve_evaluate_options,
     resolve_inference_config_path,
 )
@@ -78,7 +88,6 @@ def _complete_apply_config(*, tiling_size=512, crop_size=128, saving=None) -> di
     return {"apply": apply}
 
 
-
 def test_resolve_inference_config_path_defaults_to_local_defaults(inference_config_dir: Path):
     defaults_path = _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
 
@@ -129,6 +138,49 @@ apply:
     assert resolved["fill_factor"] == pytest.approx(0.75)
     assert resolved["denormalize_output"] is False
     assert resolved["color_code_prm"]["colormap"] == "turbo"
+
+
+def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: Path):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
+    )
+    _write(
+        inference_config_dir / "examples" / "hdn_sup.yml",
+        "apply:\n  inference:\n    lvae_num_samples: 10\n",
+    )
+
+    resolved = resolve_apply_config(
+        config="examples/hdn_sup",
+        overrides=ApplyOverrides(
+            inference=ApplyInferenceOverrides(tiling_size=512),
+        ),
+    )
+
+    assert isinstance(resolved, ApplyDefaults)
+    assert resolved.inference.tiling_size == 512
+    assert resolved.inference.lvae_num_samples == 10
+    assert resolved.postprocess.denormalize is True
+
+
+def test_resolve_evaluate_config_returns_typed_nested_config(inference_config_dir: Path):
+    _write_local_defaults(
+        inference_config_dir,
+        "evaluate:\n  inference:\n    tiling_size: 256\n",
+    )
+
+    resolved = resolve_evaluate_config(
+        config="post_training",
+        overrides=EvaluateOverrides(
+            inference=EvaluateInferenceOverrides(tiling_size="off"),
+        ),
+    )
+
+    assert isinstance(resolved, EvaluateDefaults)
+    assert resolved.inference.tiling_size == "off"
+    assert resolved.checkpoint.best_or_last == "both"
+    assert resolved.metrics == ["psnr", "ssim"]
+    assert resolved.saving.overwrite is True
 
 
 def test_local_defaults_accept_legacy_flat_layout(inference_config_dir: Path):

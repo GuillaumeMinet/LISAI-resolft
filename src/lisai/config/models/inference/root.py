@@ -9,8 +9,8 @@ class ResolvedInferenceConfig(BaseModel):
     """Fully resolved inference settings used at runtime.
 
     This object defines the canonical LISAI inference defaults in the same
-    nested layout used by inference YAML files. Runtime apply/evaluate options
-    are flattened by the inference resolver.
+    nested layout used by inference YAML files. Apply/evaluate runtime code is
+    expected to consume these typed nested sections directly.
     """
 
     model_config = ConfigDict(extra="forbid")
