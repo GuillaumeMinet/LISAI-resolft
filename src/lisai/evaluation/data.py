@@ -304,7 +304,7 @@ def resolve_evaluation_dataset(
     saved_run: SavedTrainingRun,
     dataset_name: str,
     *,
-    data_prm_update: Mapping[str, Any] | None = None,
+    data_overrides: Mapping[str, Any] | None = None,
 ) -> EvaluationDatasetSpec:
     """Resolve one registered evaluation-only dataset for whole-dataset evaluation."""
     paths = Paths(settings)
@@ -318,8 +318,8 @@ def resolve_evaluation_dataset(
         )
 
     requested_data_type = None
-    if isinstance(data_prm_update, Mapping) and data_prm_update.get("data_type") is not None:
-        requested_data_type = str(data_prm_update["data_type"])
+    if isinstance(data_overrides, Mapping) and data_overrides.get("data_type") is not None:
+        requested_data_type = str(data_overrides["data_type"])
     data_type = _resolve_evaluation_data_type(
         saved_run=saved_run,
         dataset_info=dataset_info,
@@ -327,8 +327,8 @@ def resolve_evaluation_dataset(
     )
     defaults = registry_mapping_for_data_type(dataset_info, "defaults", data_type) or {}
     input_name = defaults.get("input")
-    if isinstance(data_prm_update, Mapping) and data_prm_update.get("input") is not None:
-        input_name = data_prm_update["input"]
+    if isinstance(data_overrides, Mapping) and data_overrides.get("input") is not None:
+        input_name = data_overrides["input"]
     if input_name is None:
         raise ValueError(
             f"Evaluation dataset {dataset_name!r} has no default input for data type {data_type!r}. "
@@ -640,7 +640,7 @@ def build_eval_source(
     split: str = "test",
     crop_size: int | tuple[int, int] | None = None,
     eval_gt=None,
-    data_prm_update: Mapping[str, Any] | None = None,
+    data_overrides: Mapping[str, Any] | None = None,
     evaluation_dataset: EvaluationDatasetSpec | None = None,
 ):
     """Build the evaluation sample source for a saved model and resolved dataset source."""
@@ -665,8 +665,8 @@ def build_eval_source(
     if crop_size is not None:
         data_cfg["initial_crop"] = crop_size
 
-    if data_prm_update is not None:
-        data_cfg = deep_merge(data_cfg, dict(data_prm_update))
+    if data_overrides is not None:
+        data_cfg = deep_merge(data_cfg, dict(data_overrides))
 
     if evaluation_dataset is not None:
         if eval_gt == EVAL_GT_TRAINING:
@@ -707,7 +707,7 @@ def build_eval_source(
     if data_dir is None:
         raise ValueError(
             "Could not resolve `data_dir` for evaluation. "
-            "Provide it through `data_prm_update={'data_dir': '...path...'}`."
+            "Provide it through `data_overrides={'data_dir': '...path...'}`."
         )
 
     resolved_split = None if evaluation_dataset is not None else split

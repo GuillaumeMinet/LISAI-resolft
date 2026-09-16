@@ -217,7 +217,7 @@ def _run_single_evaluation(
         split=cfg.data.split,
         crop_size=cfg.inference.crop_size,
         eval_gt=cfg.data.eval_gt,
-        data_prm_update=data_overrides,
+        data_overrides=data_overrides,
         evaluation_dataset=evaluation_dataset,
     )
     print(f"Evaluation GT: {_format_eval_gt_for_display(sample_source.config.target)}")
@@ -351,7 +351,7 @@ def run_evaluate(
         evaluation_dataset = resolve_evaluation_dataset(
             saved_run,
             evaluation_dataset_name,
-            data_prm_update=cfg.data.overrides,
+            data_overrides=cfg.data.overrides,
         )
         print(f"Evaluation dataset: {evaluation_dataset.name} (all data)")
 

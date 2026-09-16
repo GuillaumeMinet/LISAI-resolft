@@ -27,14 +27,6 @@ InferenceConfig = InferenceOverrides
 InferenceDefaults = ResolvedInferenceConfig
 
 
-class UnsetType:
-    def __repr__(self) -> str:
-        return "UNSET"
-
-
-UNSET = UnsetType()
-
-
 @dataclass(frozen=True)
 class ApplyOutputPolicy:
     """Resolved destination policy for one `apply` invocation."""
@@ -54,21 +46,6 @@ def load_inference_config(
     if cfg_path is None:
         return InferenceOverrides(), None
     return InferenceOverrides.model_validate(load_yaml(cfg_path)), cfg_path
-
-
-def _merge_value(default: Any, override: Any) -> Any:
-    if override is UNSET:
-        return deepcopy(default)
-    if isinstance(default, Mapping) and isinstance(override, Mapping):
-        return deep_merge(dict(default), dict(override))
-    return override
-
-
-def _resolve_task_options(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
-    unknown = sorted(set(overrides) - set(defaults))
-    if unknown:
-        raise KeyError(f"Unknown inference default override(s): {', '.join(unknown)}")
-    return {key: _merge_value(default, overrides.get(key, UNSET)) for key, default in defaults.items()}
 
 
 def _section_overrides(
@@ -295,8 +272,6 @@ def load_inference_defaults(path: str | Path | None = None) -> ResolvedInference
 
 
 __all__ = [
-    "UNSET",
-    "UnsetType",
     "ApplyOutputPolicy",
     "InferenceConfig",
     "InferenceDefaults",

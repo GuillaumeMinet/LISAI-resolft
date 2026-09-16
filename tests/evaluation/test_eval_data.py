@@ -136,7 +136,7 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
         split='val',
         crop_size=32,
         eval_gt='gt_folder',
-        data_prm_update={'subfolder': 'override_subfolder'},
+        data_overrides={'subfolder': 'override_subfolder'},
     )
 
     assert isinstance(source, data_mod.EvalSampleSource)
@@ -375,7 +375,7 @@ def test_build_eval_source_streams_mixed_size_inputs(monkeypatch, tmp_path: Path
     source = data_mod.build_eval_source(
         saved_run,
         split='test',
-        data_prm_update={'data_dir': str(data_dir)},
+        data_overrides={'data_dir': str(data_dir)},
     )
 
     shapes = []
@@ -418,7 +418,7 @@ def test_build_eval_source_uses_split_manifest(monkeypatch, tmp_path: Path):
     source = data_mod.build_eval_source(
         saved_run,
         split='test',
-        data_prm_update={'data_dir': str(data_dir)},
+        data_overrides={'data_dir': str(data_dir)},
     )
 
     assert len(source.items) == 1
@@ -450,7 +450,7 @@ def test_eval_source_keeps_timelapse_item_and_time_indices(monkeypatch, tmp_path
     source = data_mod.build_eval_source(
         saved_run,
         split='test',
-        data_prm_update={'data_dir': str(data_dir)},
+        data_overrides={'data_dir': str(data_dir)},
     )
 
     assert len(source.items) == 1

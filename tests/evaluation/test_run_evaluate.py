@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,26 @@ from lisai.evaluation.run_evaluate import (
 )
 
 run_evaluate_mod = importlib.import_module("lisai.evaluation.run_evaluate")
+
+
+def test_run_evaluate_has_typed_config_runtime_boundary():
+    signature = inspect.signature(run_evaluate_mod.run_evaluate)
+
+    assert list(signature.parameters)[0] == "cfg"
+    assert signature.parameters["cfg"].annotation is EvaluateDefaults
+    flat_runtime_fields = {
+        "tiling_size",
+        "crop_size",
+        "lvae_num_samples",
+        "metrics_list",
+        "split",
+        "eval_gt",
+        "data_prm_update",
+        "limit_n_imgs",
+        "save_folder",
+        "overwrite",
+    }
+    assert flat_runtime_fields.isdisjoint(signature.parameters)
 
 
 class EmptySampleSource:

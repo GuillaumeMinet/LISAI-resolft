@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -11,6 +12,25 @@ from lisai.config.models.inference import ApplyDefaults
 from lisai.infra.fs import OutputFolderResolution
 
 apply_mod = importlib.import_module("lisai.evaluation.run_apply_model")
+
+
+def test_run_apply_model_has_typed_config_runtime_boundary():
+    signature = inspect.signature(apply_mod.run_apply_model)
+
+    assert list(signature.parameters)[0] == "cfg"
+    assert signature.parameters["cfg"].annotation is ApplyDefaults
+    flat_runtime_fields = {
+        "tiling_size",
+        "crop_size",
+        "lvae_num_samples",
+        "downsamp",
+        "fill_factor",
+        "filters",
+        "limit_n_imgs",
+        "save_input",
+        "output_mode",
+    }
+    assert flat_runtime_fields.isdisjoint(signature.parameters)
 
 
 def _base_apply_config(
