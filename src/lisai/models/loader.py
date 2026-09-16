@@ -165,7 +165,7 @@ def prepare_model_for_training(
     state = None
     if should_load:
         origin_ckpt = _origin_checkpoint_path(spec)
-        loaded = torch.load(origin_ckpt, map_location=device)
+        loaded = torch.load(origin_ckpt, map_location=device, weights_only=True)
 
         if isinstance(loaded, dict) and "model_state_dict" in loaded:
             model.load_state_dict(loaded["model_state_dict"])

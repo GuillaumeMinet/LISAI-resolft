@@ -158,7 +158,7 @@ def _load_state_dict_model(
         img_shape=_compute_img_shape(saved_run.patch_size, saved_run.downsamp_factor),
     )
 
-    loaded = torch.load(checkpoint_path, map_location=device)
+    loaded = torch.load(checkpoint_path, map_location=device, weights_only=True)
     resolved_epoch = _epoch_from_checkpoint_path(checkpoint_path)
     if isinstance(loaded, dict):
         epoch = loaded.get("epoch")
