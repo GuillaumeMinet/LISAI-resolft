@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=../../schema/inference.schema.json
+apply:
+  inference:
+    tiling_size: off
+    dark_frame_context_length: true
+  postprocess:
+    color_code:
+      enabled: true

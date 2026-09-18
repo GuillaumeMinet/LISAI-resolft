@@ -175,6 +175,7 @@ def test_run_single_evaluation_reports_effective_auto_tiling_size(monkeypatch, t
 
     assert captured["tiling_size"] == "auto"
     assert "Tiling size: 300 (auto)" in capsys.readouterr().out
+    assert (tmp_path / "eval" / "outputs_manifest.yaml").is_file()
 
 
 def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(monkeypatch, tmp_path: Path):
@@ -286,3 +287,40 @@ def test_evaluation_metadata_records_independent_dataset_and_checkpoint(tmp_path
     assert metadata['dataset']['eval_gt'] == 'gt'
     assert metadata['evaluation']['metrics'] == ['psnr', 'ssim']
     assert metadata['evaluation']['tiling_size'] == {'requested': 'auto', 'effective': 300}
+
+
+def test_evaluation_metadata_records_training_registry_data_type(tmp_path: Path):
+    saved_run = SimpleNamespace(
+        run_dir=tmp_path / 'run',
+        experiment_name='model_a_00',
+        dataset_name='training_dataset',
+    )
+    runtime = SimpleNamespace(
+        resolved_epoch=42,
+        load_method='state_dict',
+        checkpoint_path=tmp_path / 'run' / 'model_epoch_42.pth',
+        tiling_size=300,
+    )
+    sample_source = SimpleNamespace(
+        config=SimpleNamespace(
+            data_dir=tmp_path / 'training_dataset' / 'preprocess' / 'recon',
+            input='inp_mltpl_snr',
+            target='gt_avg',
+            resolved_data_format='mltpl_snr',
+            registry_data_type='recon',
+        )
+    )
+    cfg = EvaluateDefaults.model_validate({'data': {'split': 'test'}})
+
+    metadata = _evaluation_metadata(
+        saved_run=saved_run,
+        runtime=runtime,
+        sample_source=sample_source,
+        cfg=cfg,
+        evaluation_dataset=None,
+    )
+
+    assert metadata['dataset']['name'] == 'training_dataset'
+    assert metadata['dataset']['usage'] == 'training'
+    assert metadata['dataset']['data_type'] == 'recon'
+    assert metadata['dataset']['split'] == 'test'

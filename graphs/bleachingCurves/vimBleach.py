@@ -18,11 +18,12 @@ colors=["#e6a5f1ff","#df79f1ff","#e026ecff","#ad10b8ff"]
 labels_list = ["20%","35%","60%","85%"]
 
 # saving parameters
-save_figure = True
+show_figure = True
+save_figure = False
 save_folder = os.path.join(os.getcwd(), r"src/graphs/saved_graphs")
 save_title = "BleachingCurvesVimentin.svg"
 
-save_legend = True
+save_legend = False
 legend_save_title = f"{save_title}_legend.svg"
 
 
@@ -125,6 +126,8 @@ plt.gca().spines['left'].set_linewidth(0.5)
 plt.gca().spines['bottom'].set_linewidth(0.5)
 
 
+if show_figure:
+    plt.show()
 # Saving
 if save_figure:
     fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')

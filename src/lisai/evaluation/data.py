@@ -10,10 +10,11 @@ from __future__ import annotations
 import glob
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Iterator, Literal, Mapping, Sequence
 
 import numpy as np
 import torch
+from tifffile import TiffFile
 from lisai.config import settings
 from lisai.config.io import deep_merge
 from lisai.config.models.training import DataSection
@@ -34,6 +35,10 @@ from .saved_run import SavedTrainingRun
 
 EVAL_GT_NONE = "@none"
 EVAL_GT_TRAINING = "@training"
+
+UNKNOWN_SOURCE_INDICES = "unknown"
+SourceAxis = Literal["time", "snr"]
+SourceIndices = tuple[int, ...] | Literal["unknown"]
 
 
 @dataclass(frozen=True)
@@ -77,6 +82,20 @@ class EvalItem:
     data_format: str
     sample_count: int
     time_indices: tuple[int | None, ...]
+    input_id: str | None = None
+    gt_id: str | None = None
+    source_axis: SourceAxis | None = None
+    source_indices: SourceIndices | None = None
+
+    def __post_init__(self) -> None:
+        if len(self.time_indices) != self.sample_count:
+            raise ValueError("`time_indices` length must match `sample_count`.")
+        if self.source_axis is None and self.source_indices is not None:
+            raise ValueError("`source_indices` requires a `source_axis`.")
+        if self.source_axis is not None and self.source_indices is None:
+            raise ValueError("`source_axis` requires `source_indices`.")
+        if isinstance(self.source_indices, tuple) and len(self.source_indices) != self.sample_count:
+            raise ValueError("Known `source_indices` length must match `sample_count`.")
 
     def __len__(self) -> int:
         """Return the number of model calls represented by this item."""
@@ -122,6 +141,20 @@ class EvalItem:
     def sample_time_index(self, sample_index: int) -> int | None:
         """Return the original timelapse index for a sample when available."""
         return self.time_indices[sample_index]
+
+    def sample_source_index(self, sample_index: int) -> int | None:
+        """Return the original source-axis index when it is known."""
+        if self.source_indices in (None, UNKNOWN_SOURCE_INDICES):
+            return None
+        return self.source_indices[sample_index]
+
+    def persisted_source_indices(self, sample_indices: Sequence[int]) -> SourceIndices | None:
+        """Return provenance for the exact samples persisted by an output writer."""
+        if self.source_indices is None:
+            return None
+        if self.source_indices == UNKNOWN_SOURCE_INDICES:
+            return UNKNOWN_SOURCE_INDICES
+        return tuple(self.source_indices[index] for index in sample_indices)
 
     def sample_name(self, sample_index: int) -> str:
         """Return the output/metrics name for one selected sample."""
@@ -213,6 +246,12 @@ class EvalSampleSource:
             if sample_count == 0:
                 continue
             data_format = config.resolved_data_format
+            source_axis, source_indices = _source_provenance_for_item(
+                inp_path=inp_path,
+                data_format=data_format,
+                sample_count=sample_count,
+                config=config,
+            )
             items.append(
                 EvalItem(
                     name=inp_path.stem,
@@ -222,11 +261,15 @@ class EvalSampleSource:
                     file_index=index,
                     data_format=data_format,
                     sample_count=sample_count,
-                    time_indices=_time_indices_for_item(
-                        data_format=data_format,
+                    time_indices=_time_indices_from_source_provenance(
+                        source_axis=source_axis,
+                        source_indices=source_indices,
                         sample_count=sample_count,
-                        config=config,
                     ),
+                    input_id=_source_id(inp_path, data_dir=config.data_dir),
+                    gt_id=_source_id(gt_path, data_dir=config.data_dir) if gt_path is not None else None,
+                    source_axis=source_axis,
+                    source_indices=source_indices,
                 )
             )
         return tuple(items)
@@ -621,17 +664,91 @@ def _count_eval_samples(*, inp_path: Path, gt_path: Path | None, config: DataSec
     return inp_img.shape[0]
 
 
-def _time_indices_for_item(*, data_format: str, sample_count: int, config: DataSection) -> tuple[int | None, ...]:
-    """Map prepared sample indices back to original timelapse indices."""
-    if data_format != "timelapse":
+def _source_id(path: Path, *, data_dir: Path | None) -> str:
+    """Return a stable source identity relative to the evaluation dataset root when possible."""
+    path = Path(path)
+    if data_dir is not None:
+        data_dir = Path(data_dir)
+        try:
+            return path.relative_to(data_dir).as_posix()
+        except ValueError:
+            try:
+                return path.resolve().relative_to(data_dir.resolve()).as_posix()
+            except (ValueError, OSError):
+                pass
+    return path.as_posix()
+
+
+def _source_axis_length(path: Path) -> int:
+    """Read the first TIFF series-axis length without loading the full image stack."""
+    with TiffFile(path) as tif:
+        shape = tif.series[0].shape
+    if not shape:
+        raise ValueError(f"Could not determine image shape for {path}.")
+    return int(shape[0])
+
+
+def _source_provenance_for_item(
+    *,
+    inp_path: Path,
+    data_format: str,
+    sample_count: int,
+    config: DataSection,
+) -> tuple[SourceAxis | None, SourceIndices | None]:
+    """Describe which original source-axis positions produced the model calls for an item."""
+    if data_format == "timelapse":
+        timelapse_prm = config.timelapse_prm
+        if timelapse_prm is None:
+            # Without timelapse parameters the whole stack is one model input, not one
+            # model call per original timepoint.
+            return None, None
+
+        source_frame_count = _source_axis_length(inp_path)
+        max_frames = timelapse_prm.timelapse_max_frames
+        shuffled_subset = (
+            max_frames is not None
+            and source_frame_count > max_frames
+            and timelapse_prm.shuffle
+        )
+        if shuffled_subset:
+            return "time", UNKNOWN_SOURCE_INDICES
+
+        if timelapse_prm.context_length is None:
+            indices = tuple(range(sample_count))
+        else:
+            side_frames = timelapse_prm.context_length // 2
+            indices = tuple(range(side_frames, side_frames + sample_count))
+        return "time", indices
+
+    if data_format == "mltpl_snr":
+        mltpl_snr_prm = config.mltpl_snr_prm
+        if mltpl_snr_prm is None or mltpl_snr_prm.snr_idx is None:
+            # The whole SNR stack is then passed as one model input, so there is no
+            # one-to-one source-axis index to attach to that model call.
+            return None, None
+
+        snr_idx = mltpl_snr_prm.snr_idx
+        if snr_idx == "random":
+            return "snr", UNKNOWN_SOURCE_INDICES
+        if snr_idx == "last":
+            return "snr", (_source_axis_length(inp_path) - 1,)
+        if isinstance(snr_idx, int):
+            return "snr", (snr_idx,)
+        return "snr", tuple(snr_idx)
+
+    return None, None
+
+
+def _time_indices_from_source_provenance(
+    *,
+    source_axis: SourceAxis | None,
+    source_indices: SourceIndices | None,
+    sample_count: int,
+) -> tuple[int | None, ...]:
+    """Keep the legacy time-index view without inventing indices when provenance is unknown."""
+    if source_axis != "time" or source_indices in (None, UNKNOWN_SOURCE_INDICES):
         return (None,) * sample_count
-
-    timelapse_prm = config.timelapse_prm
-    if timelapse_prm is None or timelapse_prm.context_length is None:
-        return tuple(range(sample_count))
-
-    side_frames = timelapse_prm.context_length // 2
-    return tuple(range(side_frames, side_frames + sample_count))
+    return tuple(source_indices)
 
 
 def build_eval_source(

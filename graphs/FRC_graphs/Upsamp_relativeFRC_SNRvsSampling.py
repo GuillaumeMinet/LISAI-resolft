@@ -28,7 +28,7 @@ sampling_ratios = [0.25, 0.5, 0.75]
 
 
 # saving parameters
-save_figure = True
+save_figure = False
 save_folder = os.path.join(os.getcwd(), r"src/graphs/saved_graphs")
 save_title = "Upsamp_FRC_vsSNRandSampling.svg"
 
@@ -101,7 +101,7 @@ for ax in axs:
     ax.spines['left'].set_linewidth(0.7)
     ax.spines['bottom'].set_linewidth(0.7)
 
-# plt.show()
+plt.show()
 
 
 # Saving

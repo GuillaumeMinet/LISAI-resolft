@@ -15,11 +15,13 @@ from .listing import (
     filter_runs,
     has_path_inconsistencies,
     render_runs_table,
+    render_external_runs_table,
     write_invalid_run_warnings,
 )
 from .plotting import show_loss_plot_for_run
 from .scanner import DiscoveredRun, InvalidRunMetadata, ScanResults, scan_runs
 from .schema import RUN_STATUSES
+from .external import filter_external_runs, scan_external_runs
 from .selection import resolve_discovered_run_selector
 
 _LIVE_INTERVAL_MIN_SECONDS = 1.0
@@ -33,6 +35,7 @@ def list_runs(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     status: str | None = None,
+    kind: Sequence[str] | None = None,
     promoted: bool = False,
     kept: bool = False,
     full: bool = False,
@@ -66,12 +69,18 @@ def list_runs(
         live = False
 
     initial_scan: ScanResults | None = None
+    initial_external_scan = None
     resolved_dataset = dataset
     if dataset is not None:
         initial_scan = scan_runs()
+        initial_external_scan = scan_external_runs()
+        selected_kinds = set(kind or ("lisai", "external"))
+        dataset_names = [run.dataset for run in initial_scan.runs] if "lisai" in selected_kinds else []
+        if "external" in selected_kinds:
+            dataset_names.extend(run.dataset for run in initial_external_scan.runs)
         resolved_dataset = resolve_partial_name(
             dataset,
-            (run.dataset for run in initial_scan.runs),
+            dataset_names,
             entity_name="dataset",
             stdin=in_stream,
             stdout=out,
@@ -93,6 +102,7 @@ def list_runs(
                     dataset=resolved_dataset,
                     model_subfolder=model_subfolder,
                     status=status,
+                    kind=kind,
                     promoted=promoted,
                     kept=kept,
                     full=full,
@@ -104,8 +114,10 @@ def list_runs(
                     emitted_invalid_keys=emitted_invalid_keys,
                     top_notice=interval_warning,
                     scan_result=initial_scan,
+                    external_scan_result=initial_external_scan,
                 )
                 initial_scan = None
+                initial_external_scan = None
                 time.sleep(resolved_interval_seconds)
         except KeyboardInterrupt:
             # Keep shell prompt on a clean line after Ctrl+C in live mode.
@@ -119,6 +131,7 @@ def list_runs(
         dataset=resolved_dataset,
         model_subfolder=model_subfolder,
         status=status,
+        kind=kind,
         promoted=promoted,
         kept=kept,
         full=full,
@@ -130,6 +143,7 @@ def list_runs(
         emitted_invalid_keys=None,
         top_notice=interval_warning,
         scan_result=initial_scan,
+        external_scan_result=initial_external_scan,
     )
     return 0
 
@@ -142,6 +156,7 @@ def _render_runs_snapshot(
     dataset: str | None,
     model_subfolder: str | None,
     status: str | None,
+    kind: Sequence[str] | None,
     promoted: bool,
     kept: bool,
     full: bool,
@@ -153,8 +168,10 @@ def _render_runs_snapshot(
     emitted_invalid_keys: set[tuple[str, str, str]] | None,
     top_notice: str | None,
     scan_result: ScanResults | None = None,
+    external_scan_result=None,
 ) -> None:
     resolved_scan = scan_runs() if scan_result is None else scan_result
+    resolved_external_scan = scan_external_runs() if external_scan_result is None else external_scan_result
     filtered_runs = filter_runs(
         resolved_scan.runs,
         run_id=run_id,
@@ -166,6 +183,18 @@ def _render_runs_snapshot(
         kept=True if kept else None,
     )
 
+    kinds = set(kind or ("lisai", "external"))
+    if "lisai" not in kinds:
+        filtered_runs = []
+    external_runs = filter_external_runs(
+        resolved_external_scan.runs,
+        dataset=dataset,
+        run_name=exp_name or run_dir_name,
+    )
+    # Filters tied to LISAI training metadata do not apply to imported external runs.
+    if "external" not in kinds or status is not None or promoted or kept or model_subfolder is not None or run_id is not None:
+        external_runs = []
+
     if promoted:
         from lisai.promoted_models.registry import promoted_source_run_ids
 
@@ -174,6 +203,7 @@ def _render_runs_snapshot(
 
     if recent is not None:
         filtered_runs = filtered_runs[:recent]
+        external_runs = external_runs[:recent]
 
     snapshot_lines: list[str] = []
     if top_notice is not None:
@@ -186,6 +216,7 @@ def _render_runs_snapshot(
             dataset=dataset,
             model_subfolder=model_subfolder,
             status=status,
+            kind=kind,
             promoted=promoted,
             kept=kept,
             recent=recent,
@@ -194,7 +225,7 @@ def _render_runs_snapshot(
         )
     )
 
-    body = "No runs found."
+    body = "No LISAI runs found." if external_runs else "No runs found."
     if filtered_runs:
         body = render_runs_table(filtered_runs, full=full)
         if has_path_inconsistencies(filtered_runs):
@@ -207,6 +238,13 @@ def _render_runs_snapshot(
             )
 
     snapshot_lines.append(body)
+    if external_runs:
+        snapshot_lines.extend([
+            "",
+            "Imported external runs",
+            "These runs were imported into LISAI; commands such as continue, evaluate, apply, etc. are not available.",
+            render_external_runs_table(external_runs),
+        ])
     snapshot = "\n".join(snapshot_lines)
 
     if live:
@@ -231,6 +269,7 @@ def _format_listing_title(
     dataset: str | None,
     model_subfolder: str | None,
     status: str | None,
+    kind: Sequence[str] | None,
     promoted: bool,
     kept: bool,
     recent: int | None = None,
@@ -244,6 +283,8 @@ def _format_listing_title(
         filter_parts.append(f"Subfolder: '{model_subfolder}'")
     if status:
         filter_parts.append(f"Status: '{status}'")
+    if kind:
+        filter_parts.append(f"Kind: {', '.join(kind)}")
     if promoted:
         filter_parts.append("Promoted only")
     if kept:
@@ -317,6 +358,7 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         dataset=args.dataset,
         model_subfolder=args.model_subfolder,
         status=args.status,
+        kind=args.kind,
         promoted=args.promoted,
         kept=args.kept,
         full=args.full,
@@ -338,7 +380,46 @@ def _resolve_run_from_args(args: argparse.Namespace) -> DiscoveredRun | None:
     )
 
 
+def _resolve_external_open_from_args(args: argparse.Namespace):
+    if args.run_id is not None:
+        return None
+    selector = (args.run or "").strip().casefold()
+    scan = scan_external_runs()
+    candidates = list(scan.runs)
+    if args.dataset:
+        dataset_query = args.dataset.strip().casefold()
+        dataset_names = sorted({run.dataset for run in candidates})
+        exact = [name for name in dataset_names if name.casefold() == dataset_query]
+        partial = [name for name in dataset_names if dataset_query in name.casefold()]
+        names = exact or partial
+        if len(names) == 1:
+            candidates = [run for run in candidates if run.dataset == names[0]]
+        elif not names:
+            candidates = []
+    if selector:
+        exact = [run for run in candidates if run.name.casefold() == selector]
+        candidates = exact or [run for run in candidates if selector in run.name.casefold()]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        names = ", ".join(f"{run.dataset}/{run.name}" for run in candidates)
+        print(f"External run selector is ambiguous: {names}", file=sys.stderr)
+    return None
+
+
 def run_open_from_args(args: argparse.Namespace) -> int:
+    selected_external = None
+    if getattr(args, "kind", None) != "lisai":
+        selected_external = _resolve_external_open_from_args(args)
+        if getattr(args, "kind", None) == "external" and selected_external is None:
+            return 1
+
+    if selected_external is not None:
+        if _try_open_path(selected_external.run_dir):
+            return 0
+        print(selected_external.run_dir)
+        return 0
+
     selected = _resolve_run_from_args(args)
     if selected is None:
         return 1
@@ -555,6 +636,12 @@ def add_run_filter_arguments(
 def _add_runs_list_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     add_run_filter_arguments(parser, include_status=True)
     parser.add_argument(
+        "--kind",
+        choices=["lisai", "external"],
+        action="append",
+        help="Filter by run kind. Repeat to include multiple kinds.",
+    )
+    parser.add_argument(
         "--promoted",
         action="store_true",
         help="Show only runs that are the source of a locally promoted model.",
@@ -619,6 +706,7 @@ def _add_runs_open_arguments(parser: argparse.ArgumentParser) -> argparse.Argume
         ),
     )
     parser.add_argument("--run-id", help="Stable run identifier to open.")
+    parser.add_argument("--kind", choices=["lisai", "external"], help="Restrict run selection to one run kind.")
     add_run_filter_arguments(parser, include_identity=False, include_status=False)
     parser.set_defaults(handler=run_open_from_args)
     return parser

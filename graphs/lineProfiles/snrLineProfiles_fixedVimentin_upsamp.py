@@ -163,11 +163,11 @@ plt.gca().spines['bottom'].set_linewidth(2)
 if show_final_boxplot:
     plt.show()
 
-# save box plot
-if save_plots:
-    fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')
-    try:
-        if save_path_bis is not None:
-            fig.savefig(save_path_bis)
-    except:
-        pass
+# # save box plot
+# if save_plots:
+#     fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')
+#     try:
+#         if save_path_bis is not None:
+#             fig.savefig(save_path_bis)
+#     except:
+#         pass

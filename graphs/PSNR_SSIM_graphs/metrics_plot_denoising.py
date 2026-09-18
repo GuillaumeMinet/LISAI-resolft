@@ -1,16 +1,22 @@
-import os, sys
-sys.path.append(os.getcwd())
-from lisai.graphs.utils.calculate_metrics import calculate_metrics
-from lisai.graphs.utils.boxplot import box_plot
 
 import numpy as np
 import matplotlib.pyplot as plt
 from tifffile import imread
-from matplotlib.lines import Line2D
+
+import sys
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = PROJECT_ROOT / "src"
+for path in (PROJECT_ROOT, SRC_ROOT):
+    if str(path) not in sys.path: sys.path.insert(0, str(path))
+
+
+from graphs.utils.boxplot import box_plot
+from graphs.utils.calculate_metrics import calculate_metrics
+
 # Folder containing the image stacks
-folder_path = Path(r'\\storage3.ad.scilifelab.se\testalab\Guillaume\01_Projects\DL_monalisa\_paper\Denoising_Technical\Model_comp')
+folder_path = Path(r"\\storage3.ad.scilifelab.se\testalab\Guillaume\01_Projects\DL_monalisa\_paper\Main_Panels_v1\Denoising_Technical\Model_comp")
 stack_name = "All_in_one.tif"
 nn_list = ["SN2N", "N2V", "HDN-unsup", "CARE", "UNet-RCAN", "HDN-sup"]
 labels_list = [
@@ -21,7 +27,7 @@ labels_list = [
     "UNetRCAN",
     "HDN$^{sup}$"
 ]
-pred_order = [6, 5, 2, 1, 3, 4]
+pred_order = [5, 6, 2, 1, 4, 3]
 
 # metrics calculation parameters
 smooth_gt = True
@@ -58,9 +64,9 @@ box_plot_parameters = {
 show_figure = True
 
 # saving parameters
-save_figure = True
-save_folder = os.path.join(os.getcwd(), r"src/graphs/saved_graphs")
-save_title = "Denoising_PSNR_SSIM_MSE_vs_DenoisingModel.svg"
+# save_figure = True
+# save_folder = os.path.join(os.getcwd(), r"src/graphs/saved_graphs")
+# save_title = "Denoising_PSNR_SSIM_MSE_vs_DenoisingModel.svg"
 
 # load images
 stack = imread(folder_path / stack_name)
@@ -111,6 +117,6 @@ for ax in axs:
 if show_figure:
     plt.show()
 
-# Saving
-if save_figure:
-    fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')
+# # Saving
+# if save_figure:
+#     fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')

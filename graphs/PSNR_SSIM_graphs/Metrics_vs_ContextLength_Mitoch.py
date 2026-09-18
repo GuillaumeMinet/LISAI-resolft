@@ -104,7 +104,6 @@ for folder_idx,cl in  enumerate(cl_list):
         ssim_values[cl].extend(ssim_val)
         mse_values[cl].extend(mse_val)
 
-exit()
 # do plots
 fig,axs = plt.subplots(1,2,figsize=figsize)
 fig.subplots_adjust(wspace=spaceBetweenSubplots)
@@ -129,6 +128,7 @@ for ax in axs:
 if show_figure:
     plt.show()  
 
+exit()
 # Saving
 if save_figure:
     fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')

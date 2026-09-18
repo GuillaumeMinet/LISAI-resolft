@@ -459,6 +459,9 @@ def test_eval_source_keeps_timelapse_item_and_time_indices(monkeypatch, tmp_path
     assert item.data_format == 'timelapse'
     assert item.sample_count == 3
     assert item.time_indices == (1, 2, 3)
+    assert item.source_axis == 'time'
+    assert item.source_indices == (1, 2, 3)
+    assert item.input_id == 'inp/test/stack_a.tif'
 
     indexed_samples = list(item.iter_samples(source.config))
     assert [sample_index for sample_index, _ in indexed_samples] == [0, 1, 2]
@@ -469,6 +472,164 @@ def test_eval_source_keeps_timelapse_item_and_time_indices(monkeypatch, tmp_path
         'stack_a_3',
     ]
     assert [tuple(sample.x.shape) for _, sample in indexed_samples] == [(3, 4, 5)] * 3
+
+
+def test_eval_source_marks_shuffled_timelapse_provenance_unknown(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(
+        data_cfg={
+            'data_format': 'timelapse',
+            'timelapse_prm': {
+                'context_length': 3,
+                'timelapse_max_frames': 5,
+                'shuffle': True,
+            },
+        }
+    )
+    data_dir = tmp_path / 'dataset'
+    inp_dir = data_dir / 'inp' / 'test'
+    inp_dir.mkdir(parents=True)
+    imwrite(inp_dir / 'stack_a.tif', np.ones((8, 4, 5), dtype=np.float32))
+
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'timelapse'},
+    )
+
+    source = data_mod.build_eval_source(
+        saved_run,
+        split='test',
+        data_overrides={'data_dir': str(data_dir)},
+    )
+
+    item = source.items[0]
+    assert item.sample_count == 3
+    assert item.source_axis == 'time'
+    assert item.source_indices == 'unknown'
+    assert item.time_indices == (None, None, None)
+
+
+def test_eval_source_keeps_time_provenance_when_shuffle_does_not_subsample(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(
+        data_cfg={
+            'data_format': 'timelapse',
+            'timelapse_prm': {
+                'context_length': 3,
+                'timelapse_max_frames': 10,
+                'shuffle': True,
+            },
+        }
+    )
+    data_dir = tmp_path / 'dataset'
+    inp_dir = data_dir / 'inp' / 'test'
+    inp_dir.mkdir(parents=True)
+    imwrite(inp_dir / 'stack_a.tif', np.ones((5, 4, 5), dtype=np.float32))
+
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'timelapse'},
+    )
+
+    source = data_mod.build_eval_source(
+        saved_run,
+        split='test',
+        data_overrides={'data_dir': str(data_dir)},
+    )
+
+    item = source.items[0]
+    assert item.source_axis == 'time'
+    assert item.source_indices == (1, 2, 3)
+    assert item.time_indices == (1, 2, 3)
+
+
+def test_eval_source_keeps_selected_snr_indices(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(
+        data_cfg={
+            'data_format': 'mltpl_snr',
+            'mltpl_snr_prm': {'snr_idx': [4, 1, 3]},
+        }
+    )
+    data_dir = tmp_path / 'dataset'
+    inp_dir = data_dir / 'inp' / 'test'
+    inp_dir.mkdir(parents=True)
+    imwrite(inp_dir / 'stack_a.tif', np.ones((5, 4, 5), dtype=np.float32))
+
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'mltpl_snr'},
+    )
+
+    source = data_mod.build_eval_source(
+        saved_run,
+        split='test',
+        data_overrides={'data_dir': str(data_dir)},
+    )
+
+    item = source.items[0]
+    assert item.sample_count == 3
+    assert item.source_axis == 'snr'
+    assert item.source_indices == (4, 1, 3)
+    assert item.time_indices == (None, None, None)
+
+
+def test_eval_source_resolves_last_snr_index(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(
+        data_cfg={
+            'data_format': 'mltpl_snr',
+            'mltpl_snr_prm': {'snr_idx': 'last'},
+        }
+    )
+    data_dir = tmp_path / 'dataset'
+    inp_dir = data_dir / 'inp' / 'test'
+    inp_dir.mkdir(parents=True)
+    imwrite(inp_dir / 'stack_a.tif', np.ones((5, 4, 5), dtype=np.float32))
+
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'mltpl_snr'},
+    )
+
+    source = data_mod.build_eval_source(
+        saved_run,
+        split='test',
+        data_overrides={'data_dir': str(data_dir)},
+    )
+
+    item = source.items[0]
+    assert item.source_axis == 'snr'
+    assert item.source_indices == (4,)
+
+
+def test_eval_source_marks_random_snr_provenance_unknown(monkeypatch, tmp_path: Path):
+    saved_run = _make_saved_run(
+        data_cfg={
+            'data_format': 'mltpl_snr',
+            'mltpl_snr_prm': {'snr_idx': 'random'},
+        }
+    )
+    data_dir = tmp_path / 'dataset'
+    inp_dir = data_dir / 'inp' / 'test'
+    inp_dir.mkdir(parents=True)
+    imwrite(inp_dir / 'stack_a.tif', np.ones((5, 4, 5), dtype=np.float32))
+
+    monkeypatch.setattr(
+        data_mod,
+        'load_dataset_info',
+        lambda path, dataset_name: {'data_format': 'mltpl_snr'},
+    )
+
+    source = data_mod.build_eval_source(
+        saved_run,
+        split='test',
+        data_overrides={'data_dir': str(data_dir)},
+    )
+
+    item = source.items[0]
+    assert item.source_axis == 'snr'
+    assert item.source_indices == 'unknown'
 
 
 def _write_evaluation_registry_entry(

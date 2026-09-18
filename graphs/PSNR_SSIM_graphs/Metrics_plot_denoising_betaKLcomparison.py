@@ -1,15 +1,22 @@
-import os, sys
-sys.path.append(os.getcwd())
-from lisai.graphs.utils.calculate_metrics import calculate_metrics
-from lisai.graphs.utils.boxplot import box_plot
+import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = PROJECT_ROOT / "src"
+for path in (PROJECT_ROOT, SRC_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+
+from graphs.utils.calculate_metrics import calculate_metrics
+from graphs.utils.boxplot import box_plot as new_box_plot
 
 import numpy as np
 import matplotlib.pyplot as plt
 from tifffile import imread
-from pathlib import Path
-from matplotlib.lines import Line2D
-from matplotlib.legend import Legend
 from scipy.ndimage import gaussian_filter
+from pathlib import Path
+
 
 
 full_dataset = True

@@ -21,7 +21,12 @@ from lisai.evaluation.data import (
 )
 from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.stack import infer_batch
-from lisai.evaluation.io import EvalItemOutputWriter, save_metrics_json
+from lisai.evaluation.io import (
+    EvalItemOutputWriter,
+    clear_outputs_manifest,
+    save_metrics_json,
+    save_outputs_manifest,
+)
 from lisai.evaluation.metrics import compute as metrics
 from lisai.evaluation.runtime import TilingSizePolicy, initialize_runtime
 from lisai.evaluation.saved_run import SavedTrainingRun, load_saved_run, resolve_run_dir
@@ -69,7 +74,7 @@ def _evaluation_metadata(
     if evaluation_dataset is None:
         dataset_name = saved_run.dataset_name
         dataset_usage = "training"
-        data_type = None
+        data_type = getattr(sample_source.config, "registry_data_type", None)
         split = cfg.data.split
     else:
         dataset_name = evaluation_dataset.name
@@ -195,6 +200,7 @@ def _run_single_evaluation(
 
     save_folder = resolution.path
     print(resolution.message())
+    clear_outputs_manifest(save_folder)
 
     if saved_run.is_lvae:
         assert cfg.inference.lvae_num_samples is not None, (
@@ -248,6 +254,7 @@ def _run_single_evaluation(
 
     n_processed = 0
     stop_eval = False
+    output_manifest_items: list[dict[str, Any]] = []
     for item_id, item in enumerate(sample_source.iter_items()):
         if item.data_format == "timelapse":
             n_timepoints = len(item)
@@ -320,12 +327,15 @@ def _run_single_evaluation(
                 stop_eval = True
                 break
 
-        writer.flush()
+        manifest_item = writer.flush()
+        if manifest_item is not None:
+            output_manifest_items.append(manifest_item)
         if stop_eval:
             break
 
     if cfg.metrics is not None and results is not None:
         save_metrics_json(save_folder, results)
+    save_outputs_manifest(save_folder, output_manifest_items)
 
 
 def run_evaluate(

@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -135,6 +135,20 @@ class Paths:
     def dataset_runs_dir_from_dataset_dir(self, dataset_dir: str | Path) -> Path:
         """ Returns saved runs directory for a given dataset path."""
         return Path(dataset_dir) / self.run_container_dirname()
+
+    def external_run_container_dirname(self) -> str:
+        """Return the folder name used for imported external runs."""
+        return "external_runs"
+
+    def dataset_external_runs_dir(self, *, dataset_name: str) -> Path:
+        """Return imported external runs directory for a training dataset."""
+        return self.dataset_dir(dataset_name=dataset_name, usage="training") / self.external_run_container_dirname()
+
+    def dataset_external_runs_dir_from_dataset_dir(self, dataset_dir: str | Path) -> Path:
+        return Path(dataset_dir) / self.external_run_container_dirname()
+
+    def external_run_dir(self, *, dataset_name: str, run_name: str) -> Path:
+        return self.dataset_external_runs_dir(dataset_name=dataset_name) / run_name
 
     def run_dir(self, *, dataset_name: str, models_subfolder: str, exp_name: str) -> Path:
         """Return a training run directory for a dataset, subfolder and experiment name."""

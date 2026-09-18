@@ -16,6 +16,10 @@ configs/inference/local/*
 !configs/training/examples/**
 !configs/training/presets/**
 
+# Ignore saved graphs
+graphs/saved_graphs/*
+graphs/saved_graphs/.gitkeep
+
 # internal lisai cache
 .lisai/
 

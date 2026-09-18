@@ -6,10 +6,11 @@ import os
 
 
 # File path
-file_path = r"\\storage3.ad.scilifelab.se\testalab\Guillaume\01_Projects\DL_monalisa\_paper\Supplementary\SNR_onSwitching_SNRs\monalisa1_onRamp.txt"
+file_path = r"\\storage3.ad.scilifelab.se\testalab\Guillaume\01_Projects\DL_monalisa\_paper\Supplementary\S7_SNR_onSwitching_SNRs\monalisa1_onRamp.txt"
 
 # saving parameters
-save_figure = True
+show_figure = True
+save_figure = False
 save_folder = os.path.join(os.getcwd(), r"src/graphs/saved_graphs")
 save_title = "ONswitchingCurvesVimentin.svg"
 
@@ -46,7 +47,8 @@ plt.gca().spines['left'].set_linewidth(2)
 plt.gca().spines['bottom'].set_linewidth(2)
 
 
-
+if show_figure:
+    plt.show()
 
 # Saving
 if save_figure:

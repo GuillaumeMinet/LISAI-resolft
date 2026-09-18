@@ -11,6 +11,7 @@ from typing import Literal
 from lisai.config import settings
 
 from .scanner import DiscoveredRun, InvalidRunMetadata
+from .external.discovery import DiscoveredExternalRun
 from .schema import format_timestamp_local, utc_now
 
 _STALE_TIMEOUT_MULTIPLIER = 1.05
@@ -234,6 +235,31 @@ def render_runs_table(
     )
     return "\n".join(lines)
 
+
+
+def render_external_runs_table(runs: Sequence[DiscoveredExternalRun]) -> str:
+    if not runs:
+        return ""
+    headers = ["dataset", "run_dir", "checkpoint", "config", "imported_at"]
+    rows = []
+    for run in runs:
+        rows.append([
+            run.dataset,
+            run.run_dir.name,
+            run.metadata.checkpoint or "-",
+            run.metadata.config or "-",
+            format_timestamp_local(run.metadata.imported_at),
+        ])
+    widths = [max(len(header), *(len(row[idx]) for row in rows)) for idx, header in enumerate(headers)]
+    lines = [
+        "  ".join(header.ljust(widths[idx]) for idx, header in enumerate(headers)),
+        "  ".join("-" * widths[idx] for idx in range(len(headers))),
+    ]
+    lines.extend(
+        "  ".join(value.ljust(widths[idx]) for idx, value in enumerate(row))
+        for row in rows
+    )
+    return "\n".join(lines)
 
 def write_invalid_run_warnings(
     invalid_runs: Iterable[InvalidRunMetadata],
