@@ -7,28 +7,33 @@ run stack inference, and save outputs.
 
 import warnings
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 from tifffile import imread
 
+from lisai.config.models.inference import ApplyDefaults, TilingSizePolicy
+from lisai.config.progress import resolve_progress_bar
 from lisai.data.utils import center_pad, crop_center
-from lisai.evaluation.defaults import UNSET, UnsetType, resolve_apply_options
+from lisai.evaluation.defaults import resolve_apply_output_policy, resolve_apply_save_input
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_inp
+from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
-from lisai.evaluation.io import create_save_folder, resolve_prediction_inputs, save_outputs
+from lisai.evaluation.io import resolve_prediction_inputs, save_outputs
 from lisai.evaluation.runtime import initialize_runtime
 from lisai.evaluation.saved_run import load_saved_run, resolve_run_dir
-from lisai.lib.upsamp.inp_generators import (
-    _deterministic_mltpl_sampling,
-    generate_downsamp_inp,
-)
 from lisai.evaluation.visualization.z_projection import (
     add_colorbar,
     create_color_coded_image,
     enhance_contrast,
 )
+from lisai.infra.fs import prepare_output_folder
+from lisai.infra.paths import Paths
+from lisai.lib.upsamp.inp_generators import (
+    _deterministic_mltpl_sampling,
+    generate_downsamp_inp,
+)
+
 
 def _ensure_shape(img: np.ndarray, downsamp_factor: int) -> np.ndarray:
     """Pad spatial dimensions so they are divisible by `downsamp_factor`.
@@ -74,72 +79,237 @@ def _resolve_fill_factor_for_multiple_apply_downsampling(
     return resolved_fill_factor
 
 
-def run_apply_model(model_dataset: str,
-                model_subfolder: str,
-                model_name: str,
-                data_path: Path,
-                save_folder: str | Path | None | UnsetType = UNSET,
-                in_place: bool | UnsetType = UNSET,
-                epoch_number: int | None | UnsetType = UNSET,
-                best_or_last: str | UnsetType = UNSET,
-                filters: list[str] | str | UnsetType = UNSET,
-                skip_if_contain: list[str] | None | UnsetType = UNSET,
-                crop_size: Union[int, tuple[int, int], None, UnsetType] = UNSET,
-                keep_original_shape: bool | UnsetType = UNSET,
-                tiling_size: int | None | UnsetType = UNSET,
-                stack_selection_idx: int | None | UnsetType = UNSET,
-                timelapse_max: int | None | UnsetType = UNSET,
-                lvae_num_samples: int | None | UnsetType = UNSET,
-                lvae_save_samples: bool | UnsetType = UNSET,
-                denormalize_output: bool | UnsetType = UNSET,
-                save_inp: bool | UnsetType = UNSET,
-                downsamp: int | None | UnsetType = UNSET,
-                fill_factor: float | None | UnsetType = UNSET,
-                apply_color_code: bool | UnsetType = UNSET,
-                color_code_prm: dict | None | UnsetType = UNSET,
-                dark_frame_context_length: bool | UnsetType = UNSET,
-                config: str | Path | None = None):
-    """Apply a saved model checkpoint to one file or a directory of files.
+def _format_tiling_size_for_display(requested: TilingSizePolicy, effective: int | None) -> str:
+    if effective is None:
+        return "off"
+    if requested is None or requested == "auto":
+        return f"{effective} (auto)"
+    return str(effective)
 
-    Any omitted optional argument is resolved from `configs/inference/defaults.yml`
-    or from the named config passed via `config`.
-    """
-    options = resolve_apply_options(
-        config=config,
-        save_folder=save_folder,
-        in_place=in_place,
-        epoch_number=epoch_number,
-        best_or_last=best_or_last,
-        filters=filters,
-        skip_if_contain=skip_if_contain,
-        crop_size=crop_size,
-        keep_original_shape=keep_original_shape,
-        tiling_size=tiling_size,
-        stack_selection_idx=stack_selection_idx,
-        timelapse_max=timelapse_max,
-        lvae_num_samples=lvae_num_samples,
-        lvae_save_samples=lvae_save_samples,
-        denormalize_output=denormalize_output,
-        save_inp=save_inp,
-        downsamp=downsamp,
-        fill_factor=fill_factor,
-        apply_color_code=apply_color_code,
-        color_code_prm=color_code_prm,
-        dark_frame_context_length=dark_frame_context_length,
+
+def _source_name(data_path: Path) -> str:
+    """Return a compact source identifier suitable for output-folder naming."""
+    data_path = Path(data_path)
+    if data_path.is_dir():
+        return data_path.name or "input"
+
+    parts = [data_path.parent.name, data_path.stem]
+    source_name = "_".join(part for part in parts if part)
+    return source_name or "input"
+
+
+def _prediction_folder_name(
+    *,
+    source_name: str | None,
+    model_subfolder: str,
+    model_name: str,
+) -> str:
+    parts = ["Predict"]
+    if source_name:
+        parts.append(source_name)
+    parts.extend([model_subfolder, model_name])
+    return "_".join(parts)
+
+
+def _create_apply_save_folder(
+    path: Path,
+    *,
+    overwrite: bool,
+    reuse_folder: bool = False,
+    progress: InferenceProgress,
+) -> Path:
+    requested = Path(path)
+    if overwrite and reuse_folder:
+        raise ValueError("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
+
+    if overwrite:
+        if_exists_policy = "overwrite"
+    elif reuse_folder:
+        if_exists_policy = "reuse"
+    else:
+        if_exists_policy = "numbered"
+
+    resolution = prepare_output_folder(
+        requested,
+        if_exists_policy=if_exists_policy,
     )
-    color_code_prm = options["color_code_prm"] or {}
+    progress.write(f"\n{resolution.message()}\n")
+    return resolution.path
+
+
+def _apply_img_name(file: str, name_file: str | None) -> str:
+    source = name_file if name_file is not None else file
+    return source.split(".")[0]
+
+
+def _existing_apply_outputs(save_folder: Path, img_name: str) -> list[Path]:
+    save_folder = Path(save_folder)
+    if not save_folder.exists():
+        return []
+    prefix = f"{img_name}_"
+    return sorted(
+        path
+        for path in save_folder.iterdir()
+        if path.is_file() and path.name.startswith(prefix) and path.suffix.lower() == ".tif"
+    )
+
+
+def _prediction_output_path(save_folder: Path, img_name: str) -> Path:
+    return Path(save_folder) / f"{img_name}_pred.tif"
+
+
+def _format_existing_output_summary(collisions: list[tuple[str, list[Path]]]) -> str:
+    formatted = []
+    for img_name, paths in collisions[:5]:
+        formatted.append(f"{img_name} ({len(paths)} file{'s' if len(paths) != 1 else ''})")
+    if len(collisions) > 5:
+        formatted.append(f"... and {len(collisions) - 5} more")
+    return ", ".join(formatted)
+
+
+def _raise_if_reuse_folder_would_overwrite(
+    list_files: list[str],
+    *,
+    save_folder: Path,
+    name_file: str | None,
+) -> None:
+    collisions = []
+    for file in list_files:
+        img_name = _apply_img_name(file, name_file)
+        existing = _existing_apply_outputs(save_folder, img_name)
+        if existing:
+            collisions.append((img_name, existing))
+
+    if collisions:
+        summary = _format_existing_output_summary(collisions)
+        raise FileExistsError(
+            f"Existing apply outputs found in {save_folder} for selected input(s): {summary}. "
+            "Use --skip-existing to continue, --overwrite to replace the folder, "
+            "or choose another save folder."
+        )
+
+
+def _filter_existing_apply_outputs(
+    list_files: list[str],
+    *,
+    save_folder: Path,
+    name_file: str | None,
+    progress: InferenceProgress,
+) -> list[str]:
+    remaining = []
+    skipped = []
+    partial = []
+
+    for file in list_files:
+        img_name = _apply_img_name(file, name_file)
+        existing = _existing_apply_outputs(save_folder, img_name)
+        if not existing:
+            remaining.append(file)
+            continue
+        if _prediction_output_path(save_folder, img_name).exists():
+            skipped.append(file)
+            continue
+        partial.append((img_name, existing))
+
+    if partial:
+        summary = _format_existing_output_summary(partial)
+        raise FileExistsError(
+            f"Partial existing apply outputs found in {save_folder}: {summary}. "
+            "Refusing to guess whether these inputs are complete. Remove those files, "
+            "use --overwrite, or choose another save folder."
+        )
+
+    if skipped:
+        progress.write(f"Skipping {len(skipped)} file(s) with existing predictions.")
+    return remaining
+
+
+def _resolve_apply_files_for_output(
+    list_files: list[str],
+    *,
+    save_folder: Path,
+    name_file: str | None,
+    limit_n_imgs: int | None,
+    reuse_folder: bool,
+    skip_existing: bool,
+    progress: InferenceProgress,
+) -> list[str]:
+    selected = list(list_files)
+    if skip_existing:
+        progress.write(f"Found #{len(selected)} candidate files.")
+        selected = _filter_existing_apply_outputs(
+            selected,
+            save_folder=save_folder,
+            name_file=name_file,
+            progress=progress,
+        )
+        if limit_n_imgs is not None:
+            selected = selected[:limit_n_imgs]
+        if not selected:
+            progress.write(f"All candidate files already have predictions in {save_folder}.")
+        else:
+            progress.write(f"Processing {len(selected)} remaining file(s).")
+        return selected
+
+    if limit_n_imgs is not None:
+        selected = selected[:limit_n_imgs]
+    if reuse_folder:
+        _raise_if_reuse_folder_would_overwrite(
+            selected,
+            save_folder=save_folder,
+            name_file=name_file,
+        )
+    return selected
+
+
+def run_apply_model(
+    cfg: ApplyDefaults,
+    *,
+    model_dataset: str,
+    model_subfolder: str,
+    model_name: str,
+    data_path: Path,
+    promoted_model_name: str | None = None,
+    progress_bar: bool | None = None,
+    overwrite: bool = False,
+    reuse_folder: bool = False,
+    skip_existing: bool = False,
+):
+    """Apply a saved model using a fully resolved typed apply config."""
+    output_policy = resolve_apply_output_policy(cfg)
+    save_input = resolve_apply_save_input(cfg, output_policy=output_policy)
+    color_code_cfg = cfg.postprocess.color_code
+    progress = InferenceProgress(
+        enabled=resolve_progress_bar(True, progress_bar)
+    )
 
     data_path = Path(data_path)
-    run_dir = resolve_run_dir(dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name)
-    saved_run = load_saved_run(run_dir)
-    runtime = initialize_runtime(
-        saved_run=saved_run,
-        best_or_last=options["best_or_last"],
-        epoch_number=options["epoch_number"],
-        tiling_size=options["tiling_size"],
-    )
+    if promoted_model_name is not None:
+        from lisai.promoted_models import load_promoted_model
+
+        promoted = load_promoted_model(promoted_model_name)
+        saved_run = promoted.saved_run
+        model_dataset = saved_run.dataset_name
+        model_subfolder = "promoted"
+        model_name = promoted.manifest.name
+        runtime = initialize_runtime(
+            saved_run=saved_run,
+            tiling_size=cfg.inference.tiling_size,
+            checkpoint_path=promoted.weights_path,
+            noise_model_path=promoted.noise_model_path,
+            noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
+        )
+    else:
+        run_dir = resolve_run_dir(dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name)
+        saved_run = load_saved_run(run_dir)
+        runtime = initialize_runtime(
+            saved_run=saved_run,
+            best_or_last=cfg.checkpoint.best_or_last,
+            epoch_number=cfg.checkpoint.epoch_number,
+            tiling_size=cfg.inference.tiling_size,
+        )
     if saved_run.is_lvae:
-        assert options["lvae_num_samples"] is not None, (
+        assert cfg.inference.lvae_num_samples is not None, (
             "for LVAE prediction, number of samples needs to be specified"
         )
 
@@ -154,6 +324,7 @@ def run_apply_model(model_dataset: str,
     tiling_size = runtime.tiling_size
     upsamp = saved_run.upsampling_factor
     print(f"Found upsampling factor to be: {upsamp}\n")
+    print(f"Tiling size: {_format_tiling_size_for_display(cfg.inference.tiling_size, tiling_size)}\n")
 
     context_length = saved_run.context_length
     if context_length is not None:
@@ -161,23 +332,86 @@ def run_apply_model(model_dataset: str,
 
     data_path, list_files, name_file = resolve_prediction_inputs(
         data_path,
-        filters=options["filters"],
-        skip_if_contain=options["skip_if_contain"],
+        filters=cfg.input.filters,
+        skip_if_contain=cfg.input.skip_if_contain,
     )
-    print(f"Found #{len(list_files)} files.")
 
-    if options["in_place"]:
-        warnings.warn("arg:`in_place` set to True, input data will be overwitten by predictions")
-        if data_path.is_dir():
-            save_folder = data_path
-        else:
-            save_folder = data_path.parent
+    input_dir = data_path if data_path.is_dir() else data_path.parent
+    source_name = _source_name(data_path)
+    overwrite = bool(overwrite)
+    skip_existing = bool(skip_existing)
+    reuse_folder = bool(reuse_folder) or skip_existing
+    if overwrite and reuse_folder:
+        raise ValueError("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
+
+    if output_policy.mode == "in_place":
+        if overwrite or reuse_folder:
+            raise ValueError(
+                "--overwrite, --reuse-folder, and --skip-existing cannot be used with "
+                "in-place apply output because it targets the input folder."
+            )
+        save_folder = input_dir
+        progress.write(f"Saving outputs in place: {save_folder}")
+    elif output_policy.mode == "folder_inside":
+        # Directory inputs already provide their own source context. Single-file
+        # inputs need source identity in the generated folder name so multiple
+        # files from the same parent remain distinguishable.
+        folder_source_name = source_name if data_path.is_file() else None
+        prediction_folder_name = _prediction_folder_name(
+            source_name=folder_source_name,
+            model_subfolder=model_subfolder,
+            model_name=model_name,
+        )
+        save_folder = _create_apply_save_folder(
+            input_dir / prediction_folder_name,
+            overwrite=overwrite,
+            reuse_folder=reuse_folder,
+            progress=progress,
+        )
+    elif output_policy.mode == "folder_outside":
+        prediction_folder_name = _prediction_folder_name(
+            source_name=source_name,
+            model_subfolder=model_subfolder,
+            model_name=model_name,
+        )
+        save_folder = _create_apply_save_folder(
+            input_dir.parent / prediction_folder_name,
+            overwrite=overwrite,
+            reuse_folder=reuse_folder,
+            progress=progress,
+        )
+    elif output_policy.mode == "folder":
+        assert output_policy.save_folder is not None
+        save_folder = _create_apply_save_folder(
+            output_policy.save_folder,
+            overwrite=overwrite,
+            reuse_folder=reuse_folder,
+            progress=progress,
+        )
     else:
-        if options["save_folder"] == "default":
-            save_folder = data_path.parent / f"Predict_{model_subfolder}_{model_name}"
-        else:
-            save_folder = Path(options["save_folder"])
-        save_folder = create_save_folder(path=save_folder)
+        save_folder = _create_apply_save_folder(
+            Paths().inference_output_dir(
+                source_name=source_name,
+                model_name=model_name,
+            ),
+            overwrite=overwrite,
+            reuse_folder=reuse_folder,
+            progress=progress,
+        )
+
+    list_files = _resolve_apply_files_for_output(
+        list_files,
+        save_folder=save_folder,
+        name_file=name_file,
+        limit_n_imgs=cfg.input.limit_n_imgs,
+        reuse_folder=reuse_folder,
+        skip_existing=skip_existing,
+        progress=progress,
+    )
+    if not skip_existing:
+        print(f"Found #{len(list_files)} files.")
+    if not list_files:
+        return
 
     for idx, file in enumerate(list_files):
         print(f"File {idx+1}/{max(1, len(list_files))}: {file}")
@@ -185,32 +419,32 @@ def run_apply_model(model_dataset: str,
         file_path = data_path / file
         img = imread(file_path)
         img = normalize_inp(img, clip, data_norm, model_norm)
-        img, timelapse, volumetric = make_4d(img, options["stack_selection_idx"], options["timelapse_max"])
+        img, timelapse, volumetric = make_4d(img, cfg.input.stack_selection_idx, cfg.input.timelapse_max)
         print(img.shape)
 
-        crop_size = options["crop_size"]
+        crop_size = cfg.inference.crop_size
         if crop_size is not None:
             if isinstance(crop_size, int):
                 crop_size = (crop_size, crop_size)
             original_size = img.shape[-2:]
             img = crop_center(img, crop_size)
 
-        if options["fill_factor"] is not None and options["downsamp"] is None:
+        if cfg.inference.fill_factor is not None and cfg.inference.downsamp is None:
             raise ValueError(
                 "`apply.fill_factor` requires `apply.downsamp` to be set."
             )
 
-        if options["downsamp"] is not None:
-            img = _ensure_shape(img, options["downsamp"])
-            if options["fill_factor"] is None:
-                img = img[..., :: options["downsamp"], :: options["downsamp"]]
+        if cfg.inference.downsamp is not None:
+            img = _ensure_shape(img, cfg.inference.downsamp)
+            if cfg.inference.fill_factor is None:
+                img = img[..., :: cfg.inference.downsamp, :: cfg.inference.downsamp]
             else:
                 resolved_fill_factor = _resolve_fill_factor_for_multiple_apply_downsampling(
-                    downsamp=options["downsamp"],
-                    fill_factor=options["fill_factor"],
+                    downsamp=cfg.inference.downsamp,
+                    fill_factor=cfg.inference.fill_factor,
                 )
                 downsampling_prm = {
-                    "downsamp_factor": int(options["downsamp"]),
+                    "downsamp_factor": int(cfg.inference.downsamp),
                     "downsamp_method": "multiple",
                     "multiple_prm": {
                         "fill_factor": resolved_fill_factor,
@@ -232,62 +466,60 @@ def run_apply_model(model_dataset: str,
             device=runtime.device,
             is_lvae=saved_run.is_lvae,
             tiling_size=tiling_size,
-            lvae_num_samples=options["lvae_num_samples"],
-            lvae_save_samples=options["lvae_save_samples"],
+            lvae_num_samples=cfg.inference.lvae_num_samples,
+            lvae_save_samples=cfg.saving.lvae_save_samples,
             upsamp=upsamp,
             context_length=context_length,
-            dark_frame_context_length=options["dark_frame_context_length"],
+            dark_frame_context_length=cfg.inference.dark_frame_context_length,
             verbose=True,
+            progress=progress,
         )
 
-        if crop_size is not None and options["keep_original_shape"]:
+        if crop_size is not None and cfg.inference.keep_original_shape:
             pad_width = (
                 max(0, original_size[0] - crop_size[0]),
                 max(0, original_size[1] - crop_size[1]),
             )
             pred_stack = center_pad(pred_stack, pad_width)
 
-            if saved_run.is_lvae and options["lvae_save_samples"] and samples_stack is not None:
+            if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
                 samples_stack = center_pad(samples_stack, pad_width)
 
-        if options["denormalize_output"]:
+        if cfg.postprocess.denormalize:
             pred_stack = denormalize_pred(pred_stack, data_norm, model_norm)
-            if saved_run.is_lvae and options["lvae_save_samples"] and samples_stack is not None:
+            if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
                 for sample_id in range(samples_stack.shape[0]):
                     samples_stack[sample_id] = denormalize_pred(samples_stack[sample_id], data_norm, model_norm)
         pred_stack = inverse_make_4d(pred_stack, volumetric, timelapse, lvae_samples=False)
         tosave = {"pred": pred_stack.astype(np.float32)}
 
-        if options["apply_color_code"] and volumetric:
+        if color_code_cfg.enabled and volumetric:
             try:
-                if context_length is not None and not options["dark_frame_context_length"]:
+                if context_length is not None and not cfg.inference.dark_frame_context_length:
                     pred_stack = pred_stack[:, context_length // 2 : -context_length // 2]
                 pred_stack_color_coded = create_color_coded_image(
                     pred_stack,
-                    colormap=color_code_prm.get("colormap", "turbo"),
+                    colormap=color_code_cfg.colormap,
                     stack_order="ZTYX",
                 )
                 pred_stack_color_coded = enhance_contrast(
                     pred_stack_color_coded,
-                    color_code_prm.get("saturation", 0.35),
+                    color_code_cfg.saturation,
                 )
-                if color_code_prm.get("add_colorbar", True):
-                    zmax = (pred_stack.shape[0] - 1) * color_code_prm.get("zstep", 0)
+                if color_code_cfg.add_colorbar:
+                    zmax = (pred_stack.shape[0] - 1) * color_code_cfg.zstep
                     pred_stack_color_coded = add_colorbar(pred_stack_color_coded, zmax=zmax)
                 tosave["pred_colorCoded"] = pred_stack_color_coded
 
             except Exception as e:
                 warnings.warn(f"Failed to apply color coding: {e}")
 
-        if saved_run.is_lvae and options["lvae_save_samples"] and samples_stack is not None:
+        if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
             samples_stack = inverse_make_4d(samples_stack, volumetric, timelapse, lvae_samples=True)
             tosave["samples"] = samples_stack.astype(np.float32)
 
-        if name_file is None:
-            img_name = file.split('.')[0]
-        else:
-            img_name = name_file.split('.')[0]
-        if options["save_inp"]:
+        img_name = _apply_img_name(file, name_file)
+        if save_input:
             tosave["inp"] = img.astype(np.float32)
 
         save_outputs(tosave, save_folder, img_name)

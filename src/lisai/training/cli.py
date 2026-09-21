@@ -4,8 +4,9 @@ import argparse
 from pathlib import Path
 from typing import Sequence
 
-from .run_training import run_training
 from lisai.config.io.config_paths import ConfigPathResolver
+
+from .run_training import run_training
 
 training_config_paths = ConfigPathResolver("training")
 
@@ -13,7 +14,21 @@ training_config_paths = ConfigPathResolver("training")
 def resolve_config_path(config_arg: str) -> Path:
     resolved = training_config_paths.resolve(config_arg)
     assert resolved is not None
+    _ensure_trainable_config_path(resolved)
     return resolved
+
+
+def _ensure_trainable_config_path(path: Path) -> None:
+    root = training_config_paths.root.resolve()
+    try:
+        relative = path.resolve().relative_to(root)
+    except ValueError:
+        return
+    if relative.parts and relative.parts[0] in {"presets", "templates"}:
+        raise ValueError(
+            "Training presets and templates must be instantiated before training. "
+            "Use `lisai configs new ...` to create a local training config."
+        )
 
 
 def _get_config_arg(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
@@ -33,7 +48,15 @@ def _get_config_arg(args: argparse.Namespace, parser: argparse.ArgumentParser) -
 
 def run_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     config_arg = _get_config_arg(args, parser)
-    run_training(resolve_config_path(config_arg))
+    try:
+        config_path = resolve_config_path(config_arg)
+    except (FileNotFoundError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+    progress_bar = getattr(args, "progress_bar", None)
+    if progress_bar is None:
+        run_training(config_path)
+    else:
+        run_training(config_path, progress_bar=progress_bar)
     return 0
 
 
@@ -48,6 +71,13 @@ def add_train_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
         "--config",
         dest="config_option",
         help=f"Path to a YAML config file, or a config name from {training_config_paths.root} with or without .yml/.yaml.",
+    )
+    parser.add_argument(
+        "--progress-bar",
+        dest="progress_bar",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the local/configured tqdm progress-bar preference for this training run.",
     )
     return parser
 

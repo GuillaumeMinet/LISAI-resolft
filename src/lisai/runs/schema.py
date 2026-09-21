@@ -264,6 +264,7 @@ class RunMetadata(BaseModel):
     run_index: int = Field(ge=0)
     dataset: str
     model_subfolder: str
+    kept: bool = False
 
     status: RunStatus
     closed_cleanly: bool

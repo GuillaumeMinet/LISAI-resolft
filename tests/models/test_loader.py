@@ -78,6 +78,41 @@ def test_origin_checkpoint_path_prefers_explicit_filename(monkeypatch: pytest.Mo
     assert "load_method" not in calls["kwargs"]
 
 
+def test_origin_checkpoint_path_best_falls_back_to_highest_epoch_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    class FakePaths:
+        def checkpoint_path(self, **kwargs):
+            run_dir = Path(kwargs["run_dir"])
+            load_method = kwargs["load_method"]
+            if kwargs.get("epoch_number") is not None:
+                middle = f"epoch_{kwargs['epoch_number']}"
+            else:
+                middle = kwargs["best_or_last"]
+            if load_method == "state_dict":
+                name = f"model_{middle}_state_dict.pt"
+            else:
+                name = f"model_{middle}.pt"
+            return run_dir / "checkpoints" / name
+
+    monkeypatch.setattr(loader, "Paths", FakePaths)
+    checkpoints = tmp_path / "origin" / "checkpoints"
+    checkpoints.mkdir(parents=True)
+    (checkpoints / "model_epoch_3_state_dict.pt").write_bytes(b"old-best")
+    expected = checkpoints / "model_epoch_8_state_dict.pt"
+    expected.write_bytes(b"new-best")
+
+    spec = _base_spec(
+        mode="retrain",
+        origin_run_dir=tmp_path / "origin",
+        checkpoint_method="state_dict",
+        checkpoint_selector="best",
+    )
+
+    assert loader._origin_checkpoint_path(spec) == expected
+
+
 
 def test_prepare_model_for_training_requires_architecture():
     spec = _base_spec(architecture="")
@@ -135,7 +170,7 @@ def test_prepare_model_for_training_loads_model_state_dict_and_returns_checkpoin
 
     monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec: checkpoint)
     monkeypatch.setattr(loader, "init_model", lambda **kwargs: model)
-    monkeypatch.setattr(loader.torch, "load", lambda path, map_location: loaded_state)
+    monkeypatch.setattr(loader.torch, "load", lambda path, map_location, **kwargs: loaded_state)
 
     out_model, out_state = loader.prepare_model_for_training(
         spec=spec,
@@ -165,7 +200,7 @@ def test_prepare_model_for_training_plain_state_dict_returns_none_checkpoint_sta
 
     monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec: checkpoint)
     monkeypatch.setattr(loader, "init_model", lambda **kwargs: model)
-    monkeypatch.setattr(loader.torch, "load", lambda path, map_location: plain_state_dict)
+    monkeypatch.setattr(loader.torch, "load", lambda path, map_location, **kwargs: plain_state_dict)
 
     out_model, out_state = loader.prepare_model_for_training(
         spec=spec,

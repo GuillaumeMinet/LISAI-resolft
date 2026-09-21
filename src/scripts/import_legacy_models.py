@@ -20,7 +20,7 @@ import re
 import shutil
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 # Make the script runnable from a source checkout without requiring installation.
@@ -33,10 +33,14 @@ from lisai.config.models import ResolvedExperiment
 from lisai.infra.fs import ensure_folder
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.infra.paths import Paths, model_filename
-from lisai.infra.paths.model_subfolder import group_path_from_model_subfolder
+from lisai.infra.paths.model_subfolder import (
+    group_path_from_model_subfolder,
+    normalize_model_subfolder,
+)
 from lisai.models.params import LVAEParams, UNetParams, UNetRCANParams
 from lisai.runs.identifiers import generate_run_id
 from lisai.runs.io import write_run_metadata_atomic
+from lisai.runs.lifecycle import stored_run_path
 from lisai.runs.plotting import save_loss_plot_for_run
 from lisai.runs.schema import RunMetadata, RunProvenance, TrainingSignature, utc_now
 from lisai.runs.signature import (
@@ -49,12 +53,12 @@ from lisai.runs.signature import (
 # ==============================
 
 # Provenance
-LEGACY_MODEL_PATH = r"E:\dl_monalisa\Models\Vim_fixed_mltplSNR_30nm\Upsampling_refinement\SNRavg\Avg_unpaired_Mltpl025notRdm_UnetRCAN_rg8_rcab12_red16_CharEdge_alpha005"
+LEGACY_MODEL_PATH = r"E:\dl_monalisa\Models\Vim_fixed_mltplSNR_30nm\Upsampling_refinement\SNRavg\Avg_unpaired_Mltpl075notRdm_UnetRCAN_rg8_rcab12_red16_CharEdge_alpha005"
 
 # Target canonical run location. TARGET_RUN_NAME is the final run folder name.
-TARGET_DATASET = "vim_fixed"
+TARGET_DATASET = "vim_fixed_multi_snr"
 TARGET_MODEL_SUBFOLDER = "Upsamp"
-TARGET_RUN_NAME = "SnrHigh_unpaired_S025"
+TARGET_RUN_NAME = "SnrHigh_unpaired_S075"
 
 # Start with a dry run; set to False once the preflight output looks right.
 DRY_RUN = False
@@ -138,6 +142,7 @@ def main() -> int:
 
 
 def build_import_plan(job: LegacyImportJob) -> ImportPlan:
+    job = _normalize_job_settings(job)
     _validate_job_settings(job)
 
     paths = Paths(settings)
@@ -214,6 +219,48 @@ def _validate_job_settings(job: LegacyImportJob):
         )
 
 
+def _normalize_job_settings(job: LegacyImportJob) -> LegacyImportJob:
+    return LegacyImportJob(
+        legacy_model_path=job.legacy_model_path,
+        target_dataset=_normalize_required_folder_name(
+            job.target_dataset,
+            field_name="TARGET_DATASET",
+        ),
+        target_model_subfolder=_normalize_target_model_subfolder(job.target_model_subfolder),
+        target_run_name=_normalize_required_folder_name(
+            job.target_run_name,
+            field_name="TARGET_RUN_NAME",
+        ),
+        dry_run=job.dry_run,
+        copy_small_legacy_artifacts=job.copy_small_legacy_artifacts,
+    )
+
+
+def _normalize_required_folder_name(value: str, *, field_name: str) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    if "/" in text or "\\" in text:
+        raise ValueError(f"{field_name} must be a folder name, not a path: {value!r}")
+    return text
+
+
+def _normalize_target_model_subfolder(value: str) -> str:
+    normalized = normalize_model_subfolder(value)
+    if normalized is None:
+        return ""
+
+    first_part = normalized.split("/", 1)[0].lower()
+    current_run_container = Paths(settings).run_container_dirname().lower()
+    stale_containers = {"models", current_run_container}
+    if first_part in stale_containers:
+        raise ValueError(
+            "TARGET_MODEL_SUBFOLDER must be relative inside the current run container. "
+            f"Remove the leading {first_part!r} path component from {value!r}."
+        )
+    return normalized
+
+
 def _load_legacy_config(legacy_model_path: Path) -> dict[str, Any]:
     cfg_path = legacy_model_path / "config_train.json"
     with cfg_path.open("r", encoding="utf-8-sig") as handle:
@@ -230,7 +277,19 @@ def translate_legacy_config(
     target_model_subfolder: str,
     target_run_name: str,
 ) -> dict[str, Any]:
-    data_cfg = _legacy_data_cfg(legacy_cfg)
+    target_dataset = _normalize_required_folder_name(
+        target_dataset,
+        field_name="target_dataset",
+    )
+    target_model_subfolder = _normalize_target_model_subfolder(target_model_subfolder)
+    target_run_name = _normalize_required_folder_name(
+        target_run_name,
+        field_name="target_run_name",
+    )
+    data_cfg, data_subfolder = _translate_legacy_data_cfg(
+        legacy_cfg,
+        target_dataset=target_dataset,
+    )
     training_cfg = dict(legacy_cfg.get("training_prm") or {})
     if "learning_rate" not in training_cfg and "lr" in training_cfg:
         training_cfg["learning_rate"] = training_cfg["lr"]
@@ -238,6 +297,7 @@ def translate_legacy_config(
         training_cfg["progress_bar"] = training_cfg["pbar"]
 
     saving_cfg = dict(legacy_cfg.get("saving_prm") or {})
+    model_section = _legacy_model_section(legacy_cfg)
     current = {
         "experiment": {
             "mode": "train",
@@ -246,12 +306,12 @@ def translate_legacy_config(
             "post_training_inference": False,
         },
         "routing": {
-            "data_subfolder": data_cfg.get("subfolder", ""),
+            "data_subfolder": data_subfolder,
             "models_subfolder": target_model_subfolder,
             "inference_subfolder": target_model_subfolder,
         },
         "data": data_cfg,
-        "model": _legacy_model_section(legacy_cfg),
+        "model": model_section,
         "training": training_cfg,
         "normalization": dict(legacy_cfg.get("normalization") or {}),
         "model_norm_prm": legacy_cfg.get("model_norm_prm"),
@@ -267,8 +327,45 @@ def translate_legacy_config(
         },
         "tensorboard": {"enabled": False},
     }
-    current["data"]["dataset_name"] = target_dataset
+    inference_cfg = _legacy_inference_defaults(model_section)
+    if inference_cfg:
+        current["inference"] = inference_cfg
     return current
+
+
+def _translate_legacy_data_cfg(
+    legacy_cfg: dict[str, Any],
+    *,
+    target_dataset: str,
+) -> tuple[dict[str, Any], str]:
+    data_cfg = _legacy_data_cfg(legacy_cfg)
+    data_subfolder = _normalize_relative_subpath(
+        data_cfg.pop("subfolder", ""),
+        field_name="data_prm.subfolder",
+    )
+
+    if "input" not in data_cfg and data_cfg.get("inp") is not None:
+        data_cfg["input"] = data_cfg["inp"]
+    if "target" not in data_cfg and data_cfg.get("gt") is not None:
+        data_cfg["target"] = data_cfg["gt"]
+
+    # These were legacy path/runtime fields. Current LISAI resolves dataset
+    # paths from routing.data_subfolder and the configured training data root.
+    legacy_runtime_keys = (
+        "full_data_path",
+        "data_dir",
+        "subfolder",
+        "inp",
+        "gt",
+        "patch_info",
+        "volumetric",
+    )
+    for key in legacy_runtime_keys:
+        data_cfg.pop(key, None)
+
+    data_cfg["dataset_name"] = target_dataset
+    data_cfg["canonical_load"] = True
+    return data_cfg, data_subfolder
 
 
 def _legacy_data_cfg(legacy_cfg: dict[str, Any]) -> dict[str, Any]:
@@ -276,6 +373,22 @@ def _legacy_data_cfg(legacy_cfg: dict[str, Any]) -> dict[str, Any]:
     if not data_cfg:
         raise ValueError("Only legacy configs with `data_prm` are supported by this importer.")
     return data_cfg
+
+
+def _normalize_relative_subpath(value: Any, *, field_name: str) -> str:
+    if value in (None, ""):
+        return ""
+    text = str(value).replace("\\", "/").strip().strip("/")
+    if not text:
+        return ""
+    if re.match(r"^[A-Za-z]:", text) or text.startswith("/"):
+        raise ValueError(f"`{field_name}` must be relative, not an absolute path: {value!r}")
+    normalized = PurePosixPath(text).as_posix()
+    if normalized in {"", "."}:
+        return ""
+    if normalized == ".." or normalized.startswith("../"):
+        raise ValueError(f"`{field_name}` must not escape the dataset root: {value!r}")
+    return normalized
 
 
 def _legacy_model_section(legacy_cfg: dict[str, Any]) -> dict[str, Any]:
@@ -334,6 +447,18 @@ def _translate_legacy_model_params(architecture: str, params: dict[str, Any]) ->
         return out
 
     raise ValueError(f"Unsupported legacy architecture: {architecture!r}")
+
+
+def _legacy_inference_defaults(model_section: dict[str, Any]) -> dict[str, Any]:
+    """Return saved inference defaults for imported legacy models."""
+    architecture = model_section["architecture"]
+    if architecture != "unet_rcan":
+        return {}
+
+    params = UNetRCANParams.model_validate(model_section["parameters"])
+    if params.effective_upsampling_factor() == 1:
+        return {"default_tiling_size": 2000}
+    return {}
 
 
 def build_model_spec(legacy_cfg: dict[str, Any]) -> LegacyModelSpec:
@@ -590,7 +715,7 @@ def build_import_metadata(
         last_epoch=last_epoch,
         max_epoch=max_epoch,
         best_val_loss=best_val_loss,
-        path=_stored_run_path(target_run_dir),
+        path=stored_run_path(target_run_dir),
         group_path=group_path_from_model_subfolder(job.target_model_subfolder),
         training_signature=TrainingSignature.model_validate(training_signature),
         provenance=RunProvenance(
@@ -600,17 +725,6 @@ def build_import_metadata(
             notes="Imported by src/scripts/import_legacy_models.py",
         ),
     )
-
-
-def _stored_run_path(run_dir: Path) -> str:
-    paths = Paths(settings)
-    path = Path(run_dir).resolve()
-    data_root = paths.datasets_root().parent
-    try:
-        return path.relative_to(data_root).as_posix()
-    except ValueError:
-        return path.as_posix()
-
 
 def execute_import(plan: ImportPlan):
     paths = Paths(settings)

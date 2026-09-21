@@ -19,15 +19,18 @@ class DummyPaths:
     def dataset_registry_path(self) -> Path:
         return self.root / "dataset_registry.yml"
 
-    def dataset_dump_dir(self, *, dataset_name: str, data_type: str = "", additional_subfolder: str = "") -> Path:
+    def dataset_dir(self, *, dataset_name: str, data_subfolder: str = "", usage: str = "training") -> Path:
+        return self.root / dataset_name / data_subfolder
+
+    def dataset_dump_dir(self, *, dataset_name: str, data_type: str = "", additional_subfolder: str = "", usage: str = "training") -> Path:
         return self.root / dataset_name / "dump" / data_type / additional_subfolder
 
-    def dataset_preprocess_dir(self, *, dataset_name: str, data_type: str = "") -> Path:
+    def dataset_preprocess_dir(self, *, dataset_name: str, data_type: str = "", usage: str = "training") -> Path:
         return self.root / dataset_name / "preprocess" / data_type
 
-    def preprocess_log_path(self, *, dataset_name: str, data_type: str) -> Path:
+    def preprocess_log_path(self, *, dataset_name: str, data_type: str, usage: str = "training") -> Path:
         key = f"{data_type}_preprocess"
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type) / settings.data_cfg.logs[key]
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / settings.data_cfg.logs[key]
 
     def preprocessed_image_full_path(
         self,
@@ -36,10 +39,11 @@ class DummyPaths:
         fmt: str,
         data_type: str = "",
         additional_subfolder: str = "",
+        usage: str = "training",
         **kwargs,
     ) -> Path:
         filename = settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type) / additional_subfolder / filename
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / additional_subfolder / filename
 
 
 def _write_single_source_dataset(root: Path, dataset_name: str, file_names: list[str]) -> None:
@@ -54,7 +58,7 @@ def _write_timelapse_source_dataset(root: Path, dataset_name: str, *, file_name:
     dump_dir = root / dataset_name / "dump" / "recon"
     dump_dir.mkdir(parents=True, exist_ok=True)
     stack = np.full((n_timepoints, 8, 8), fill_value=1, dtype=np.uint16)
-    tifffile.imwrite(dump_dir / file_name, stack)
+    tifffile.imwrite(dump_dir / file_name, stack, photometric="minisblack")
 
 
 def _write_broken_single_source_dataset(root: Path, dataset_name: str) -> None:
@@ -122,8 +126,64 @@ def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
     }
 
     registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["data_format"] == "single"
+    assert "format" not in registry[dataset_name]
+    assert registry[dataset_name]["usage"] == "training"
+    assert (tmp_path / dataset_name / "README.md").read_text(encoding="utf-8") == "README not updated yet.\n"
+    assert registry[dataset_name]["outputs"]["recon"] == [
+        {"key": "main", "path": "", "role": "inp", "axes": "YX"}
+    ]
+    assert registry[dataset_name]["defaults"]["recon"] == {"input": "", "target": None, "eval_gt": None}
+    assert registry[dataset_name]["size"]["recon"] == {"n_files": 3}
     assert registry[dataset_name]["split"]["recon"]["counts"] == {"train": 1, "val": 1, "test": 1}
     assert "train" not in registry[dataset_name]["split"]["recon"]
+
+
+def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path):
+    dataset_name = "OverrideDefaultsDataset"
+    _write_timelapse_source_dataset(tmp_path, dataset_name, file_name="stack.tif", n_timepoints=4)
+
+    cfg = {
+        "dataset_name": dataset_name,
+        "pipeline": "recon_mltpl_snr",
+        "data_type": "recon",
+        "fmt": "mltpl_snr",
+        "pipeline_cfg": {
+            "first_low_inp": True,
+            "registration": False,
+            "gt_types": ["snr0", "avg"],
+        },
+        "registry": {
+            "defaults": {
+                "input": "inp_mltpl_snr",
+                "target": None,
+                "eval_gt": "gt_snr0",
+            }
+        },
+        "log": {"enabled": True},
+        "split": {"enabled": False},
+    }
+
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+
+    registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["outputs"]["recon"] == [
+        {"key": "inp_mltpl_snr", "path": "inp_mltpl_snr", "role": "inp", "axes": "TYX"},
+        {
+            "key": "inp_single",
+            "path": "inp_single",
+            "role": "inp",
+            "axes": "YX",
+            "data_format_override": "single",
+        },
+        {"key": "gt_snr0", "path": "gt_snr0", "role": "gt", "axes": "YX"},
+        {"key": "gt_avg", "path": "gt_avg", "role": "gt", "axes": "YX"},
+    ]
+    assert registry[dataset_name]["defaults"]["recon"] == {
+        "input": "inp_mltpl_snr",
+        "target": None,
+        "eval_gt": "gt_snr0",
+    }
 
 
 def test_preprocess_run_reports_progress_and_final_console_summary(tmp_path: Path):
@@ -194,6 +254,16 @@ def test_preprocess_run_progress_uses_full_timelapse_output_name(tmp_path: Path)
         "count": 1,
         "source_names": ["17h23m11s_rec_scan00_CAM.hdf5_multi.0.reconstruction.tiff"],
         "output_names": ["c00_t31.tif"],
+    }
+    registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["outputs"]["recon"] == [
+        {"key": "main", "path": "", "role": "inp", "axes": "TYX"}
+    ]
+    assert registry[dataset_name]["defaults"]["recon"] == {"input": "", "target": None, "eval_gt": None}
+    assert registry[dataset_name]["size"]["recon"] == {
+        "n_files": 1,
+        "n_frames": 31,
+        "timepoints": {"min": 31, "max": 31},
     }
 
 
@@ -305,3 +375,81 @@ def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path):
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "train" / "c00.tif").exists()
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "val" / "c01.tif").exists()
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "test" / "c02.tif").exists()
+
+
+def test_evaluation_preprocess_is_unsplit_and_records_no_fake_train_split(tmp_path: Path):
+    dataset_name = "EvaluationDataset"
+    _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif", "img_b.tif"])
+
+    cfg = _single_cfg(dataset_name)
+    cfg["usage"] = "evaluation"
+
+    stream = io.StringIO()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(
+        reporter=ConsolePreprocessReporter(stream=stream)
+    )
+
+    assert result.n_files == 2
+    preprocess_dir = tmp_path / dataset_name / "preprocess" / "recon"
+    assert (preprocess_dir / "c00.tif").exists()
+    assert (preprocess_dir / "c01.tif").exists()
+    assert not (preprocess_dir / "train").exists()
+    assert not (preprocess_dir / "test").exists()
+
+    manifest = load_yaml(preprocess_dir / settings.data_cfg.logs["recon_preprocess"])
+    assert manifest["usage"] == "evaluation"
+    assert [item["split"] for item in manifest["items"]] == [None, None]
+    assert manifest["summary"]["split"] == {"enabled": False}
+
+    registry = load_yaml(tmp_path / "dataset_registry.yml")
+    assert registry[dataset_name]["usage"] == "evaluation"
+    assert registry[dataset_name]["for_training"] is False
+    assert registry[dataset_name]["split"]["recon"] == {"enabled": False}
+
+    output = stream.getvalue()
+    assert "(split=" not in output
+    assert "validation images" not in output
+    assert "test images" not in output
+
+
+def test_evaluation_preprocess_rejects_enabled_split(tmp_path: Path):
+    cfg = _single_cfg("EvaluationDataset")
+    cfg["usage"] = "evaluation"
+    cfg["split"] = {"enabled": True}
+
+    with pytest.raises(ValueError, match="Evaluation datasets cannot be split"):
+        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path))
+
+
+def test_preprocess_registry_description_initializes_but_does_not_overwrite(tmp_path: Path):
+    dataset_name = "DescribedDataset"
+    _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
+
+    cfg = _single_cfg(dataset_name)
+    cfg["registry"] = {"description": "Initial description"}
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+
+    registry_path = tmp_path / "dataset_registry.yml"
+    registry = load_yaml(registry_path)
+    assert registry[dataset_name]["description"] == "Initial description"
+
+    registry[dataset_name]["description"] = "Manually edited description"
+    from lisai.config.io.yaml import save_yaml
+    save_yaml(registry, registry_path)
+
+    cfg["registry"] = {"description": "Preprocess description should not win"}
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(overwrite=True)
+
+    registry = load_yaml(registry_path)
+    assert registry[dataset_name]["description"] == "Manually edited description"
+
+
+def test_preprocess_does_not_overwrite_existing_readme(tmp_path: Path):
+    dataset_name = "DocumentedDataset"
+    _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
+    readme = tmp_path / dataset_name / "README.md"
+    readme.write_text("Custom dataset notes.\n", encoding="utf-8")
+
+    PreprocessRun.from_cfg(_single_cfg(dataset_name), paths=DummyPaths(tmp_path)).execute()
+
+    assert readme.read_text(encoding="utf-8") == "Custom dataset notes.\n"

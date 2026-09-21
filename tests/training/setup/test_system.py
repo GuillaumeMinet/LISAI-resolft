@@ -30,7 +30,7 @@ def _make_cfg(
     device: str = "cpu",
     tensorboard_enabled: bool = False,
     tensorboard_subfolder: str | None = None,
-    models_subfolder: str = "models",
+    models_subfolder: str = "runs",
     validation_images: bool = True,
     validation_freq: int = 10,
 ):

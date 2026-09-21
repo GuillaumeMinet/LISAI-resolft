@@ -1,0 +1,121 @@
+# yaml-language-server: $schema=../../schema/experiment.schema.json
+
+# ========================================================
+# Catalog metadata
+# ========================================================
+metadata:
+  kind: preset
+  name: denoising_hdn_sup
+  task: denoising_hdn
+  description: Current HDN/LVAE denoising recipe for supervised training. Instantiate into local/ before training.
+
+# ========================================================
+# General experiment settings
+# ========================================================
+experiment:
+  mode: train
+  exp_name: replace_me_experiment
+  overwrite: false
+  post_training_inference: true
+  task:
+    name: denoising_hdn
+    supervised: true
+    betaKL: 0.01
+
+# ========================================================
+# Paths
+# ========================================================
+routing:
+  data_subfolder: preprocess/recon
+  models_subfolder: HDN
+  tensorboard_subfolder: HDN
+
+# ========================================================
+# Dataset / DataLoader configuration
+# ========================================================
+data:
+  dataset_name: replace_me_dataset
+  data_format: single
+  canonical_load: true
+  prep_before: true
+  already_split: true
+  filters:
+    - tiff
+    - tif
+  paired: true
+  input: replace_me_input
+  target: replace_me_target
+  patch_size: 64
+  val_patch_size: 256
+  batch_size: 64
+  initial_crop: null
+  augmentation: false
+  patch_thresh: 0.05
+  select_on_gt: false
+
+# ========================================================
+# Normalization / Noise
+# ========================================================
+normalization:
+  load_from_noise_model: true
+  norm_prm: null
+
+# ========================================================
+# Noise model configuration
+# ========================================================
+noise_model:
+  name: Noise0_SigN2Vavg_Clip-3_norm_bis
+
+# ========================================================
+# Model configuration
+# ========================================================
+model:
+  architecture: lvae
+  parameters:
+    num_latents: 5
+    z_dims: 32
+    blocks_per_layer: 6
+    norm: group
+    gr_norm: 8
+    free_bits: 1.0
+
+# ========================================================
+# Training configuration
+# ========================================================
+training:
+  n_epochs: 200
+  batch_size: 32
+  learning_rate: 1e-4
+  optimizer: Adam
+  scheduler: ReduceLROnPlateau
+  progress_bar: true
+  debug_stop: false
+  warmup:
+    enabled: true
+    steps: 500
+    start_factor: 0.1
+  auto_stop:
+    enabled: true
+    metrics: val_loss
+    patience: 30
+  max_grad_norm: null
+
+# ========================================================
+# Saving configuration
+# ========================================================
+saving:
+  enabled: true
+  canonical_save: true
+  overwrite_best: true
+  save_last: true
+  entire_model: true
+  state_dict: true
+  validation_images: true
+  validation_freq: 10
+
+# ========================================================
+# Tensorboard configuration
+# ========================================================
+tensorboard:
+  enabled: false
+  validation_images: true

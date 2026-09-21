@@ -25,6 +25,7 @@ class PipelineResult:
     n_files: int
     n_frames: Optional[int] = None
     snr_levels: Optional[Union[int, list[int]]] = None
+    timepoints: Optional[Union[int, list[int]]] = None
 
 class BasePipeline(ABC,Generic[CfgT]):
     """

@@ -11,6 +11,7 @@ from typing import Literal
 from lisai.config import settings
 
 from .scanner import DiscoveredRun, InvalidRunMetadata
+from .external.discovery import DiscoveredExternalRun
 from .schema import format_timestamp_local, utc_now
 
 _STALE_TIMEOUT_MULTIPLIER = 1.05
@@ -110,6 +111,7 @@ def filter_runs(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     status: str | None = None,
+    kept: bool | None = None,
 ) -> list[DiscoveredRun]:
     return [
         run
@@ -120,6 +122,7 @@ def filter_runs(
         and (dataset is None or run.dataset == dataset)
         and (model_subfolder is None or run.model_subfolder == model_subfolder)
         and (status is None or run.metadata.status == status)
+        and (kept is None or run.metadata.kept is kept)
     ]
 
 
@@ -171,19 +174,20 @@ def render_runs_table(
         "dataset",
         "model_subfolder",
         "run_dir",
+        "kept",
         "status",
         "epoch",
         "eta_left",
+        "start_time"
     ]
     if full:
         headers.extend(
             [
+                "last_seen",
+                "run_id",
                 "failure",
                 "path_consistent",
                 "closed_cleanly",
-                "start_time",
-                "last_seen",
-                "run_id",
             ]
         )
     selection_width = max(2, len(str(len(runs))))
@@ -193,19 +197,20 @@ def render_runs_table(
             run.dataset,
             run.model_subfolder,
             run.run_dir.name,
+            "*" if run.metadata.kept else "",
             display_run_status(run, now=reference),
             _format_epoch(run),
             _format_eta_left(run),
+            format_timestamp_local(run.metadata.created_at),
         ]
         if full:
             row.extend(
                 [
+                    format_timestamp_local(run.last_seen),
+                    run.metadata.run_id,
                     _format_failure_summary(run),
                     str(run.path_consistent).lower(),
                     str(run.metadata.closed_cleanly).lower(),
-                    format_timestamp_local(run.metadata.created_at),
-                    format_timestamp_local(run.last_seen),
-                    run.metadata.run_id,
                 ]
             )
         if include_selection_index:
@@ -230,6 +235,31 @@ def render_runs_table(
     )
     return "\n".join(lines)
 
+
+
+def render_external_runs_table(runs: Sequence[DiscoveredExternalRun]) -> str:
+    if not runs:
+        return ""
+    headers = ["dataset", "run_dir", "checkpoint", "config", "imported_at"]
+    rows = []
+    for run in runs:
+        rows.append([
+            run.dataset,
+            run.run_dir.name,
+            run.metadata.checkpoint or "-",
+            run.metadata.config or "-",
+            format_timestamp_local(run.metadata.imported_at),
+        ])
+    widths = [max(len(header), *(len(row[idx]) for row in rows)) for idx, header in enumerate(headers)]
+    lines = [
+        "  ".join(header.ljust(widths[idx]) for idx, header in enumerate(headers)),
+        "  ".join("-" * widths[idx] for idx in range(len(headers))),
+    ]
+    lines.extend(
+        "  ".join(value.ljust(widths[idx]) for idx, value in enumerate(row))
+        for row in rows
+    )
+    return "\n".join(lines)
 
 def write_invalid_run_warnings(
     invalid_runs: Iterable[InvalidRunMetadata],

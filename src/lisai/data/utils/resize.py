@@ -17,8 +17,14 @@ def crop_center(img: Union[np.ndarray, torch.Tensor], crop_size: Union[int, Tupl
         crop_h = crop_w = crop_size
     else:
         raise TypeError("crop_size should be tuple or integer.")
-
+    
     img_h, img_w = img.shape[-2:]
+
+    if crop_h > img_h or crop_w > img_w:
+        raise ValueError(
+            f"crop_size {(crop_h, crop_w)} exceeds image size {(img_h, img_w)}"
+        )
+
     start_h = math.floor(img_h / 2 - (crop_h / 2))
     start_w = math.floor(img_w / 2 - (crop_w / 2))
     stop_h = start_h + crop_h

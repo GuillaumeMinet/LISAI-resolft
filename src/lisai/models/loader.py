@@ -8,6 +8,9 @@ from typing import Protocol
 import torch
 
 from lisai.infra.paths import Paths
+from lisai.infra.paths.checkpoint_resolution import (
+    resolve_checkpoint_path as resolve_existing_checkpoint_path,
+)
 from lisai.models.params import AnyModelParams, LVAEParams
 
 from .registry import get_model_class
@@ -105,6 +108,16 @@ def _origin_checkpoint_path(spec: TrainingModelLoadSpec) -> Path:
         else:
             selector = "best"
 
+    if selector == "best" and epoch is None:
+        _, checkpoint_path = resolve_existing_checkpoint_path(
+            paths=paths,
+            run_dir=origin_dir,
+            load_methods=(method,),
+            best_or_last="best",
+            missing_description="a model checkpoint to load",
+        )
+        return checkpoint_path
+
     return paths.checkpoint_path(
         run_dir=origin_dir,
         load_method=method,
@@ -165,7 +178,7 @@ def prepare_model_for_training(
     state = None
     if should_load:
         origin_ckpt = _origin_checkpoint_path(spec)
-        loaded = torch.load(origin_ckpt, map_location=device)
+        loaded = torch.load(origin_ckpt, map_location=device, weights_only=True)
 
         if isinstance(loaded, dict) and "model_state_dict" in loaded:
             model.load_state_dict(loaded["model_state_dict"])

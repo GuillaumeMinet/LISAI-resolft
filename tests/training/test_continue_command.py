@@ -64,7 +64,7 @@ def _write_metadata(
         "last_epoch": 3,
         "max_epoch": 10,
         "best_val_loss": 0.4,
-        "path": f"datasets/{dataset}/models/{model_subfolder}/{run_dir.name}",
+        "path": f"datasets/{dataset}/runs/{model_subfolder}/{run_dir.name}",
         "group_path": None if "/" not in model_subfolder else model_subfolder.split("/", 1)[1],
     }
     write_run_metadata_atomic(run_dir, RunMetadata.model_validate(payload))
@@ -72,7 +72,7 @@ def _write_metadata(
 
 def test_root_cli_continue_dispatches_unique_match_and_builds_continue_config(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag_timelapses" / "models" / "Upsamp" / "CL1_Upsamp2_Mltpl05_lightweight_01"
+    run_dir = datasets_root / "Gag_timelapses" / "runs" / "Upsamp" / "CL1_Upsamp2_Mltpl05_lightweight_01"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
@@ -105,18 +105,51 @@ def test_root_cli_continue_dispatches_unique_match_and_builds_continue_config(mo
     }
 
 
+def test_root_cli_continue_passes_progress_bar_override(monkeypatch, tmp_path):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00"
+    _write_metadata(
+        run_dir,
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FBB",
+        dataset="Gag",
+        model_subfolder="HDN",
+        status="completed",
+    )
+
+    captured = {}
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(
+        continue_cli,
+        "run_training_from_config_dict",
+        lambda cfg, **kwargs: captured.update({"cfg": cfg, "kwargs": kwargs}),
+    )
+
+    exit_code = root_cli.main([
+        "continue",
+        "resume_me_00",
+        "--dataset",
+        "Gag",
+        "--yes",
+        "--no-progress-bar",
+    ])
+
+    assert exit_code == 0
+    assert captured["cfg"]["load_model"]["model_full_path"] == str(run_dir.resolve())
+    assert captured["kwargs"] == {"progress_bar": False}
+
+
 def test_continue_reports_multiple_matches_and_requests_disambiguation(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "duplicate_00"
     _write_metadata(
-        datasets_root / "Gag" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Gag" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
         dataset="Gag",
         model_subfolder="HDN",
         status="completed",
     )
     _write_metadata(
-        datasets_root / "Actin" / "models" / "Upsamp" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "Upsamp" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAC",
         dataset="Actin",
         model_subfolder="Upsamp",
@@ -145,14 +178,14 @@ def test_continue_ambiguous_matches_allow_interactive_line_selection(monkeypatch
     selector = "duplicate_00"
     now = utc_now()
     _write_metadata(
-        datasets_root / "Actin" / "models" / "HDN" / "duplicate_00",
+        datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAF",
         dataset="Actin",
         model_subfolder="HDN",
         status="completed",
         last_heartbeat_at=now,
     )
-    selected_dir = datasets_root / "Gag" / "models" / "Upsamp" / "duplicate_00"
+    selected_dir = datasets_root / "Gag" / "runs" / "Upsamp" / "duplicate_00"
     _write_metadata(
         selected_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G7AAG",
@@ -184,7 +217,7 @@ def test_continue_ambiguous_matches_allow_interactive_line_selection(monkeypatch
 
 def test_continue_allows_run_id_override(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "resume_me_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00"
     run_id = "01ARZ3NDEKTSV4RRFFQ69G5FAD"
     _write_metadata(
         run_dir,
@@ -214,7 +247,7 @@ def test_continue_requires_yes_when_confirmation_is_non_interactive(monkeypatch,
     datasets_root = tmp_path / "datasets"
     selector = "resume_me_00"
     _write_metadata(
-        datasets_root / "Gag" / "models" / "HDN" / "resume_me_00",
+        datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAE",
         dataset="Gag",
         model_subfolder="HDN",
@@ -244,7 +277,7 @@ def test_continue_blocks_recently_active_runs_without_force(monkeypatch, tmp_pat
     selector = "still_running_00"
     now = utc_now()
     _write_metadata(
-        datasets_root / "Gag" / "models" / "HDN" / "still_running_00",
+        datasets_root / "Gag" / "runs" / "HDN" / "still_running_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAF",
         dataset="Gag",
         model_subfolder="HDN",
@@ -278,7 +311,7 @@ def test_continue_blocks_recently_active_runs_without_force(monkeypatch, tmp_pat
 def test_continue_force_allows_recently_active_runs(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "force_resume_00"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "force_resume_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "force_resume_00"
     now = utc_now()
     _write_metadata(
         run_dir,
@@ -315,7 +348,7 @@ def test_continue_force_allows_recently_active_runs(monkeypatch, tmp_path):
 def test_continue_requires_force_for_non_interactive_path_inconsistency(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "renamed_00"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "renamed_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "renamed_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB1",
@@ -351,7 +384,7 @@ def test_continue_requires_force_for_non_interactive_path_inconsistency(monkeypa
 def test_continue_allows_non_interactive_path_inconsistency_with_yes_and_force(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "renamed_00"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "renamed_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "renamed_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB3",
@@ -386,7 +419,7 @@ def test_continue_allows_non_interactive_path_inconsistency_with_yes_and_force(m
 def test_continue_allows_stale_running_runs_after_confirmation(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "stale_run_00"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "stale_run_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "stale_run_00"
     now = utc_now()
     _write_metadata(
         run_dir,
@@ -421,7 +454,7 @@ def test_continue_allows_stale_running_runs_after_confirmation(monkeypatch, tmp_
 def test_continue_failed_run_uses_generic_confirmation_prompt(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "failed_once_00"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "failed_once_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "failed_once_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB4",
@@ -450,7 +483,7 @@ def test_continue_failed_run_uses_generic_confirmation_prompt(monkeypatch, tmp_p
 def test_continue_failed_run_non_interactive_requires_yes(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
     selector = "failed_once_00"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "failed_once_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "failed_once_00"
     _write_metadata(
         run_dir,
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB5",

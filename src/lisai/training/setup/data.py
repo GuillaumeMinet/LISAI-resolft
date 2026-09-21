@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
-from lisai.config import load_yaml
 from lisai.data.data_loaders import make_training_loaders
+from lisai.data.dataset_registry import load_dataset_info
 from lisai.data.data_loaders.split_manifest import (
     read_split_manifest,
     resolve_split_manifest_path,
@@ -107,15 +107,13 @@ def prepare_data(
     data_dir = runtime.paths.dataset_dir(
         dataset_name=cfg.data.dataset_name,
         data_subfolder=cfg.routing.data_subfolder,
+        usage="training",
     )
 
-    registry = {}
-    try:
-        registry = load_yaml(runtime.paths.dataset_registry_path())
-    except FileNotFoundError:
+    registry_path = Path(runtime.paths.dataset_registry_path())
+    if not registry_path.exists():
         logger.warning("Dataset registry not found")
-
-    dataset_info = registry.get(cfg.data.dataset_name, None)
+    dataset_info = load_dataset_info(registry_path, cfg.data.dataset_name)
 
     data_cfg = cfg.data.resolved(
         data_dir=data_dir,

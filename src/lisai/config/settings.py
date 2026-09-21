@@ -4,8 +4,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .models import DataConfig, ProjectConfig
+from .models import DataConfig, LocalConfig, ProjectConfig
+from .models.inference import ResolvedInferenceConfig
+from .models.inference.presets import POST_TRAINING_OVERRIDES
 from .io.yaml import load_yaml, save_yaml
+
+
+_LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/local-config.schema.json"
+_INFERENCE_DEFAULTS_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference-defaults.schema.json"
+_INFERENCE_OVERRIDES_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference.schema.json"
 
 
 class AttrDict(dict):
@@ -58,7 +65,10 @@ class Settings:
         self._project_yaml_path = self.CONFIGS_ROOT / "project_config.yml"
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
 
-        self._infra_cfg = self._load_or_setup_infrastructure()
+        self.local_cfg: LocalConfig = LocalConfig.model_validate(
+            self._load_or_setup_infrastructure()
+        )
+        self._ensure_local_inference_configs()
 
         project_raw = self._load_required(self._project_yaml_path)
         data_raw = self._load_required(self._data_yaml_path)
@@ -82,7 +92,11 @@ class Settings:
 
     def _load_or_setup_infrastructure(self) -> dict:
         if self._local_yaml_path.exists():
-            return load_yaml(self._local_yaml_path)
+            raw = load_yaml(self._local_yaml_path)
+            if self._migrate_local_inference_output(raw):
+                save_yaml(raw, self._local_yaml_path)
+            self._ensure_local_config_schema_hint()
+            return raw
 
         print("\n" + "=" * 60)
         print(" LISAI - FIRST TIME SETUP")
@@ -91,15 +105,77 @@ class Settings:
         user_input = input(f"Enter absolute path to Data Root [default: {default_root}]: ").strip()
         data_root = user_input if user_input else default_root
 
-        new_config = {"infrastructure": {"data_root": str(Path(data_root).resolve())}}
+        new_config = {
+            "infrastructure": {"data_root": str(Path(data_root).resolve())},
+            "inference": {
+                "output": {
+                    "mode": "default",
+                    "save_input_mode": "if_not_in_place",
+                },
+                "inference_dir": "default",
+            },
+            "console": {"progress_bar": None},
+        }
         self._local_yaml_path.parent.mkdir(parents=True, exist_ok=True)
         save_yaml(new_config, self._local_yaml_path)
+        self._ensure_local_config_schema_hint()
         print(f"Saved to {self._local_yaml_path}\n")
         return new_config
 
+    @staticmethod
+    def _migrate_local_inference_output(raw: dict) -> bool:
+        """Migrate the recent flat local output_mode setting to inference.output."""
+        inference = raw.get("inference")
+        if not isinstance(inference, dict) or "output_mode" not in inference:
+            return False
+        if "output" in inference:
+            raise ValueError(
+                "local inference config cannot define both output_mode and output."
+            )
+
+        mode = inference.pop("output_mode")
+        inference["output"] = {
+            "mode": mode,
+            "save_input_mode": "if_not_in_place",
+        }
+        return True
+
+    def _ensure_local_config_schema_hint(self) -> None:
+        text = self._local_yaml_path.read_text(encoding="utf-8")
+        if _LOCAL_CONFIG_SCHEMA_HINT in text.splitlines():
+            return
+        self._local_yaml_path.write_text(
+            f"{_LOCAL_CONFIG_SCHEMA_HINT}\n{text}",
+            encoding="utf-8",
+        )
+
+
+    @staticmethod
+    def _ensure_schema_hint(path: Path, hint: str) -> None:
+        text = path.read_text(encoding="utf-8")
+        if hint in text.splitlines():
+            return
+        path.write_text(f"{hint}\n{text}", encoding="utf-8")
+
+    def _ensure_local_inference_configs(self) -> None:
+        local_dir = self.CONFIGS_ROOT / "inference" / "local"
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+        defaults_path = local_dir / "defaults.yml"
+        if not defaults_path.exists():
+            save_yaml(
+                ResolvedInferenceConfig().model_dump(mode="json"),
+                defaults_path,
+            )
+        self._ensure_schema_hint(defaults_path, _INFERENCE_DEFAULTS_SCHEMA_HINT)
+
+        post_training_path = local_dir / "post_training.yml"
+        if not post_training_path.exists():
+            save_yaml(POST_TRAINING_OVERRIDES, post_training_path)
+        self._ensure_schema_hint(post_training_path, _INFERENCE_OVERRIDES_SCHEMA_HINT)
+
     def _build_context(self) -> AttrDict:
-        infra = self._infra_cfg.get("infrastructure", {})
-        data_root = Path(infra.get("data_root")).resolve()
+        data_root = Path(self.local_cfg.infrastructure.data_root).resolve()
         code_dir = self.PROJECT_ROOT.resolve()
 
         ctx = AttrDict(
@@ -114,7 +190,7 @@ class Settings:
         # Provide code_dir for templates
         ctx.paths.roots.code_dir = str(code_dir)
 
-        # Resolve roots (only depend on infra)
+        # Resolve roots (depend only on local infrastructure plus explicit local overrides).
         for key, tmpl in (self.project_cfg.paths.roots or {}).items():
             if key == "run_container_dirname":
                 text = str(tmpl).strip().strip("/\\")
@@ -122,8 +198,12 @@ class Settings:
                     raise ValueError("project.paths.roots.run_container_dirname must not be empty.")
                 ctx.paths.roots[key] = text
                 continue
-            value = tmpl.format(**ctx)
-            value = str(Path(os.path.normpath(value)).resolve())
+
+            if key == "inference_dir" and self.local_cfg.inference.inference_dir != "default":
+                value = self.local_cfg.inference.inference_dir
+            else:
+                value = tmpl.format(**ctx)
+            value = str(Path(os.path.normpath(value)).expanduser().resolve())
             ctx.paths.roots[key] = value
 
         # Store templates as-is (experiment-dependent keys can't be resolved yet)
@@ -147,6 +227,10 @@ class Settings:
         return self._project_yaml_path
 
     @property
+    def DATA_ROOT(self) -> Path:
+        return Path(self._ctx.data_root).resolve()
+
+    @property
     def DATA_CONFIG_PATH(self) -> Path:
         return self._data_yaml_path
         
@@ -159,8 +243,24 @@ class Settings:
         return self.CONFIGS_ROOT / "inference"
     
     @property
+    def INFERENCE_OUTPUT_MODE(self) -> str:
+        return self.local_cfg.inference.output.mode
+
+    @property
+    def INFERENCE_SAVE_INPUT_MODE(self) -> str:
+        return self.local_cfg.inference.output.save_input_mode
+
+    @property
+    def LOCAL_INFERENCE_DIR(self) -> str:
+        return self.local_cfg.inference.inference_dir
+
+    @property
+    def LOCAL_PROGRESS_BAR(self) -> bool | None:
+        return self.local_cfg.console.progress_bar
+
+    @property
     def INFERENCE_DEFAULT_CONFIG_NAME(self):
-        return "defaults"
+        return "local/defaults"
     
     @property
     def PREPROCESS_CONFIG_DIR(self):

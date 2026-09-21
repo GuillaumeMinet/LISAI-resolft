@@ -5,13 +5,15 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-import yaml
-
+from lisai.config.models.inference import ApplyOverrides, EvaluateOverrides
+from lisai.infra.cli.selection import resolve_partial_name
+from lisai.promoted_models.package import load_promoted_model
+from lisai.promoted_models.registry import load_promoted_model_registry
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.scanner import DiscoveredRun
 from lisai.runs.selection import resolve_discovered_run_selector
 
-from .defaults import UNSET
+from .defaults import resolve_apply_config, resolve_evaluate_config
 from .run_apply_model import run_apply_model
 from .run_evaluate import run_evaluate
 
@@ -32,28 +34,137 @@ def _parse_crop_size(value: str) -> int | tuple[int, int]:
     raise argparse.ArgumentTypeError("crop_size must be 'N' or 'H,W'.")
 
 
-def _parse_key_value_overrides(values: list[str] | None, parser: argparse.ArgumentParser) -> dict | object:
-    if not values:
-        return UNSET
-
-    out: dict[str, object] = {}
-    for value in values:
-        key, sep, raw = value.partition("=")
-        if not sep:
-            parser.error(f"Expected KEY=VALUE override, got: {value}")
-        key = key.strip()
-        if not key:
-            parser.error(f"Override key cannot be empty: {value}")
-        out[key] = yaml.safe_load(raw)
-    return out
-
-
-def _maybe_unset(value):
-    return UNSET if value is None else value
+def _parse_tiling_size(value: str) -> int | str:
+    normalized = value.strip().lower()
+    if normalized == "auto":
+        return "auto"
+    if normalized in {"off", "none", "disable", "disabled"}:
+        return "off"
+    try:
+        parsed = int(normalized)
+    except ValueError:
+        raise argparse.ArgumentTypeError("tiling_size must be a positive integer, 'auto', or 'off'.") from None
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("tiling_size must be greater than 0.")
+    return parsed
 
 
-def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    parser.add_argument(
+def _build_apply_overrides(args: argparse.Namespace) -> ApplyOverrides:
+    """Translate explicit apply CLI choices into sparse typed config overrides."""
+    payload: dict[str, object] = {}
+
+    checkpoint = {}
+    if args.epoch_number is not None:
+        checkpoint["epoch_number"] = args.epoch_number
+    if args.best_or_last is not None:
+        checkpoint["best_or_last"] = args.best_or_last
+    if checkpoint:
+        payload["checkpoint"] = checkpoint
+
+    input_cfg = {}
+    if args.filters is not None:
+        input_cfg["filters"] = args.filters
+    if args.skip_if_contain is not None:
+        input_cfg["skip_if_contain"] = args.skip_if_contain
+    if args.limit_n_imgs is not None:
+        input_cfg["limit_n_imgs"] = args.limit_n_imgs
+    if args.timelapse_max is not None:
+        input_cfg["timelapse_max"] = args.timelapse_max
+    if input_cfg:
+        payload["input"] = input_cfg
+
+    inference = {}
+    if args.crop_size is not None:
+        inference["crop_size"] = args.crop_size
+    if args.tiling_size is not None:
+        inference["tiling_size"] = args.tiling_size
+    if args.lvae_num_samples is not None:
+        inference["lvae_num_samples"] = args.lvae_num_samples
+    if inference:
+        payload["inference"] = inference
+
+    postprocess = {}
+    if args.apply_color_code is not None:
+        postprocess["color_code"] = {"enabled": args.apply_color_code}
+    if postprocess:
+        payload["postprocess"] = postprocess
+
+    saving = {}
+    if args.save_folder is not None:
+        saving["save_folder"] = args.save_folder
+    elif args.output_mode is not None:
+        saving["mode"] = args.output_mode
+    elif args.in_place is not None:
+        saving["in_place"] = args.in_place
+
+    if args.save_input is True:
+        saving["save_input_mode"] = "always"
+    elif args.save_input is False:
+        saving["save_input_mode"] = "never"
+    if args.lvae_save_samples is not None:
+        saving["lvae_save_samples"] = args.lvae_save_samples
+    if saving:
+        payload["saving"] = saving
+
+    return ApplyOverrides.model_validate(payload)
+
+
+def _build_evaluate_overrides(args: argparse.Namespace) -> EvaluateOverrides:
+    """Translate explicit evaluate CLI choices into sparse typed config overrides."""
+    payload: dict[str, object] = {}
+
+    checkpoint = {}
+    if args.epoch_number is not None:
+        checkpoint["epoch_number"] = args.epoch_number
+    if args.best_or_last is not None:
+        checkpoint["best_or_last"] = args.best_or_last
+    if checkpoint:
+        payload["checkpoint"] = checkpoint
+
+    data = {}
+    if args.split is not None:
+        data["split"] = args.split
+    if args.eval_gt is not None:
+        data["eval_gt"] = args.eval_gt
+    if args.limit_n_imgs is not None:
+        data["limit_n_imgs"] = args.limit_n_imgs
+    if args.timelapse_max is not None:
+        data["timelapse_max"] = args.timelapse_max
+    if data:
+        payload["data"] = data
+
+    inference = {}
+    if args.crop_size is not None:
+        inference["crop_size"] = args.crop_size
+    if args.tiling_size is not None:
+        inference["tiling_size"] = args.tiling_size
+    if args.lvae_num_samples is not None:
+        inference["lvae_num_samples"] = args.lvae_num_samples
+    if inference:
+        payload["inference"] = inference
+
+    if args.metrics is not None:
+        payload["metrics"] = args.metrics
+
+    saving = {}
+    if args.save_folder is not None:
+        saving["save_folder"] = args.save_folder
+    if args.overwrite is not None:
+        saving["overwrite"] = args.overwrite
+    if saving:
+        payload["saving"] = saving
+
+    return EvaluateOverrides.model_validate(payload)
+
+
+def _add_model_selection_arguments(
+    parser: argparse.ArgumentParser,
+    *,
+    action: str,
+    allow_promoted_model: bool,
+) -> argparse._ArgumentGroup:
+    group = parser.add_argument_group("Model selection")
+    group.add_argument(
         "run",
         nargs="?",
         help=(
@@ -61,164 +172,275 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
             "Use --run-id as an alternative."
         ),
     )
-    parser.add_argument("data_path", help="Input file or directory to process.")
-    parser.add_argument("--run-id", help="Stable run identifier to apply.")
-    add_run_filter_arguments(parser, include_identity=False, include_status=False)
-    parser.add_argument(
+    group.add_argument("--run-id", help=f"Stable run identifier to {action}.")
+    if allow_promoted_model:
+        group.add_argument(
+            "--model",
+            help="Use a locally promoted model by public or partial name instead of a training run.",
+        )
+    add_run_filter_arguments(group, include_identity=False, include_status=False)
+    return group
+
+
+def _add_config_argument(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+    group = parser.add_argument_group("Configuration")
+    group.add_argument(
         "-c",
         "--config",
-        help="Inference config path, or a config name from configs/inference with or without .yml/.yaml. Defaults to defaults.yml.",
+        help=(
+            "Inference config path, or a config name from configs/inference with or without "
+            ".yml/.yaml. Local configs are looked up first. Defaults to local/defaults.yml; "
+            "named configs may be sparse and inherit unspecified values from local/defaults.yml. "
+            "With --model, the model's stored inference config is layered in before this config."
+        ),
     )
-    parser.add_argument("--save-folder", "--save_folder", dest="save_folder")
-    parser.add_argument("--in-place", "--in_place", dest="in_place", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--epoch-number", "--epoch_number", dest="epoch_number", type=int)
-    parser.add_argument("--best-or-last", "--best_or_last", dest="best_or_last", choices=["best", "last", "both"])
-    parser.add_argument("--filters", type=_parse_csv_list)
-    parser.add_argument("--skip-if-contain", "--skip_if_contain", dest="skip_if_contain", type=_parse_csv_list)
-    parser.add_argument("--crop-size", "--crop_size", dest="crop_size", type=_parse_crop_size)
-    parser.add_argument(
-        "--keep-original-shape",
-        "--keep_original_shape",
-        dest="keep_original_shape",
+    return group
+
+
+def _add_checkpoint_arguments(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+    group = parser.add_argument_group("Checkpoint")
+    group.add_argument("--epoch-number", "--epoch_number", dest="epoch_number", type=int)
+    group.add_argument(
+        "--best-or-last",
+        "--best_or_last",
+        dest="best_or_last",
+        choices=["best", "last", "both"],
+    )
+    return group
+
+
+def _add_inference_arguments(parser: argparse.ArgumentParser) -> argparse._ArgumentGroup:
+    group = parser.add_argument_group("Inference")
+    group.add_argument("--crop-size", "--crop_size", dest="crop_size", type=_parse_crop_size)
+    group.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=_parse_tiling_size)
+    group.add_argument("--no-tiling", dest="tiling_size", action="store_const", const="off")
+    group.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)
+    group.add_argument(
+        "--progress-bar",
+        dest="progress_bar",
         action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the local/configured tqdm progress-bar preference for this command.",
     )
-    parser.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=int)
-    parser.add_argument("--stack-selection-idx", "--stack_selection_idx", dest="stack_selection_idx", type=int)
-    parser.add_argument("--timelapse-max", "--timelapse_max", dest="timelapse_max", type=int)
-    parser.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)
-    parser.add_argument(
+    return group
+
+
+def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    _add_model_selection_arguments(parser, action="apply", allow_promoted_model=True)
+    _add_config_argument(parser)
+    _add_checkpoint_arguments(parser)
+
+    input_group = parser.add_argument_group("Input selection")
+    input_group.add_argument("data_path", help="Input file or directory to process.")
+    input_group.add_argument("--filters", type=_parse_csv_list)
+    input_group.add_argument("--skip-if-contain", "--skip_if_contain", dest="skip_if_contain", type=_parse_csv_list)
+    input_group.add_argument("--limit-n-imgs", "--limit_n_imgs", dest="limit_n_imgs", type=int)
+    input_group.add_argument("--timelapse-max", "--timelapse_max", dest="timelapse_max", type=int)
+
+    _add_inference_arguments(parser)
+
+    output_location_group = parser.add_argument_group(
+        "Output location",
+        "CLI output options override inference-config and local-config saving preferences.",
+    )
+    output_choice = output_location_group.add_mutually_exclusive_group()
+    output_choice.add_argument(
+        "--save-folder",
+        "--save_folder",
+        dest="save_folder",
+        metavar="PATH",
+        help=(
+            "Save predictions to PATH. If PATH already exists, LISAI creates a "
+            "numbered sibling unless --overwrite, --reuse-folder, or --skip-existing is set."
+        ),
+    )
+    output_choice.add_argument(
+        "--output-mode",
+        "--output_mode",
+        dest="output_mode",
+        choices=["default", "in_place", "folder_inside", "folder_outside"],
+        help=(
+            "Choose prediction placement: default uses the configured inference "
+            "directory; in_place writes directly with the input data; folder_inside creates "
+            "a prediction folder inside the input directory; folder_outside creates it beside "
+            "the input directory."
+        ),
+    )
+    output_choice.add_argument(
+        "--in-place",
+        "--in_place",
+        dest="in_place",
+        action=argparse.BooleanOptionalAction,
+        help=(
+            "Save predictions alongside the input data. Use --no-in-place to "
+            "explicitly force normal inference-directory routing."
+        ),
+    )
+    output_location_group.add_argument(
+        "--overwrite",
+        action="store_true",
+        help=(
+            "Replace an existing apply output folder instead of creating a numbered sibling. "
+            "Cannot be used with in-place output."
+        ),
+    )
+    output_location_group.add_argument(
+        "--reuse-folder",
+        action="store_true",
+        help=(
+            "Use the resolved output folder exactly without deleting it. Refuses to run "
+            "if selected inputs already have outputs in that folder."
+        ),
+    )
+    output_location_group.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help=(
+            "Continue an apply run by reusing the output folder and skipping inputs whose "
+            "_pred.tif output already exists."
+        ),
+    )
+
+    output_contents_group = parser.add_argument_group("Output contents")
+    output_contents_group.add_argument(
+        "--save-input",
+        dest="save_input",
+        action=argparse.BooleanOptionalAction,
+        help="Override the configured input-saving policy for this apply invocation.",
+    )
+    output_contents_group.add_argument(
         "--lvae-save-samples",
         "--lvae_save_samples",
         dest="lvae_save_samples",
         action=argparse.BooleanOptionalAction,
     )
-    parser.add_argument(
-        "--denormalize-output",
-        "--denormalize_output",
-        dest="denormalize_output",
-        action=argparse.BooleanOptionalAction,
-    )
-    parser.add_argument("--save-inp", "--save_inp", dest="save_inp", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--downsamp", type=int)
-    parser.add_argument(
+    output_contents_group.add_argument(
         "--apply-color-code",
         "--apply_color_code",
         dest="apply_color_code",
-        action=argparse.BooleanOptionalAction,
-    )
-    parser.add_argument(
-        "--color-code-option",
-        "--color_code_option",
-        dest="color_code_option",
-        action="append",
-        metavar="KEY=VALUE",
-        help="Override nested apply.color_code_prm values, for example 'saturation=0.5'.",
-    )
-    parser.add_argument(
-        "--dark-frame-context-length",
-        "--dark_frame_context_length",
-        dest="dark_frame_context_length",
         action=argparse.BooleanOptionalAction,
     )
     return parser
 
 
 def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
-    parser.add_argument(
-        "run",
-        nargs="?",
-        help=(
-            "Run selector: run_dir_name, partial exp_name, or dataset[/subfolder]/run_dir_name. "
-            "Use --run-id as an alternative."
-        ),
+    _add_model_selection_arguments(parser, action="evaluate", allow_promoted_model=False)
+    _add_config_argument(parser)
+    _add_checkpoint_arguments(parser)
+
+    data_group = parser.add_argument_group("Evaluation data")
+    data_group.add_argument(
+        "--on",
+        dest="evaluation_dataset_name",
+        metavar="DATASET",
+        help="Evaluate on the complete registered evaluation-only dataset instead of the run's own split.",
     )
-    parser.add_argument("--run-id", help="Stable run identifier to evaluate.")
-    add_run_filter_arguments(parser, include_identity=False, include_status=False)
-    parser.add_argument(
-        "-c",
-        "--config",
-        help="Inference config path, or a config name from configs/inference with or without .yml/.yaml. Defaults to defaults.yml.",
+    data_group.add_argument("--split")
+    data_group.add_argument(
+        "--eval-gt",
+        "--eval_gt",
+        dest="eval_gt",
+        help="Evaluation GT path/key. Use @training for the saved training target or @none to disable GT.",
     )
-    parser.add_argument("--best-or-last", "--best_or_last", dest="best_or_last", choices=["best", "last", "both"])
-    parser.add_argument("--epoch-number", "--epoch_number", dest="epoch_number", type=int)
-    parser.add_argument("--tiling-size", "--tiling_size", dest="tiling_size", type=int)
-    parser.add_argument("--crop-size", "--crop_size", dest="crop_size", type=_parse_crop_size)
-    parser.add_argument("--metrics", type=_parse_csv_list)
-    parser.add_argument("--lvae-num-samples", "--lvae_num_samples", dest="lvae_num_samples", type=int)
-    parser.add_argument("--save-folder", "--save_folder", dest="save_folder")
-    parser.add_argument("--overwrite", action=argparse.BooleanOptionalAction)
-    parser.add_argument("--eval-gt", "--eval_gt", dest="eval_gt")
-    parser.add_argument(
-        "--data-option",
-        "--data_option",
-        dest="data_option",
-        action="append",
-        metavar="KEY=VALUE",
-        help="Override nested evaluate.data_prm_update values, for example 'data_dir=/tmp/data'.",
-    )
-    parser.add_argument("--ch-out", "--ch_out", dest="ch_out", type=int)
-    parser.add_argument("--split")
-    parser.add_argument("--limit-n-imgs", "--limit_n_imgs", dest="limit_n_imgs", type=int)
+    data_group.add_argument("--limit-n-imgs", "--limit_n_imgs", dest="limit_n_imgs", type=int)
+    data_group.add_argument("--timelapse-max", "--timelapse_max", dest="timelapse_max", type=int)
+
+    _add_inference_arguments(parser)
+
+    metrics_group = parser.add_argument_group("Metrics")
+    metrics_group.add_argument("--metrics", type=_parse_csv_list)
+
+    output_group = parser.add_argument_group("Output")
+    output_group.add_argument("--save-folder", "--save_folder", dest="save_folder")
+    output_group.add_argument("--overwrite", action=argparse.BooleanOptionalAction)
     return parser
 
 
 def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    selected = _resolve_run_selector(args)
-    if selected is None:
-        return 1
+    overwrite = getattr(args, "overwrite", False)
+    reuse_folder = getattr(args, "reuse_folder", False)
+    skip_existing = getattr(args, "skip_existing", False)
+    in_place_requested = (
+        getattr(args, "in_place", None) is True
+        or getattr(args, "output_mode", None) == "in_place"
+    )
+    if overwrite and (reuse_folder or skip_existing):
+        parser.error("--overwrite cannot be combined with --reuse-folder or --skip-existing.")
+    if in_place_requested and (overwrite or reuse_folder or skip_existing):
+        parser.error("--overwrite, --reuse-folder, and --skip-existing cannot be combined with in-place apply output.")
 
-    run_apply_model(
-        model_dataset=selected.dataset,
-        model_subfolder=selected.model_subfolder,
-        model_name=selected.run_dir.name,
-        data_path=Path(args.data_path),
+    promoted_model_name = args.model
+    promoted_model_config = None
+    if promoted_model_name is not None:
+        if any((args.run, args.run_id, args.dataset, args.model_subfolder)):
+            parser.error("--model cannot be combined with a run selector or run filters.")
+        if args.epoch_number is not None or args.best_or_last is not None:
+            parser.error("--epoch-number/--best-or-last do not apply to promoted models; promotion already fixes the checkpoint.")
+        registry = load_promoted_model_registry()
+        promoted_model_name = resolve_partial_name(
+            promoted_model_name,
+            registry.models,
+            entity_name="promoted model",
+            column_name="model",
+            help_hint="Use 'lisai models list' to inspect available promoted models.",
+            stdin=sys.stdin,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
+        )
+        if promoted_model_name is None:
+            return 1
+        promoted = load_promoted_model(promoted_model_name)
+        promoted_model_config = promoted.inference_config_path
+        model_dataset = ""
+        model_subfolder = "promoted"
+        model_name = promoted_model_name
+    else:
+        selected = _resolve_run_selector(args)
+        if selected is None:
+            return 1
+        model_dataset = selected.dataset
+        model_subfolder = selected.model_subfolder
+        model_name = selected.run_dir.name
+
+    cfg = resolve_apply_config(
+        model_config=promoted_model_config,
         config=args.config,
-        save_folder=_maybe_unset(args.save_folder),
-        in_place=_maybe_unset(args.in_place),
-        epoch_number=_maybe_unset(args.epoch_number),
-        best_or_last=_maybe_unset(args.best_or_last),
-        filters=_maybe_unset(args.filters),
-        skip_if_contain=_maybe_unset(args.skip_if_contain),
-        crop_size=_maybe_unset(args.crop_size),
-        keep_original_shape=_maybe_unset(args.keep_original_shape),
-        tiling_size=_maybe_unset(args.tiling_size),
-        stack_selection_idx=_maybe_unset(args.stack_selection_idx),
-        timelapse_max=_maybe_unset(args.timelapse_max),
-        lvae_num_samples=_maybe_unset(args.lvae_num_samples),
-        lvae_save_samples=_maybe_unset(args.lvae_save_samples),
-        denormalize_output=_maybe_unset(args.denormalize_output),
-        save_inp=_maybe_unset(args.save_inp),
-        downsamp=_maybe_unset(args.downsamp),
-        apply_color_code=_maybe_unset(args.apply_color_code),
-        color_code_prm=_parse_key_value_overrides(args.color_code_option, parser),
-        dark_frame_context_length=_maybe_unset(args.dark_frame_context_length),
+        overrides=_build_apply_overrides(args),
+    )
+    run_apply_model(
+        cfg=cfg,
+        model_dataset=model_dataset,
+        model_subfolder=model_subfolder,
+        model_name=model_name,
+        data_path=Path(args.data_path),
+        overwrite=overwrite,
+        reuse_folder=reuse_folder,
+        skip_existing=skip_existing,
+        progress_bar=getattr(args, "progress_bar", None),
+        promoted_model_name=promoted_model_name,
     )
     return 0
 
 
 def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.evaluation_dataset_name is not None and args.split is not None:
+        parser.error("--on evaluates the complete evaluation dataset and cannot be combined with --split.")
+
     selected = _resolve_run_selector(args)
     if selected is None:
         return 1
 
+    cfg = resolve_evaluate_config(
+        config=args.config,
+        overrides=_build_evaluate_overrides(args),
+    )
     run_evaluate(
+        cfg=cfg,
         dataset_name=selected.dataset,
         model_subfolder=selected.model_subfolder,
         model_name=selected.run_dir.name,
-        config=args.config,
-        best_or_last=_maybe_unset(args.best_or_last),
-        epoch_number=_maybe_unset(args.epoch_number),
-        tiling_size=_maybe_unset(args.tiling_size),
-        crop_size=_maybe_unset(args.crop_size),
-        metrics_list=_maybe_unset(args.metrics),
-        lvae_num_samples=_maybe_unset(args.lvae_num_samples),
-        save_folder=_maybe_unset(args.save_folder),
-        overwrite=_maybe_unset(args.overwrite),
-        eval_gt=_maybe_unset(args.eval_gt),
-        data_prm_update=_parse_key_value_overrides(args.data_option, parser),
-        ch_out=_maybe_unset(args.ch_out),
-        split=_maybe_unset(args.split),
-        limit_n_imgs=_maybe_unset(args.limit_n_imgs),
+        evaluation_dataset_name=args.evaluation_dataset_name,
+        progress_bar=getattr(args, "progress_bar", None),
     )
     return 0
 
@@ -237,11 +459,41 @@ def _resolve_run_selector(
     )
 
 
+def _apply_description() -> str:
+    return (
+        "Apply a trained model to raw data (noisy or subsampled)."
+        "\n\nINFERENCE PARAMETERS: by default, apply uses the local default inference config "
+        "configs/inference/local/defaults.yml. "
+        "Common worfklow parameters such as 'lvae-num-samples' or 'tiling-size' are overridable " 
+        "with CLI argument. For more advanced or model-specific inference settings, custom inference "
+        "configurations can be passed by as CLI argument (--config)."
+
+        "\n\nSAVING LOCATION AND BEHAVIOR: different saving modes are available. The 'default' mode saves "
+        "inside the LISAI inference directory('inference_dir, configurable in local_config.yaml), while the "
+        "the other 3 modes save outputs next to source data - see 'Output location' below for full detail. "
+        "Input saving is also configurable in local_config.yaml with parameter 'save_input_mode'. "
+        "A named config or a direct CLI option overrides any of the behavior. Additionnally, "
+        "a specific saving folder can directly be specificied with --save-folder, see below."
+    )
+
+
+def _evaluate_description() -> str:
+    return (
+        "Evaluate a trained model on its dataset split or a registered evaluation dataset.\n\n"
+        "\n\nEVALUATION PARAMETERS: by default, evaluate uses the local default inference config "
+        "configs/inference/local/defaults.yml. "
+        "Common worfklow parameters such as 'lvae-num-samples' or 'tiling-size' are overridable " 
+        "with CLI argument. For more advanced or model-specific inference settings, custom inference "
+        "configurations can be passed by as CLI argument (--config)."
+    )
+
+
 def add_apply_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]):
     parser = subparsers.add_parser(
         "apply",
         help="Apply a trained model to one file or directory.",
-        description="Apply a trained model to image file(s)",
+        description=_apply_description(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_apply_arguments(parser)
     parser.set_defaults(handler=lambda args, p=parser: run_apply_from_args(args, p))
@@ -251,8 +503,9 @@ def add_apply_subparser(subparsers: argparse._SubParsersAction[argparse.Argument
 def add_evaluate_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]):
     parser = subparsers.add_parser(
         "evaluate",
-        help="Evaluate a trained model on a dataset split.",
-        description="Evaluate a trained model on a dataset split",
+        help="Evaluate a trained model on its dataset split or a registered evaluation dataset.",
+        description=_evaluate_description(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_evaluate_arguments(parser)
     parser.set_defaults(handler=lambda args, p=parser: run_evaluate_from_args(args, p))
@@ -260,13 +513,21 @@ def add_evaluate_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
 
 
 def build_apply_parser(*, prog: str = "lisai apply") -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Apply a trained model to image file(s)", prog=prog)
+    parser = argparse.ArgumentParser(
+        description=_apply_description(),
+        prog=prog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     add_apply_arguments(parser)
     return parser
 
 
 def build_evaluate_parser(*, prog: str = "lisai evaluate") -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate a trained model on a dataset split", prog=prog)
+    parser = argparse.ArgumentParser(
+        description=_evaluate_description(),
+        prog=prog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     add_evaluate_arguments(parser)
     return parser
 

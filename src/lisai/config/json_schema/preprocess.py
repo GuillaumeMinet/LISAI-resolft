@@ -12,6 +12,8 @@ from lisai.config import settings
 from lisai.preprocess.core import PreprocessConfig
 from lisai.preprocess.core.config import (
     PreprocessLogConfig,
+    PreprocessRegistryConfig,
+    PreprocessRegistryDefaultsConfig,
     PreprocessSplitConfig,
     PreprocessSplitManualConfig,
     PreprocessSplitRandomConfig,
@@ -22,6 +24,8 @@ from lisai.preprocess.pipelines import PIPELINES_REGISTRY
 PREPROCESS_MODEL_TYPES: tuple[type[BaseModel], ...] = (
     PreprocessConfig,
     PreprocessLogConfig,
+    PreprocessRegistryConfig,
+    PreprocessRegistryDefaultsConfig,
     PreprocessSplitConfig,
     PreprocessSplitRandomConfig,
     PreprocessSplitManualConfig,

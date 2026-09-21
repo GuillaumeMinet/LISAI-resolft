@@ -14,15 +14,24 @@ from lisai.runs.scanner import scan_runs
 from lisai.runs.schema import RunMetadata
 
 
-def _write_metadata(run_dir, *, dataset, model_subfolder, group_path, path, status="running"):
+class InteractiveInput(StringIO):
+    def isatty(self) -> bool:
+        return True
+
+
+def _write_metadata(
+    run_dir, *, dataset, model_subfolder, group_path, path, status="running",
+    run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV", kept=False,
+):
     run_name, run_index = parse_run_dir_name(run_dir.name)
     payload = {
         "schema_version": 2,
-        "run_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        "run_id": run_id,
         "run_name": run_name,
         "run_index": run_index,
         "dataset": dataset,
         "model_subfolder": model_subfolder,
+        "kept": kept,
         "status": status,
         "closed_cleanly": status != "running",
         "created_at": "2026-03-20T10:14:00Z",
@@ -52,9 +61,9 @@ def _header_columns(output: str) -> list[str]:
 
 def test_runs_list_uses_filters_and_warns_on_invalid_files(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a"
-    run_b = datasets_root / "Actin" / "models" / "Upsamp" / "run_b"
-    invalid_run = datasets_root / "Gag" / "models" / "HDN" / "broken"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a"
+    run_b = datasets_root / "Actin" / "runs" / "Upsamp" / "run_b"
+    invalid_run = datasets_root / "Gag" / "runs" / "HDN" / "broken"
 
     _write_metadata(
         run_a,
@@ -97,8 +106,8 @@ def test_runs_list_uses_filters_and_warns_on_invalid_files(monkeypatch, tmp_path
 
 def test_runs_list_model_subfolder_filter_works(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a"
-    run_b = datasets_root / "Gag" / "models" / "Upsamp" / "run_b"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a"
+    run_b = datasets_root / "Gag" / "runs" / "Upsamp" / "run_b"
 
     _write_metadata(
         run_a,
@@ -129,8 +138,8 @@ def test_runs_list_model_subfolder_filter_works(monkeypatch, tmp_path, capsys):
 
 def test_runs_list_subfolder_alias_works(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a"
-    run_b = datasets_root / "Gag" / "models" / "Upsamp" / "run_b"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a"
+    run_b = datasets_root / "Gag" / "runs" / "Upsamp" / "run_b"
 
     _write_metadata(
         run_a,
@@ -161,8 +170,8 @@ def test_runs_list_subfolder_alias_works(monkeypatch, tmp_path, capsys):
 
 def test_runs_list_run_dir_filter_works(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
-    run_b = datasets_root / "Gag" / "models" / "HDN" / "run_b_00"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
+    run_b = datasets_root / "Gag" / "runs" / "HDN" / "run_b_00"
 
     _write_metadata(
         run_a,
@@ -194,9 +203,9 @@ def test_runs_list_run_dir_filter_works(monkeypatch, tmp_path, capsys):
 
 def test_runs_list_exp_name_partial_filter_works(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    reduced_a = datasets_root / "Gag" / "models" / "HDN" / "reducedUpsamp_Upsamp2_beta_00"
-    reduced_b = datasets_root / "Actin" / "models" / "Upsamp" / "my_REDUCED_debug_01"
-    other = datasets_root / "Gag" / "models" / "HDN" / "fullDataset_Upsamp2_00"
+    reduced_a = datasets_root / "Gag" / "runs" / "HDN" / "reducedUpsamp_Upsamp2_beta_00"
+    reduced_b = datasets_root / "Actin" / "runs" / "Upsamp" / "my_REDUCED_debug_01"
+    other = datasets_root / "Gag" / "runs" / "HDN" / "fullDataset_Upsamp2_00"
 
     _write_metadata(
         reduced_a,
@@ -237,8 +246,8 @@ def test_runs_list_exp_name_partial_filter_works(monkeypatch, tmp_path, capsys):
 
 def test_runs_list_exp_name_partial_filter_combines_with_other_filters(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "reducedUpsamp_Upsamp2_beta_00"
-    run_b = datasets_root / "Actin" / "models" / "HDN" / "reducedUpsamp_Upsamp2_beta_01"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "reducedUpsamp_Upsamp2_beta_00"
+    run_b = datasets_root / "Actin" / "runs" / "HDN" / "reducedUpsamp_Upsamp2_beta_01"
 
     _write_metadata(
         run_a,
@@ -271,7 +280,7 @@ def test_runs_list_exp_name_partial_filter_combines_with_other_filters(monkeypat
 
 def test_runs_list_uses_local_timestamp_formatter(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a"
 
     _write_metadata(
         run_a,
@@ -294,7 +303,7 @@ def test_runs_list_uses_local_timestamp_formatter(monkeypatch, tmp_path, capsys)
 
 def test_runs_list_marks_old_running_heartbeats_as_stale(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_a = datasets_root / "Gag" / "models" / "HDN" / "run_a"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a"
 
     _write_metadata(
         run_a,
@@ -319,7 +328,7 @@ def test_runs_list_marks_old_running_heartbeats_as_stale(monkeypatch, tmp_path, 
 
 def test_runs_list_footer_notes_path_inconsistency_without_stderr_warning(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
 
     _write_metadata(
         run_dir,
@@ -343,7 +352,7 @@ def test_runs_list_footer_notes_path_inconsistency_without_stderr_warning(monkey
 
 def test_runs_list_full_appends_extended_columns(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
 
     _write_metadata(
         run_dir,
@@ -362,7 +371,9 @@ def test_runs_list_full_appends_extended_columns(monkeypatch, tmp_path, capsys):
     assert exit_code == 0
     assert "LISAI runs listing - Dataset: 'Gag'" in captured.out
     columns = _header_columns(captured.out)
-    assert columns[:6] == ["dataset", "model_subfolder", "run_dir", "status", "epoch", "eta_left"]
+    assert columns[:7] == [
+        "dataset", "model_subfolder", "run_dir", "kept", "status", "epoch", "eta_left"
+    ]
     assert columns[-6:] == [
         "failure",
         "path_consistent",
@@ -377,7 +388,7 @@ def test_runs_list_full_appends_extended_columns(monkeypatch, tmp_path, capsys):
 
 def test_runs_list_live_renders_in_place_when_interactive(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
 
     _write_metadata(
         run_dir,
@@ -417,7 +428,7 @@ def test_runs_list_live_renders_in_place_when_interactive(monkeypatch, tmp_path)
 
 def test_runs_list_live_falls_back_to_single_snapshot_without_tty(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
 
     _write_metadata(
         run_dir,
@@ -442,7 +453,7 @@ def test_runs_list_live_falls_back_to_single_snapshot_without_tty(monkeypatch, t
 
 def test_runs_list_clamps_zero_interval_to_one_second(monkeypatch, tmp_path):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
 
     _write_metadata(
         run_dir,
@@ -480,7 +491,7 @@ def test_runs_list_clamps_zero_interval_to_one_second(monkeypatch, tmp_path):
 
 def test_runs_list_title_without_filters(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_a_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
 
     _write_metadata(
         run_dir,
@@ -502,7 +513,7 @@ def test_runs_list_title_without_filters(monkeypatch, tmp_path, capsys):
 
 def test_runs_list_namespace_remains_available_with_top_level_list(monkeypatch, tmp_path, capsys):
     datasets_root = tmp_path / "datasets"
-    run_dir = datasets_root / "Gag" / "models" / "HDN" / "run_namespace_00"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "run_namespace_00"
 
     _write_metadata(
         run_dir,
@@ -521,3 +532,291 @@ def test_runs_list_namespace_remains_available_with_top_level_list(monkeypatch, 
     assert exit_code == 0
     assert "LISAI runs listing - Status: 'running'" in captured.out
     assert "run_namespace" in captured.out
+
+
+def test_runs_list_promoted_filters_by_source_run_id(monkeypatch, tmp_path, capsys):
+    import lisai.promoted_models.registry as promoted_registry
+
+    datasets_root = tmp_path / "datasets"
+    run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a_00"
+    run_b = datasets_root / "Gag" / "runs" / "HDN" / "run_b_00"
+    promoted_id = "01ARZ3NDEKTSV4RRFFQ69G5FAA"
+    other_id = "01ARZ3NDEKTSV4RRFFQ69G5FAB"
+    _write_metadata(
+        run_a,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/run_a_00",
+        status="completed",
+        run_id=promoted_id,
+    )
+    _write_metadata(
+        run_b,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/run_b_00",
+        status="completed",
+        run_id=other_id,
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(promoted_registry, "promoted_source_run_ids", lambda: {promoted_id})
+
+    exit_code = root_main(["runs", "list", "--promoted"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Promoted only" in captured.out
+    assert "run_a_00" in captured.out
+    assert "run_b_00" not in captured.out
+
+
+def test_runs_list_kept_filter_and_marker(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    kept_run = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
+    ordinary_run = datasets_root / "Gag" / "runs" / "HDN" / "beta_01"
+
+    _write_metadata(
+        kept_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
+        kept=True,
+    )
+    _write_metadata(
+        ordinary_run,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_01",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(["runs", "list", "--kept"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Kept only" in captured.out
+    assert _header_columns(captured.out)[3] == "kept"
+    assert "beta_00" in captured.out
+    assert "beta_01" not in captured.out
+    kept_line = next(line for line in captured.out.splitlines() if "beta_00" in line)
+    assert "  *  " in kept_line
+
+
+def test_runs_keep_and_unkeep_update_run_metadata(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
+    _write_metadata(
+        run_dir,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(
+        "lisai.runs.selection.scan_runs", lambda: scan_runs(datasets_root)
+    )
+
+    assert root_main(["runs", "keep", "beta_00"]) == 0
+    assert scan_runs(datasets_root).runs[0].metadata.kept is True
+    assert "Kept run: beta_00" in capsys.readouterr().out
+
+    assert root_main(["runs", "unkeep", "beta_00"]) == 0
+    assert scan_runs(datasets_root).runs[0].metadata.kept is False
+    assert "Unkept run: beta_00" in capsys.readouterr().out
+
+
+def test_runs_prune_archives_unkept_terminal_runs_locally(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    parent = datasets_root / "Gag" / "runs" / "HDN" / "ablation"
+    candidate = parent / "beta_00"
+    kept_run = parent / "beta_01"
+    running_run = parent / "beta_02"
+
+    _write_metadata(
+        candidate,
+        dataset="Gag",
+        model_subfolder="HDN/ablation",
+        group_path="ablation",
+        path="datasets/Gag/models/HDN/ablation/beta_00",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
+    )
+    _write_metadata(
+        kept_run,
+        dataset="Gag",
+        model_subfolder="HDN/ablation",
+        group_path="ablation",
+        path="datasets/Gag/models/HDN/ablation/beta_01",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
+        kept=True,
+    )
+    _write_metadata(
+        running_run,
+        dataset="Gag",
+        model_subfolder="HDN/ablation",
+        group_path="ablation",
+        path="datasets/Gag/models/HDN/ablation/beta_02",
+        status="running",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FAC",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(
+        [
+            "runs",
+            "prune",
+            "--dataset",
+            "Gag",
+            "--subfolder",
+            "HDN/ablation",
+            "--yes",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Kept (protected): 1" in captured.out
+    assert "Non-terminal (protected): 1" in captured.out
+    assert "Candidates: 1" in captured.out
+    assert "Action: archive to local _archive folders" in captured.out
+    assert "Archived 1 run(s)." in captured.out
+    assert not candidate.exists()
+    assert kept_run.is_dir()
+    assert running_run.is_dir()
+    archived = list((parent / "_archive").glob("beta_00_archived_*"))
+    assert len(archived) == 1
+    assert {run.run_dir for run in scan_runs(datasets_root).runs} == {kept_run, running_run}
+
+
+def test_runs_prune_delete_removes_candidate_without_archive(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
+    _write_metadata(
+        run_dir,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+
+    exit_code = root_main(
+        ["runs", "prune", "--dataset", "Gag", "--subfolder", "HDN", "--delete", "--yes"]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Action: permanently delete" in captured.out
+    assert "Deleted 1 run(s)." in captured.out
+    assert not run_dir.exists()
+    assert not (run_dir.parent / "_archive").exists()
+
+
+def test_runs_prune_requires_confirmation_by_default(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    run_dir = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
+    _write_metadata(
+        run_dir,
+        dataset="Gag",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/Gag/models/HDN/beta_00",
+        status="completed",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli.sys, "stdin", StringIO("n\n"))
+
+    exit_code = root_main(["runs", "prune", "--dataset", "Gag", "--subfolder", "HDN"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Archive these runs? [y/N]" in captured.out
+    assert "Prune cancelled." in captured.out
+    assert run_dir.is_dir()
+    assert not (run_dir.parent / "_archive").exists()
+
+
+def test_runs_list_accepts_unique_partial_dataset_name(monkeypatch, tmp_path, capsys):
+    datasets_root = tmp_path / "datasets"
+    selected_run = datasets_root / "actin_fixed_multi_snr" / "runs" / "HDN" / "run_a"
+    other_run = datasets_root / "vimentin_live" / "runs" / "HDN" / "run_b"
+    _write_metadata(
+        selected_run,
+        dataset="actin_fixed_multi_snr",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/actin_fixed_multi_snr/models/HDN/run_a",
+        status="completed",
+    )
+    _write_metadata(
+        other_run,
+        dataset="vimentin_live",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/vimentin_live/models/HDN/run_b",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FB1",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli.sys, "stdin", InteractiveInput("y\n"))
+
+    exit_code = root_main(["runs", "list", "--dataset", "actin_fixed"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Did you mean 'actin_fixed_multi_snr'? [y/N]" in captured.out
+    assert "Dataset: 'actin_fixed_multi_snr'" in captured.out
+    assert "run_a" in captured.out
+    assert "run_b" not in captured.out
+
+
+def test_runs_list_prompts_for_ambiguous_partial_dataset_name(monkeypatch, tmp_path):
+    datasets_root = tmp_path / "datasets"
+    first_run = datasets_root / "actin_fixed_multi_snr" / "runs" / "HDN" / "run_a"
+    second_run = datasets_root / "actin_fixed_pair" / "runs" / "HDN" / "run_b"
+    _write_metadata(
+        first_run,
+        dataset="actin_fixed_multi_snr",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/actin_fixed_multi_snr/models/HDN/run_a",
+        status="completed",
+    )
+    _write_metadata(
+        second_run,
+        dataset="actin_fixed_pair",
+        model_subfolder="HDN",
+        group_path=None,
+        path="datasets/actin_fixed_pair/models/HDN/run_b",
+        status="completed",
+        run_id="01ARZ3NDEKTSV4RRFFQ69G5FB2",
+    )
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    stdout = StringIO()
+    stderr = StringIO()
+
+    exit_code = runs_cli.list_runs(
+        dataset="actin_fixed",
+        stdin=InteractiveInput("02\n"),
+        stdout=stdout,
+        stderr=stderr,
+    )
+
+    assert exit_code == 0
+    assert "Multiple matching datasets found:" in stdout.getvalue()
+    assert "Dataset: 'actin_fixed_pair'" in stdout.getvalue()
+    assert "run_b" in stdout.getvalue()
+    assert "run_a" not in stdout.getvalue().split("LISAI runs listing", 1)[-1]
+    assert stderr.getvalue() == ""

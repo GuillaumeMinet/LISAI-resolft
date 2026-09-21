@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 
 from lisai.evaluation import run_evaluate
+from lisai.evaluation.defaults import resolve_evaluate_config
+from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.runs.plotting import save_loss_plot_for_run
 
 if TYPE_CHECKING:
@@ -15,11 +17,8 @@ POST_TRAINING_INFERENCE_CONFIG = "post_training"
 
 
 def _prompt_yes_no(prompt: str) -> bool:
-    try:
-        answer = input(prompt).strip().lower()
-    except EOFError:
-        return False
-    return answer in {"y", "yes"}
+    return bool(prompt_yes_no(prompt, input_fn=input))
+
 
 def _log_runtime_warning(runtime, message: str):
     logger = getattr(runtime, "logger", None)
@@ -62,11 +61,13 @@ def run_post_training_evaluation(cfg, runtime, outcome: "TrainingOutcome") -> No
     if runtime.run_dir is None:
         return
 
+    eval_cfg = resolve_evaluate_config(config=POST_TRAINING_INFERENCE_CONFIG)
     run_evaluate(
+        cfg=eval_cfg,
         dataset_name=cfg.data.dataset_name,
         model_name=runtime.run_dir.name,
         model_subfolder=cfg.routing.models_subfolder,
-        config=POST_TRAINING_INFERENCE_CONFIG,
+        progress_bar=bool(getattr(cfg.training, "progress_bar", False)),
     )
 
 

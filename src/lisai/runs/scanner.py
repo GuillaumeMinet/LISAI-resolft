@@ -55,12 +55,15 @@ _PATHS = Paths(settings)
 
 
 def default_datasets_root() -> Path:
-    return _PATHS.datasets_root()
+    """Return the canonical root scanned for training runs."""
+    return _PATHS.training_datasets_root()
 
 
 def scan_runs(datasets_root: str | Path | None = None) -> ScanResults:
-    root = default_datasets_root() if datasets_root is None else Path(datasets_root)
+    use_canonical_root = datasets_root is None
+    root = default_datasets_root() if use_canonical_root else Path(datasets_root)
     root = root.resolve()
+    stored_path_root = _PATHS.data_root() if use_canonical_root else root.parent
     if not root.exists():
         return ScanResults(runs=(), invalid=())
 
@@ -74,7 +77,11 @@ def scan_runs(datasets_root: str | Path | None = None) -> ScanResults:
         paths=_PATHS,
     ):
         try:
-            inferred = infer_run_location(meta_path, root)
+            inferred = infer_run_location(
+                meta_path,
+                root,
+                stored_path_root=stored_path_root,
+            )
             metadata = read_run_metadata(meta_path)
             mismatches = metadata_path_mismatches(metadata, inferred)
 
@@ -120,12 +127,18 @@ def scan_runs(datasets_root: str | Path | None = None) -> ScanResults:
     return ScanResults(runs=tuple(runs), invalid=tuple(invalid))
 
 
-def infer_run_location(metadata_path: str | Path, datasets_root: str | Path) -> InferredRunLocation:
+def infer_run_location(
+    metadata_path: str | Path,
+    datasets_root: str | Path,
+    *,
+    stored_path_root: str | Path | None = None,
+) -> InferredRunLocation:
     return infer_run_location_from_paths(
         metadata_path,
         datasets_root,
         metadata_filename=RUN_METADATA_FILENAME,
         run_container_dirname=_PATHS.run_container_dirname(),
+        stored_path_root=stored_path_root,
     )
 
 

@@ -1,0 +1,11 @@
+# ========================================= #
+# LISAI - Downloadable promoted-model catalog
+# ========================================= #
+#
+# This catalog lists portable .lisai.zip model archives that can be fetched with:
+#   lisai models download <name>
+#
+# Detailed model metadata stays inside each archive's lisai_model.yaml manifest.
+
+schema_version: 1
+models: {}

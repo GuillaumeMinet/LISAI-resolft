@@ -12,6 +12,7 @@ from lisai.config import settings
 from ..core import FolderSource, Item, OutputDecl, OutputSpec, Source
 from ..transformations import compute_gt_avg, crop_center_stack, register_stack_skimage
 from .base import BasePipeline, PipelineResult
+from .subfolders import resolve_source_subfolders
 
 if TYPE_CHECKING:
     from ..run_preprocess import PreprocessRun
@@ -41,10 +42,25 @@ class ReconMltplSnrConfig:
       - `gt_avg_n_frames` controls how many leading frames are averaged for gt_avg.
     """
 
+    base_subfolder: str = field(
+        default="",
+        metadata={
+            "description": "Optional common parent folder inside dataset dump/recon.",
+        },
+    )
+    input_subfolder: str = field(
+        default="",
+        metadata={
+            "description": "Optional folder containing the primary multiple-SNR stack files, relative to base_subfolder.",
+        },
+    )
     dump_subfolder: str = field(
         default="",
         metadata={
-            "description": "Optional subfolder inside the dataset dump/recon directory to read source stacks from.",
+            "description": (
+                "Deprecated alias for base_subfolder. Kept for backward compatibility with "
+                "existing recon_mltpl_snr configs."
+            ),
         },
     )
     combine_subfolders: bool = field(
@@ -91,6 +107,13 @@ class ReconMltplSnrConfig:
     )
 
     def __post_init__(self):
+        resolve_source_subfolders(
+            pipeline_name="recon_mltpl_snr",
+            base_subfolder=self.base_subfolder,
+            input_subfolder=self.input_subfolder,
+            dump_subfolder=self.dump_subfolder,
+            legacy_dump_role="base",
+        )
         if self.gt_types is None:
             return
         allowed = {"snr0", "avg"}
@@ -111,7 +134,7 @@ class ReconMltplSnrPipeline(BasePipeline[ReconMltplSnrConfig]):
             OutputDecl(key="inp_mltpl_snr", axes="TYX", role="inp"),
         ]
         if self.cfg.first_low_inp:
-            outs.append(OutputDecl(key="inp_single", axes="YX", role="inp"))
+            outs.append(OutputDecl(key="inp_single", axes="YX", role="inp", data_format_override="single"))
 
         gt_types = self.cfg.gt_types or []
         if "snr0" in gt_types:
@@ -122,13 +145,22 @@ class ReconMltplSnrPipeline(BasePipeline[ReconMltplSnrConfig]):
         return OutputSpec(outputs=tuple(outs), save_at_root=False)
 
     def build_source(self, *, run: PreprocessRun) -> Source:
-        dump_root = run.paths.dataset_dump_dir(
+        common_dump_root = run.paths.dataset_dump_dir(
             dataset_name=run.dataset_name,
             data_type=run.data_type,
-            additional_subfolder=self.cfg.dump_subfolder if self.cfg.dump_subfolder else "",
+            usage=run.usage,
         )
+        base_subfolder, input_subfolder = resolve_source_subfolders(
+            pipeline_name=self.name,
+            base_subfolder=self.cfg.base_subfolder,
+            input_subfolder=self.cfg.input_subfolder,
+            dump_subfolder=self.cfg.dump_subfolder,
+            legacy_dump_role="base",
+        )
+        role_root = common_dump_root / base_subfolder if base_subfolder else common_dump_root
+        input_root = role_root / input_subfolder if input_subfolder else role_root
         exts = tuple(settings.data_cfg.data_types[run.data_type])
-        return FolderSource(root=dump_root, exts=exts, combine_subfolders=self.cfg.combine_subfolders)
+        return FolderSource(root=input_root, exts=exts, combine_subfolders=self.cfg.combine_subfolders)
 
     def process_item(self, *, item: Item) -> Dict[str, np.ndarray]:
         (p,) = item.paths

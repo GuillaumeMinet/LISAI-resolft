@@ -33,7 +33,12 @@ def test_lvae_translation_keeps_checkpoint_compatible_batch_norm():
             "norm_prm": {"data_mean": 0.0, "data_std": 1.0},
         },
         "data_prm": {
-            "subfolder": "old_data",
+            "subfolder": r"preprocess\recon",
+            "full_data_path": r"E:\old\absolute\data",
+            "inp": "noisy",
+            "gt": "clean",
+            "patch_info": {"train_patch": [1, 1, 64, 64]},
+            "volumetric": False,
             "batch_size": 1,
             "patch_size": 64,
         },
@@ -56,7 +61,17 @@ def test_lvae_translation_keeps_checkpoint_compatible_batch_norm():
     params = current["model"]["parameters"]
 
     assert current["model"]["architecture"] == "lvae"
+    assert current["routing"]["data_subfolder"] == "preprocess/recon"
     assert current["data"]["dataset_name"] == "Fixed_vimentin"
+    assert current["data"]["input"] == "noisy"
+    assert current["data"]["target"] == "clean"
+    assert current["data"]["canonical_load"] is True
+    assert "subfolder" not in current["data"]
+    assert "full_data_path" not in current["data"]
+    assert "inp" not in current["data"]
+    assert "gt" not in current["data"]
+    assert "patch_info" not in current["data"]
+    assert "volumetric" not in current["data"]
     assert current["routing"]["models_subfolder"] == "Denoising/HDN"
     assert current["training"]["learning_rate"] == pytest.approx(0.001)
     assert current["training"]["progress_bar"] is True
@@ -133,6 +148,66 @@ def test_unet_rcan_translation_preserves_explicit_kernel_factor():
     section = script._legacy_model_section(legacy_cfg)
 
     assert section["parameters"]["RCAN_prm"]["upsamp_kernel_factor"] == 1
+
+
+def test_legacy_denoising_unet_rcan_translation_sets_large_default_tiling_size():
+    script = _import_script()
+    legacy_cfg = {
+        "model_architecture": "unetrcan",
+        "model_prm": {
+            "upsampling_factor": 1,
+            "UNet_prm": {"feat": 16, "depth": 2, "in_channels": 1, "out_channels": 1},
+            "RCAN_prm": {"out_channels": 1, "num_features": 16, "num_rg": 2, "num_rcab": 2},
+        },
+        "data_prm": {"subfolder": "old_data"},
+        "training_prm": {},
+        "normalization": {},
+        "saving_prm": {},
+    }
+
+    current = script.translate_legacy_config(
+        legacy_cfg,
+        target_dataset="Fixed_vimentin",
+        target_model_subfolder="denoising_legacy",
+        target_run_name="UNetRCAN_single_to_avg",
+    )
+
+    assert current["inference"]["default_tiling_size"] == 2000
+
+
+def test_target_model_subfolder_rejects_old_run_container_prefixes():
+    script = _import_script()
+
+    assert script._normalize_target_model_subfolder(r"Upsamp\Refinement") == "Upsamp/Refinement"
+    with pytest.raises(ValueError, match="Remove the leading 'models'"):
+        script._normalize_target_model_subfolder("models/Upsamp")
+    with pytest.raises(ValueError, match="Remove the leading 'runs'"):
+        script._normalize_target_model_subfolder("runs/Upsamp")
+
+
+def test_legacy_upsampling_unet_rcan_translation_uses_architecture_default_tiling():
+    script = _import_script()
+    legacy_cfg = {
+        "model_architecture": "unetrcan",
+        "model_prm": {
+            "upsampling_factor": 2,
+            "UNet_prm": {"feat": 16, "depth": 2, "in_channels": 1, "out_channels": 1},
+            "RCAN_prm": {"out_channels": 1, "num_features": 16, "num_rg": 2, "num_rcab": 2},
+        },
+        "data_prm": {"subfolder": "old_data"},
+        "training_prm": {},
+        "normalization": {},
+        "saving_prm": {},
+    }
+
+    current = script.translate_legacy_config(
+        legacy_cfg,
+        target_dataset="Fixed_vimentin",
+        target_model_subfolder="Upsamp",
+        target_run_name="UNetRCAN_upsamp",
+    )
+
+    assert "inference" not in current
 
 
 def test_checkpoint_selection_uses_loss_best_epoch_when_direct_best_is_missing(tmp_path: Path):

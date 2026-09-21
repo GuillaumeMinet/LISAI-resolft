@@ -16,6 +16,7 @@ from typing import Sequence
 
 from lisai.config import load_yaml, resolve_config, save_yaml
 from lisai.evaluation import run_evaluate
+from lisai.evaluation.defaults import resolve_evaluate_config
 from lisai.runs.schema import format_timestamp_local, utc_now
 from lisai.runs.scanner import DiscoveredRun, scan_runs
 from lisai.training.cli import resolve_config_path
@@ -1491,11 +1492,12 @@ def _maybe_run_post_cancel_evaluation(
         file=stdout,
     )
     try:
+        eval_cfg = resolve_evaluate_config(config=POST_TRAINING_INFERENCE_CONFIG)
         run_evaluate(
+            cfg=eval_cfg,
             dataset_name=run.dataset,
             model_subfolder=run.model_subfolder,
             model_name=run.run_dir.name,
-            config=POST_TRAINING_INFERENCE_CONFIG,
         )
     except Exception as exc:
         print(

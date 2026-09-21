@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../schema/preprocess.schema.json
+
+dataset_name: "gag_live_denoise_eval"
+
+usage: "evaluation"
+
+pipeline: "paired_single_recon"
+data_type: "recon"
+fmt: "single"
+
+registry:
+  description: "Pairs of low/high ON-switching RESOLFT + confocal. Purpose: denoising evaluation. CAUTION: Cells NOT FIXED - no pixel wise comparison!"
+
+pipeline_cfg:
+  input_subfolder: "low"
+  gt_subfolder: "high"
+
+  auxiliary_subfolders:
+    conf:
+      matching: required
+      match_by: filename
+
+
+  crop_size: 1200
+
+log:
+  enabled: true
+
+split:
+  enabled: false

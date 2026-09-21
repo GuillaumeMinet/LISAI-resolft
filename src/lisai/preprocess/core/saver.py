@@ -34,6 +34,7 @@ class PreprocessSaver:
         data_type: str,
         fmt: str,
         output_spec: OutputSpec,
+        usage: str = "training",
         overwrite_mode: str = "exist_ok",
     ):
         self.paths = paths
@@ -42,11 +43,13 @@ class PreprocessSaver:
         self.dataset_name = dataset_name
         self.data_type = data_type
         self.fmt = fmt
+        self.usage = usage
         self.overwrite_mode = overwrite_mode
 
         base_dir = self.paths.dataset_preprocess_dir(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         ensure_folder(base_dir, mode=self.overwrite_mode)
 
@@ -79,6 +82,7 @@ class PreprocessSaver:
             dataset_name=self.dataset_name,
             fmt=self.fmt,
             data_type=self.data_type,
+            usage=self.usage,
             additional_subfolder=additional_subfolder.as_posix() if str(additional_subfolder) else "",
             sample_id=sample_id,
             **template_kwargs,

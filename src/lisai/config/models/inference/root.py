@@ -8,9 +8,9 @@ from .sections import ApplyDefaults, ApplyOverrides, EvaluateDefaults, EvaluateO
 class ResolvedInferenceConfig(BaseModel):
     """Fully resolved inference settings used at runtime.
 
-    This object represents the complete inference configuration after defaults
-    have been applied. It is the typed counterpart of the final merged settings
-    consumed by apply/evaluate entrypoints.
+    This object defines the canonical LISAI inference defaults in the same
+    nested layout used by inference YAML files. Apply/evaluate runtime code is
+    expected to consume these typed nested sections directly.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -29,7 +29,8 @@ class InferenceOverrides(BaseModel):
     """Sparse user-authored inference YAML overrides.
 
     Any omitted section or field means "leave the resolved default as-is".
-    This is the model used to validate files under `configs/inference/*.yml`.
+    All inference configs may stay sparse: the resolver layers them over the
+    local inference defaults, while explicitly authored values always win.
     """
 
     model_config = ConfigDict(extra="forbid")

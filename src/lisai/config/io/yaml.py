@@ -17,8 +17,18 @@ def load_yaml(path: str | Path) -> dict:
 
     return cfg
 
-def save_yaml(cfg: dict, path: str | Path):
-    """ Save config dict to a yaml file"""
+def save_yaml(
+    cfg: dict,
+    path: str | Path,
+    *,
+    default_flow_style: bool | None = False,
+):
+    """Save a config dictionary to YAML."""
     path = Path(path)
     with open(path, "w") as f:
-        yaml.safe_dump(cfg, f, sort_keys=False)
+        yaml.safe_dump(
+            cfg,
+            f,
+            sort_keys=False,
+            default_flow_style=default_flow_style,
+        )

@@ -9,20 +9,30 @@ paths:
   roots:
     data_dir: "{data_root}/datasets"
     noise_models_dir: "{data_root}/noise_models"
-    run_container_dirname: "models"
+    promoted_models_dir: "{data_root}/models"
+    inference_dir: "{data_root}/inference"
+    run_container_dirname: "runs"
     # code_dir is injected automatically by Settings (project root)
+
+  dataset_usage_subfolders:
+    training: "training"
+    evaluation: "evaluation"
 
   templates:
     dataset_registry: "{paths.roots.data_dir}/dataset_registry.yml"
+    promoted_model_registry: "{paths.roots.promoted_models_dir}/model_registry.yml"
+    promoted_model_dir: "{paths.roots.promoted_models_dir}/{model_name}"
+    promoted_model_exports_dir: "{paths.roots.promoted_models_dir}/_exports"
+    promoted_model_downloads_dir: "{paths.roots.promoted_models_dir}/downloads"
 
-    dataset_loading: "{paths.roots.data_dir}/{dataset_name}/{data_subfolder}"
+    dataset_loading: "{paths.roots.data_dir}/{dataset_usage_subfolder}/{dataset_name}/{data_subfolder}"
 
     # run_dir = training dir, where checkpoints, training curves, validation images, etc. are saved
-    run_dir: "{paths.roots.data_dir}/{dataset_name}/{run_container_dirname}/{models_subfolder}/{exp_name}"
+    run_dir: "{paths.roots.data_dir}/{dataset_usage_subfolder}/{dataset_name}/{run_container_dirname}/{models_subfolder}/{exp_name}"
 
     tensorboard_runs_dir: "{paths.roots.code_dir}/tensorboard/{dataset_name}/{tensorboard_subfolder}"
 
-    predictreal_saving: "{paths.roots.data_dir}/{dataset_name}/inference/{inference_subfolder}/{exp_name}"
+    inference_output_dir: "{paths.roots.inference_dir}/{source_name}/{model_name}"
 
     noise_model: "{paths.roots.noise_models_dir}/{noiseModel_name}/GMM.npz"
 

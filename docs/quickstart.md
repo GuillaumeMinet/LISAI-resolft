@@ -46,9 +46,38 @@ lisai train --help
 
 ## Training
 
-Run a public example config from `configs/training/examples`:
+List available training configs:
 
 ```powershell
+lisai configs list
+lisai configs list --kind preset
+```
+
+Create a local editable config from a preset:
+
+```powershell
+lisai configs new denoising_hdn_unsup --name my_hdn
+# or to specify the configs subfolder:
+lisai configs new denoising_hdn_unsup --output local/my_hdn
+
+
+# Edit configs/training/local/my_hdn.yml and replace CHANGEME values.
+lisai configs validate local/my_hdn
+lisai configs resolve local/my_hdn
+```
+
+To start from the generic base template instead:
+
+```powershell
+lisai configs new --custom --name my_experiment --output local/my_experiment
+```
+
+If `configs new` warns about `CHANGEME`, those fields must be edited before `configs validate` or `train` can succeed.
+
+Run a local config or a public example config:
+
+```powershell
+lisai train local/my_hdn
 lisai train examples/vim_denoising_unet
 ```
 
@@ -58,7 +87,7 @@ You can also pass an explicit file path:
 lisai train configs/training/examples/vim_denoising_unet.yml
 ```
 
-Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Example configs assume the referenced datasets already exist under your configured data root.
+Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into `configs/training/local/` before training. Example configs assume the referenced datasets already exist under your configured data root.
 
 ## Evaluation
 
@@ -71,9 +100,13 @@ lisai apply --run-id 01ARZ3NDEKTSV4RRFFQ69G7ACD /data/images
 ```
 
 Both commands accept `--config <name>` to load settings from `configs/inference/<name>.yml`,
-and any CLI argument overrides the config value. Run selectors must refer to a discovered run
-folder, either by `--run-id`, `dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial
-experiment name when it can be resolved unambiguously.
+with unspecified settings inherited from `configs/inference/local/defaults.yml`. Values written
+in the selected config override those defaults, and any CLI argument overrides the config value.
+`tiling_size: auto` uses the saved model
+default, a positive integer forces a tile size, and `tiling_size: off` or `--no-tiling`
+disables tiling. Run selectors must refer to a discovered run folder, either by `--run-id`,
+`dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial experiment name when it can
+be resolved unambiguously.
 
 ## Preprocess
 

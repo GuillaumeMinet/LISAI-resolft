@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING
 
 from lisai.config import resolve_config, resolve_config_dict
+from lisai.config.progress import resolve_progress_bar
 from lisai.runs import count_trainable_parameters
 
 from . import setup
@@ -38,6 +39,11 @@ def _is_failed_outcome(outcome: "TrainingOutcome") -> bool:
         "failed_nonretryable",
         "setup_failed",
     }
+
+
+def _apply_progress_bar_preference(cfg: "ResolvedExperiment", progress_bar: bool | None) -> None:
+    default = bool(getattr(cfg.training, "progress_bar", False))
+    cfg.training.progress_bar = resolve_progress_bar(default, progress_bar)
 
 
 def _setup_training(cfg, runtime, monitor: RunMonitor):
@@ -140,18 +146,29 @@ def _finalize_training_result(
         raise
 
 
-def run_training(config_path):
+def run_training(config_path, *, progress_bar: bool | None = None):
     """Run training end to end from a config path and return the trainer instance."""
-    return run_training_from_resolved_config(resolve_config(config_path))
+    return run_training_from_resolved_config(
+        resolve_config(config_path),
+        progress_bar=progress_bar,
+    )
 
 
-def run_training_from_config_dict(config: dict):
+def run_training_from_config_dict(config: dict, *, progress_bar: bool | None = None):
     """Run training from an in-memory experiment config dictionary."""
-    return run_training_from_resolved_config(resolve_config_dict(config))
+    return run_training_from_resolved_config(
+        resolve_config_dict(config),
+        progress_bar=progress_bar,
+    )
 
 
-def run_training_from_resolved_config(cfg: "ResolvedExperiment"):
+def run_training_from_resolved_config(
+    cfg: "ResolvedExperiment",
+    *,
+    progress_bar: bool | None = None,
+):
     """Run training from a resolved experiment config and return the trainer instance."""
+    _apply_progress_bar_preference(cfg, progress_bar)
     runtime = initialize_runtime(cfg)
     monitor = RunMonitor(cfg, runtime)
     monitor.install()

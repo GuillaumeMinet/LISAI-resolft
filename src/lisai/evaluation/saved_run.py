@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 from lisai.config import load_yaml, settings
-from lisai.data.data_loaders.split_manifest import read_split_manifest, resolve_split_manifest_path
 from lisai.config.models import ResolvedExperiment
+from lisai.data.data_loaders.split_manifest import read_split_manifest, resolve_split_manifest_path
 from lisai.infra.paths import Paths
 from lisai.models.params import AnyModelParams
 
@@ -59,12 +59,80 @@ def _checkpoint_methods(cfg: ResolvedExperiment) -> tuple[CheckpointMethod, ...]
 
 
 
-def _default_tiling_size(architecture: str) -> int | None:
+def _architecture_default_tiling_size(architecture: str) -> int | None:
     """Resolve the default inference tiling size for a model architecture."""
     for key in (architecture, architecture.replace("_", "")):
         if key in _DEFAULT_TILING_SIZE_BY_ARCHITECTURE:
             return int(_DEFAULT_TILING_SIZE_BY_ARCHITECTURE[key])
     return None
+
+
+def _optional_int_tiling_size(value: Any, *, source: str) -> int | None:
+    if isinstance(value, bool):
+        raise ValueError(f"{source} must be a positive integer, 'auto', 'off', or null.")
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{source} must be a positive integer, 'auto', 'off', or null.") from None
+    if resolved <= 0:
+        raise ValueError(f"{source} must be greater than 0.")
+    return resolved
+
+
+def _legacy_compat_default_tiling_size(
+    *,
+    architecture: str,
+    run_dir: Path,
+    models_subfolder: str,
+) -> int | None:
+    """Compatibility default for already-imported legacy runs without metadata."""
+    normalized_architecture = architecture.replace("_", "")
+    if normalized_architecture != "unetrcan":
+        return None
+
+    hints = [str(run_dir), models_subfolder]
+    if any("legacy" in hint.lower() for hint in hints):
+        return 2000
+    return None
+
+
+def _saved_inference_default_tiling_size(cfg: ResolvedExperiment) -> Any:
+    inference = getattr(cfg, "inference", None)
+    if inference is None:
+        return None
+    if isinstance(inference, Mapping):
+        return inference.get("default_tiling_size")
+    return getattr(inference, "default_tiling_size", None)
+
+
+def _default_tiling_size(
+    architecture: str,
+    *,
+    cfg: ResolvedExperiment,
+    run_dir: Path,
+) -> int | None:
+    """Resolve the saved-run default tiling size used by inference auto mode."""
+    saved_default = _saved_inference_default_tiling_size(cfg)
+    if isinstance(saved_default, str):
+        normalized = saved_default.strip().lower()
+        if normalized in {"", "auto"}:
+            saved_default = None
+        elif normalized in {"off", "none", "disable", "disabled"}:
+            return None
+        else:
+            return _optional_int_tiling_size(saved_default, source="inference.default_tiling_size")
+    elif saved_default is not None:
+        return _optional_int_tiling_size(saved_default, source="inference.default_tiling_size")
+
+    compat_default = _legacy_compat_default_tiling_size(
+        architecture=architecture,
+        run_dir=run_dir,
+        models_subfolder=cfg.routing.models_subfolder,
+    )
+    if compat_default is not None:
+        return compat_default
+
+    return _architecture_default_tiling_size(architecture)
 
 
 @dataclass(frozen=True)
@@ -142,7 +210,7 @@ class SavedTrainingRun:
             downsamp_factor=cfg.data.downsampling_factor,
             upsampling_factor=model_parameters.effective_upsampling_factor(),
             context_length=int(context_length) if context_length is not None else None,
-            default_tiling_size=_default_tiling_size(architecture),
+            default_tiling_size=_default_tiling_size(architecture, cfg=cfg, run_dir=run_dir),
             split_manifest=split_manifest,
         )
 

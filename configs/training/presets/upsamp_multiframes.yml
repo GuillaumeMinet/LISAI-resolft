@@ -1,0 +1,138 @@
+# yaml-language-server: $schema=../../schema/experiment.schema.json
+
+# ========================================================
+# Catalog metadata
+# ========================================================
+metadata:
+  kind: preset
+  name: upsamp_multiframes
+  task: upsamp_multiframes
+  description: Current temporal-window upsampling recipe. Instantiate into local/
+    before training.
+
+# ========================================================
+# General experiment settings
+# ========================================================
+experiment:
+  mode: train
+  exp_name: replace_me_experiment
+  overwrite: false
+  post_training_inference: true
+  task:
+    name: upsamp_multiframes
+    upsampling_factor: 2
+    temporal_window: 5
+
+# ========================================================
+# Paths
+# ========================================================
+routing:
+  data_subfolder: preprocess/recon
+  models_subfolder: Upsamp
+  tensorboard_subfolder: Upsamp
+
+# ========================================================
+# Dataset / DataLoader configuration
+# ========================================================
+data:
+  dataset_name: replace_me_dataset
+  data_format: timelapse
+  canonical_load: true
+  prep_before: true
+  already_split: true
+  filters:
+    - tiff
+    - tif
+  paired: false
+  input: replace_me_input
+  target: null
+  timelapse_prm:
+    timelapse_max_frames: 5
+    context_length: 5
+    shuffle: false
+  patch_size: 96
+  val_patch_size: 240
+  batch_size: 64
+  initial_crop: null
+  augmentation: false
+  patch_thresh: 0.2
+  select_on_gt: false
+
+# ========================================================
+# Normalization / Noise
+# ========================================================
+normalization:
+  norm_prm:
+    clip: -3
+
+# ========================================================
+# Model configuration
+# ========================================================
+model:
+  architecture: unet_rcan
+  parameters:
+    upsampling_net: rcan
+    UNet_prm:
+      feat: 64
+      depth: 3
+      activation: swish
+      norm: group
+      gr_norm: 8
+      dropout: 0.1
+      cab_skip_con: false
+    RCAN_prm:
+      num_features: 64
+      num_rg: 8
+      num_rcab: 8
+      reduction: 12
+      dropout: 0.1
+      upsamp_kernel_factor: 1
+      collapse_ch_before_upsamp: true
+
+# ========================================================
+# Training configuration
+# ========================================================
+training:
+  n_epochs: 300
+  batch_size: 32
+  learning_rate: 1e-4
+  optimizer: Adam
+  scheduler: ReduceLROnPlateau
+  progress_bar: true
+  debug_stop: false
+  warmup:
+    enabled: true
+    steps: 500
+    start_factor: 0.1
+  auto_stop:
+    enabled: true
+    metrics: val_loss
+    patience: 50
+
+# ========================================================
+# Loss configuration
+# ========================================================
+loss_function:
+  name: CharEdge_loss
+  CharEdge_loss_prm:
+    alpha: 0.05
+
+# ========================================================
+# Saving configuration
+# ========================================================
+saving:
+  enabled: true
+  canonical_save: true
+  overwrite_best: true
+  save_last: true
+  entire_model: true
+  state_dict: true
+  validation_images: true
+  validation_freq: 5
+
+# ========================================================
+# Tensorboard configuration
+# ========================================================
+tensorboard:
+  enabled: false
+  validation_images: true

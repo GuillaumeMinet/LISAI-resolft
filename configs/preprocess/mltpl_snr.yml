@@ -4,8 +4,12 @@ pipeline: "recon_mltpl_snr"
 data_type: "recon"
 fmt: "mltpl_snr"
 
+registry:
+  description: null
+
 pipeline_cfg:
-  dump_subfolder: ""
+  base_subfolder: ""
+  input_subfolder: ""
   combine_subfolders: False
   crop_size: null
   first_low_inp: false

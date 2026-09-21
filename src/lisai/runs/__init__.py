@@ -39,6 +39,12 @@ from .schema import (
     TrainingSignature,
 )
 from .selection import resolve_discovered_run_selector
+from .external import (
+    DiscoveredExternalRun,
+    ExternalRunMetadata,
+    import_external_run,
+    scan_external_runs,
+)
 from .signature import build_training_signature_from_resolved_config, count_trainable_parameters
 
 __all__ = [
@@ -48,6 +54,8 @@ __all__ = [
     "LiveRuntimeStats",
     "RunMetadata",
     "RunMetadataCallback",
+    "DiscoveredExternalRun",
+    "ExternalRunMetadata",
     "RunProvenance",
     "RunStatus",
     "RuntimeStats",
@@ -73,6 +81,8 @@ __all__ = [
     "resolve_discovered_run_selector",
     "save_loss_plot_for_run",
     "scan_runs",
+    "scan_external_runs",
+    "import_external_run",
     "show_loss_plot_for_run",
     "stored_run_path",
     "update_run_failure_reason",

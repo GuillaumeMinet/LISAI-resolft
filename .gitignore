@@ -5,11 +5,23 @@ configs/local_config.yml
 configs/training/local/*
 configs/training/sweeps/*
 
-# But keep subdirectories visible to Git rules and track templates/examples
+# Ignore personal inference defaults and workflow overrides
+configs/inference/local/*
+!configs/inference/local/.gitkeep
+
+# But keep subdirectories visible to Git rules and track tracked config sources
 !configs/training/local/.gitkeep
 !configs/training/*/
 !configs/training/templates/**
 !configs/training/examples/**
+!configs/training/presets/**
+
+# Keep graph development private except publication scripts/utilities
+graphs/*
+!graphs/paper/
+!graphs/paper/**
+!graphs/utils/
+!graphs/utils/**
 
 # internal lisai cache
 .lisai/

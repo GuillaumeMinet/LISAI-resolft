@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from lisai.config import settings
+from lisai.data.readme import ensure_dataset_readme
 
 from .core import DatasetRegistry, FolderSource, PreprocessConfig, PreprocessSaver
 from .core.config import PreprocessLogConfig, PreprocessSplitConfig
@@ -76,9 +77,12 @@ class PreprocessRun:
 
     data_type: str
     fmt: str
+    usage: str
     pipeline_cfg: dict[str, Any]
     pipeline_name: str
     log_cfg: PreprocessLogConfig
+    registry_defaults: dict[str, str | None]
+    registry_description: str | None
     split_cfg: PreprocessSplitConfig
 
     @classmethod
@@ -96,11 +100,14 @@ class PreprocessRun:
             pipeline_name=pcfg.pipeline,
             data_type=pcfg.data_type,
             fmt=pcfg.fmt,
+            usage=pcfg.usage,
             pipeline_cfg=pcfg.pipeline_cfg,
             paths=paths,
             registry=registry,
             logger=logger,
             log_cfg=pcfg.log,
+            registry_defaults=pcfg.registry.defaults.model_dump(exclude_unset=True),
+            registry_description=pcfg.registry.description,
             split_cfg=pcfg.split,
         )
 
@@ -108,10 +115,12 @@ class PreprocessRun:
         preprocess_dir = self.paths.dataset_preprocess_dir(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         log_path = self.paths.preprocess_log_path(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         has_log = log_path.exists()
         has_data = preprocess_dir.exists() and any(preprocess_dir.iterdir())
@@ -162,17 +171,20 @@ class PreprocessRun:
             path=self.paths.preprocess_log_path(
                 dataset_name=self.dataset_name,
                 data_type=self.data_type,
+                usage=self.usage,
             ),
             dataset_name=self.dataset_name,
             pipeline_name=self.pipeline_name,
             data_type=self.data_type,
             fmt=self.fmt,
+            usage=self.usage,
             pipeline_cfg=self.pipeline_cfg,
             log_cfg=self.log_cfg.model_dump(exclude_none=True),
             split_cfg=self.split_cfg.model_dump(exclude_none=True),
             preprocess_dir=self.paths.dataset_preprocess_dir(
                 dataset_name=self.dataset_name,
                 data_type=self.data_type,
+                usage=self.usage,
             ),
         )
 
@@ -211,15 +223,27 @@ class PreprocessRun:
         preprocess_dir: Path,
         n_files_written: int,
         split_summary: dict[str, Any],
+        auxiliary_matches: dict[str, dict[str, int]],
+        readme_path: Path | None = None,
+        readme_created: bool = False,
+        readme_error: str | None = None,
         error: Exception | None = None,
     ) -> PreprocessFinishReport:
+        empty_bucket = {"count": 0, "source_names": [], "output_names": []}
+        val = split_summary.get("val", empty_bucket)
+        test = split_summary.get("test", empty_bucket)
         return PreprocessFinishReport(
             status=status,
             preprocess_dir=str(preprocess_dir.resolve()),
             n_files_written=n_files_written,
-            n_files_moved=int(split_summary["val"]["count"]) + int(split_summary["test"]["count"]),
-            val=split_summary["val"],
-            test=split_summary["test"],
+            n_files_moved=int(val["count"]) + int(test["count"]),
+            split_enabled=bool(split_summary.get("enabled", False)),
+            val=val,
+            test=test,
+            auxiliary_matches=auxiliary_matches,
+            readme_path=str(readme_path.resolve()) if readme_path is not None else None,
+            readme_created=readme_created,
+            readme_error=readme_error,
             error_type=type(error).__name__ if error is not None else None,
             error_message=str(error) if error is not None else None,
         )
@@ -244,6 +268,7 @@ class PreprocessRun:
         preprocess_dir = self.paths.dataset_preprocess_dir(
             dataset_name=self.dataset_name,
             data_type=self.data_type,
+            usage=self.usage,
         )
         self._report_start(reporter, source=source, preprocess_dir=preprocess_dir)
 
@@ -252,7 +277,9 @@ class PreprocessRun:
         total_items: int | None = None
         n_files = 0
         stats = pipeline.init_stats()
-        processed_items: list[dict[str, str]] = []
+        processed_items: list[dict[str, Any]] = []
+        auxiliary_names = [output.key for output in spec.outputs if output.role == "aux"]
+        auxiliary_match_counts = {name: 0 for name in auxiliary_names}
 
         try:
             saver = PreprocessSaver(
@@ -261,6 +288,7 @@ class PreprocessRun:
                 data_type=self.data_type,
                 fmt=self.fmt,
                 output_spec=spec,
+                usage=self.usage,
             )
             run_log = self._build_run_log()
 
@@ -282,8 +310,20 @@ class PreprocessRun:
             for index, item in item_iterable:
                 sample_id = saver.sample_id(index)
                 save_split = split_plan.split_for(index) if split_plan is not None else None
-                recorded_split = save_split or "train"
+                if split_plan is not None:
+                    recorded_split = save_split
+                elif self.usage == "training":
+                    # Preserve the historical meaning of an unsplit training dataset: all
+                    # samples are available to the training loader as the training pool.
+                    recorded_split = "train"
+                else:
+                    # Evaluation-only datasets are whole-dataset resources, not a synthetic
+                    # train split. Their files remain at the output root.
+                    recorded_split = None
                 outputs = pipeline.process_item(item=item)
+                for name in auxiliary_names:
+                    if name in item.auxiliary_paths:
+                        auxiliary_match_counts[name] += 1
                 template_kwargs = pipeline.template_kwargs(item=item, outputs=outputs)
 
                 saved_outputs: dict[str, str] = {}
@@ -346,8 +386,12 @@ class PreprocessRun:
                 data_type=self.data_type,
                 data_format=self.fmt,
                 structure=spec.structure_keys(),
+                outputs=spec.output_entries(),
                 result=result,
+                usage=self.usage,
+                default_overrides=self.registry_defaults,
                 split_summary=registry_split_summary,
+                description=self.registry_description,
             )
             self.registry.save()
 
@@ -358,12 +402,32 @@ class PreprocessRun:
                     split_summary=manifest_split_summary,
                 )
 
+            readme_path = None
+            readme_created = False
+            readme_error = None
+            try:
+                dataset_dir = self.paths.dataset_dir(
+                    dataset_name=self.dataset_name,
+                    usage=self.usage,
+                )
+                readme_path, readme_created = ensure_dataset_readme(dataset_dir)
+            except Exception as exc:
+                readme_error = str(exc)
+                self.logger.warning("Could not create dataset README: %s", exc)
+
             reporter.report_finish(
                 self._finish_report(
                     status="success",
                     preprocess_dir=preprocess_dir,
                     n_files_written=result.n_files,
                     split_summary=manifest_split_summary,
+                    auxiliary_matches={
+                        name: {"matched": count, "total": result.n_files}
+                        for name, count in auxiliary_match_counts.items()
+                    },
+                    readme_path=readme_path,
+                    readme_created=readme_created,
+                    readme_error=readme_error,
                 )
             )
             return result
@@ -387,9 +451,11 @@ class PreprocessRun:
                     preprocess_dir=preprocess_dir,
                     n_files_written=n_files,
                     split_summary=manifest_split_summary,
+                    auxiliary_matches={
+                        name: {"matched": count, "total": n_files}
+                        for name, count in auxiliary_match_counts.items()
+                    },
                     error=exc,
                 )
             )
             raise
-
-

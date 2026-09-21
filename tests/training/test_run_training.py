@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 import lisai.training.run_training as run_training_mod
+from lisai.config.models.inference import EvaluateDefaults
 from lisai.training.orchestration import post_training as post_training_mod
 from lisai.training.orchestration import run_monitor as run_monitor_mod
 from lisai.runs.io import read_run_metadata
@@ -158,6 +159,23 @@ def test_run_training_happy_path_builds_and_trains(monkeypatch: pytest.MonkeyPat
     assert captured["trainer_kwargs"]["val_loader"] == "val_loader"
     assert captured["trainer_kwargs"]["state_dict"] == {"epoch": 0}
     assert captured["trainer_kwargs"]["patch_info"] is None
+
+
+def test_run_training_applies_progress_bar_preference(monkeypatch: pytest.MonkeyPatch):
+    cfg = _make_cfg()
+    captured = {}
+
+    def fake_resolve_progress_bar(default, override):
+        captured["default"] = default
+        captured["override"] = override
+        return True
+
+    monkeypatch.setattr(run_training_mod, "resolve_progress_bar", fake_resolve_progress_bar)
+
+    run_training_mod._apply_progress_bar_preference(cfg, None)
+
+    assert captured == {"default": False, "override": None}
+    assert cfg.training.progress_bar is True
 
 
 def test_run_training_does_not_remap_unexpected_trainer_exceptions(
@@ -418,15 +436,23 @@ def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatc
     monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
+    eval_cfg = EvaluateDefaults()
+    monkeypatch.setattr(
+        post_training_mod,
+        "resolve_evaluate_config",
+        lambda *, config: captured.update({"config": config}) or eval_cfg,
+    )
     monkeypatch.setattr(post_training_mod, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
     run_training_mod.run_training("configs/training/hdn_training.yml")
 
     assert captured == {
+        "config": "post_training",
+        "cfg": eval_cfg,
         "dataset_name": "dataset_a",
         "model_name": "run_c",
         "model_subfolder": "Upsamp",
-        "config": "post_training",
+        "progress_bar": False,
     }
 
 
@@ -450,12 +476,19 @@ def test_run_training_prompts_before_post_training_evaluation_on_interrupt(monke
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(post_training_mod, "_prompt_yes_no", lambda prompt: True)
+    eval_cfg = EvaluateDefaults()
+    monkeypatch.setattr(
+        post_training_mod,
+        "resolve_evaluate_config",
+        lambda *, config: captured.update({"config": config}) or eval_cfg,
+    )
     monkeypatch.setattr(post_training_mod, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
     run_training_mod.run_training("configs/training/hdn_training.yml")
 
     assert captured["model_name"] == "run_d"
     assert captured["config"] == "post_training"
+    assert captured["cfg"] is eval_cfg
 
 
 def test_run_training_skips_post_training_evaluation_when_interrupt_prompt_declined(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
@@ -489,7 +522,7 @@ def test_run_training_writes_and_finalizes_run_metadata_on_completion(monkeypatc
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_complete"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_complete"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
@@ -540,7 +573,7 @@ def test_run_training_finalizes_run_metadata_as_stopped(monkeypatch: pytest.Monk
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_stopped"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_stopped"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
@@ -573,7 +606,7 @@ def test_run_training_finalizes_run_metadata_as_failed(monkeypatch: pytest.Monke
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_failed"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_failed"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
@@ -614,7 +647,7 @@ def test_run_training_persists_peak_gpu_memory_stats_when_cuda_available(
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_cuda"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_cuda"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     runtime.device = SimpleNamespace(type="cuda", index=0)
     prepared_data = _make_prepared_data()
@@ -668,7 +701,7 @@ def test_run_training_does_not_retry_retryable_hdn_divergence(
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    run_dir = tmp_path / "datasets" / "dataset_a" / "models" / "Upsamp" / "run_retry"
+    run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_retry"
     runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 

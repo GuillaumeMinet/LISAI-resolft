@@ -4,8 +4,12 @@ pipeline: "recon_timelapse_simple"
 data_type: "recon"
 fmt: "timelapse"
 
+registry:
+  description: null
+  
 pipeline_cfg:
-  dump_subfolder: ""
+  base_subfolder: ""
+  input_subfolder: ""
   combine_subfolders: True
   crop_size: null
   remove_first: True

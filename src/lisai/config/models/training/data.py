@@ -457,8 +457,6 @@ class ExperimentDataSection(BaseModel):
             self.target = self.gt
         if self.input is None and self.inp is not None:
             self.input = self.inp
-        if self.paired and not self.target:
-            raise ValueError("Paired dataset requires `target`.")
         if self.batch_size <= 0:
             raise ValueError("`batch_size` must be > 0.")
         if self.patch_size is not None and self.patch_size <= 0:
@@ -473,11 +471,11 @@ class ExperimentDataSection(BaseModel):
 
     @property
     def resolved_data_format(self) -> str:
+        if self.data_format is not None:
+            return self.data_format
         dataset_info = getattr(self, "dataset_info", None)
         if dataset_info is not None and dataset_info.get("data_format") is not None:
             return dataset_info["data_format"]
-        if self.data_format is not None:
-            return self.data_format
         warnings.warn("Data format not specified, put to 'single' by default.")
         return "single"
 
@@ -543,4 +541,14 @@ class DataSection(ExperimentDataSection):
         default=None,
         exclude=True,
         description="Resolved dataset metadata injected at runtime from the dataset registry.",
+    )
+    registry_checked: bool = Field(
+        default=False,
+        exclude=True,
+        description="Whether runtime config resolution already checked the dataset registry.",
+    )
+    registry_data_type: Optional[str] = Field(
+        default=None,
+        exclude=True,
+        description="Registry data type used to resolve defaults for this dataset.",
     )

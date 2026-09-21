@@ -10,21 +10,35 @@ from __future__ import annotations
 import glob
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping, Sequence
+from typing import Any, Iterator, Literal, Mapping, Sequence
 
 import numpy as np
 import torch
-from lisai.config import load_yaml, settings
+from tifffile import TiffFile
+from lisai.config import settings
 from lisai.config.io import deep_merge
 from lisai.config.models.training import DataSection
 from lisai.data.data_loaders.dataset_io import load_image
 from lisai.data.data_loaders.split_manifest import manifest_split_entries
 from lisai.data.data_loaders.transforms import apply_additional_transforms, apply_inp_transformations
+from lisai.data.dataset_registry import (
+    load_dataset_info,
+    registry_data_format_for_output,
+    registry_data_types,
+    registry_mapping_for_data_type,
+)
 from lisai.data.utils import crop_center, make_pair_4d
 from lisai.infra.paths import Paths
 from lisai.lib.upsamp.artificial_movement import apply_movement
 
 from .saved_run import SavedTrainingRun
+
+EVAL_GT_NONE = "@none"
+EVAL_GT_TRAINING = "@training"
+
+UNKNOWN_SOURCE_INDICES = "unknown"
+SourceAxis = Literal["time", "snr"]
+SourceIndices = tuple[int, ...] | Literal["unknown"]
 
 
 @dataclass(frozen=True)
@@ -44,17 +58,44 @@ class EvalSample:
 
 
 @dataclass(frozen=True)
+class EvaluationDatasetSpec:
+    """Resolved registered dataset used as a whole-dataset evaluation source."""
+
+    name: str
+    data_type: str
+    data_dir: Path
+    dataset_info: Mapping[str, Any]
+    input: str
+    eval_gt: str | None
+    data_format: str | None
+
+
+@dataclass(frozen=True)
 class EvalItem:
     """File-backed evaluation unit that owns sample selection and naming."""
 
     name: str
     inp_path: Path
     gt_path: Path | None
-    split: str
+    split: str | None
     file_index: int
     data_format: str
     sample_count: int
     time_indices: tuple[int | None, ...]
+    input_id: str | None = None
+    gt_id: str | None = None
+    source_axis: SourceAxis | None = None
+    source_indices: SourceIndices | None = None
+
+    def __post_init__(self) -> None:
+        if len(self.time_indices) != self.sample_count:
+            raise ValueError("`time_indices` length must match `sample_count`.")
+        if self.source_axis is None and self.source_indices is not None:
+            raise ValueError("`source_indices` requires a `source_axis`.")
+        if self.source_axis is not None and self.source_indices is None:
+            raise ValueError("`source_axis` requires `source_indices`.")
+        if isinstance(self.source_indices, tuple) and len(self.source_indices) != self.sample_count:
+            raise ValueError("Known `source_indices` length must match `sample_count`.")
 
     def __len__(self) -> int:
         """Return the number of model calls represented by this item."""
@@ -101,6 +142,20 @@ class EvalItem:
         """Return the original timelapse index for a sample when available."""
         return self.time_indices[sample_index]
 
+    def sample_source_index(self, sample_index: int) -> int | None:
+        """Return the original source-axis index when it is known."""
+        if self.source_indices in (None, UNKNOWN_SOURCE_INDICES):
+            return None
+        return self.source_indices[sample_index]
+
+    def persisted_source_indices(self, sample_indices: Sequence[int]) -> SourceIndices | None:
+        """Return provenance for the exact samples persisted by an output writer."""
+        if self.source_indices is None:
+            return None
+        if self.source_indices == UNKNOWN_SOURCE_INDICES:
+            return UNKNOWN_SOURCE_INDICES
+        return tuple(self.source_indices[index] for index in sample_indices)
+
     def sample_name(self, sample_index: int) -> str:
         """Return the output/metrics name for one selected sample."""
         if self.sample_count == 1:
@@ -125,11 +180,13 @@ class EvalSampleSource:
         items: Sequence[EvalItem],
         config: DataSection,
         split_manifest: Mapping[str, Any] | None = None,
+        use_split: bool = True,
     ):
         """Store file-level evaluation items and their resolved data config."""
         self.config = config
         self.items = tuple(items)
         self.split_manifest = dict(split_manifest) if split_manifest is not None else None
+        self.use_split = use_split
 
     @classmethod
     def from_config(
@@ -137,12 +194,14 @@ class EvalSampleSource:
         config: DataSection,
         *,
         split_manifest: Mapping[str, Any] | None = None,
+        use_split: bool = True,
     ) -> "EvalSampleSource":
         """Build an item source from a resolved evaluation data config."""
         return cls(
-            items=cls.build_items(config, split_manifest=split_manifest),
+            items=cls.build_items(config, split_manifest=split_manifest, use_split=use_split),
             config=config,
             split_manifest=split_manifest,
+            use_split=use_split,
         )
 
     @staticmethod
@@ -150,25 +209,32 @@ class EvalSampleSource:
         config: DataSection,
         *,
         split_manifest: Mapping[str, Any] | None = None,
+        use_split: bool = True,
     ) -> tuple[EvalItem, ...]:
         """Resolve one file-level evaluation item per input/GT pair."""
         if config.data_dir is None:
             raise ValueError("`data_dir` must be provided for evaluation data loading.")
         if config.input is None and split_manifest is None:
             raise ValueError("`input` must be provided for evaluation data loading.")
+        if split_manifest is not None and not use_split:
+            raise ValueError("A split manifest cannot be used for whole-dataset evaluation.")
 
-        split = getattr(config, "split", "test")
+        split = getattr(config, "split", "test") if use_split else None
         if split_manifest is not None:
             inp_files, gt_files = _manifest_eval_files(config, split_manifest, split)
         else:
-            inp_dir = config.data_dir / config.input / split
+            inp_dir = config.data_dir / config.input
+            if split is not None:
+                inp_dir = inp_dir / split
             inp_files = _collect_split_files(inp_dir, config.filters)
             if not inp_files:
                 raise FileNotFoundError(f"No input files found in {inp_dir} with filters={config.filters}.")
 
             gt_files: list[Path] | None = None
             if config.target is not None:
-                gt_dir = config.data_dir / config.target / split
+                gt_dir = config.data_dir / config.target
+                if split is not None:
+                    gt_dir = gt_dir / split
                 gt_files = _collect_split_files(gt_dir, config.filters)
                 if len(inp_files) != len(gt_files):
                     raise ValueError(f"Found #{len(inp_files)} inp_files and #{len(gt_files)} gt_files")
@@ -180,6 +246,12 @@ class EvalSampleSource:
             if sample_count == 0:
                 continue
             data_format = config.resolved_data_format
+            source_axis, source_indices = _source_provenance_for_item(
+                inp_path=inp_path,
+                data_format=data_format,
+                sample_count=sample_count,
+                config=config,
+            )
             items.append(
                 EvalItem(
                     name=inp_path.stem,
@@ -189,11 +261,15 @@ class EvalSampleSource:
                     file_index=index,
                     data_format=data_format,
                     sample_count=sample_count,
-                    time_indices=_time_indices_for_item(
-                        data_format=data_format,
+                    time_indices=_time_indices_from_source_provenance(
+                        source_axis=source_axis,
+                        source_indices=source_indices,
                         sample_count=sample_count,
-                        config=config,
                     ),
+                    input_id=_source_id(inp_path, data_dir=config.data_dir),
+                    gt_id=_source_id(gt_path, data_dir=config.data_dir) if gt_path is not None else None,
+                    source_axis=source_axis,
+                    source_indices=source_indices,
                 )
             )
         return tuple(items)
@@ -213,21 +289,119 @@ class EvalSampleSource:
                 yield sample
 
 
+@dataclass(frozen=True)
+class EvalGtResolution:
+    target: str | None
+    force_no_gt: bool = False
+
+
+def _is_evaluation_dataset(dataset_info: Mapping[str, Any]) -> bool:
+    if dataset_info.get("for_training") is False:
+        return True
+    usage = dataset_info.get("usage")
+    return isinstance(usage, str) and usage.lower() in {"eval", "evaluation", "test"}
+
+
+def _last_path_component(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).replace("\\", "/").strip("/")
+    return text.rsplit("/", 1)[-1] if text else None
+
+
+def _resolve_evaluation_data_type(
+    *,
+    saved_run: SavedTrainingRun,
+    dataset_info: Mapping[str, Any],
+    requested_data_type: str | None = None,
+) -> str:
+    known = registry_data_types(dataset_info)
+    if requested_data_type is not None:
+        if known and requested_data_type not in known:
+            allowed = ", ".join(sorted(known))
+            raise ValueError(
+                f"Evaluation data type {requested_data_type!r} is not registered; available: {allowed}."
+            )
+        return requested_data_type
+
+    candidates = [
+        saved_run.data_cfg.get("data_type"),
+        _last_path_component(saved_run.data_subfolder),
+    ]
+    for candidate in candidates:
+        if candidate is not None and str(candidate) in known:
+            return str(candidate)
+
+    if len(known) == 1:
+        return next(iter(known))
+    if not known:
+        raise ValueError("Evaluation dataset registry entry does not define any data type metadata.")
+    allowed = ", ".join(sorted(known))
+    raise ValueError(
+        "Could not choose an evaluation data type unambiguously. "
+        f"Registered data types: {allowed}. Pass `--data-option data_type=<type>`."
+    )
+
+
+def resolve_evaluation_dataset(
+    saved_run: SavedTrainingRun,
+    dataset_name: str,
+    *,
+    data_overrides: Mapping[str, Any] | None = None,
+) -> EvaluationDatasetSpec:
+    """Resolve one registered evaluation-only dataset for whole-dataset evaluation."""
+    paths = Paths(settings)
+    dataset_info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
+    if not isinstance(dataset_info, Mapping):
+        raise ValueError(f"Evaluation dataset {dataset_name!r} is not registered.")
+    if not _is_evaluation_dataset(dataset_info):
+        raise ValueError(
+            f"Dataset {dataset_name!r} is not marked as evaluation-only. "
+            "`--on` currently accepts only datasets with `usage: evaluation`."
+        )
+
+    requested_data_type = None
+    if isinstance(data_overrides, Mapping) and data_overrides.get("data_type") is not None:
+        requested_data_type = str(data_overrides["data_type"])
+    data_type = _resolve_evaluation_data_type(
+        saved_run=saved_run,
+        dataset_info=dataset_info,
+        requested_data_type=requested_data_type,
+    )
+    defaults = registry_mapping_for_data_type(dataset_info, "defaults", data_type) or {}
+    input_name = defaults.get("input")
+    if isinstance(data_overrides, Mapping) and data_overrides.get("input") is not None:
+        input_name = data_overrides["input"]
+    if input_name is None:
+        raise ValueError(
+            f"Evaluation dataset {dataset_name!r} has no default input for data type {data_type!r}. "
+            "Set a registry default or pass `--data-option input=<path>`."
+        )
+    eval_gt = defaults.get("eval_gt")
+    data_format = registry_data_format_for_output(dataset_info, data_type, input_name)
+
+    return EvaluationDatasetSpec(
+        name=dataset_name,
+        data_type=data_type,
+        data_dir=paths.dataset_preprocess_dir(
+            dataset_name=dataset_name,
+            data_type=data_type,
+            usage="evaluation",
+        ),
+        dataset_info=dict(dataset_info),
+        input=str(input_name),
+        eval_gt=str(eval_gt) if eval_gt is not None else None,
+        data_format=data_format,
+    )
+
+
 def resolve_dataset_info(dataset_name: str | None) -> dict[str, Any] | None:
     """Load dataset-registry metadata for a dataset name when available."""
     if not dataset_name:
         return None
 
     paths = Paths(settings)
-    try:
-        registry = load_yaml(paths.dataset_registry_path())
-    except FileNotFoundError:
-        return None
-
-    info = registry.get(dataset_name)
-    if isinstance(info, Mapping):
-        return dict(info)
-    return None
+    return load_dataset_info(paths.dataset_registry_path(), dataset_name)
 
 
 def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, Any]) -> Path | None:
@@ -249,7 +423,99 @@ def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, An
         subfolder = saved_run.data_subfolder
 
     paths = Paths(settings)
-    return paths.dataset_dir(dataset_name=dataset_name, data_subfolder=subfolder or "")
+    dataset_info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
+    usage = "training"
+    if isinstance(dataset_info, Mapping):
+        registered_usage = dataset_info.get("usage")
+        if isinstance(registered_usage, str) and registered_usage.strip():
+            usage = registered_usage.strip().lower()
+    return paths.dataset_dir(
+        dataset_name=dataset_name,
+        data_subfolder=subfolder or "",
+        usage=usage,
+    )
+
+
+def _training_target(data_cfg: Mapping[str, Any]) -> str | None:
+    target = data_cfg.get("target")
+    if target is None:
+        target = data_cfg.get("gt")
+    return None if target is None else str(target)
+
+
+def _registry_eval_gt(dataset_info: Mapping[str, Any] | None, data_type: str | None) -> str | None:
+    if not isinstance(dataset_info, Mapping):
+        return None
+
+    defaults = dataset_info.get("defaults")
+    if not isinstance(defaults, Mapping):
+        return None
+
+    candidate_data_types: list[str] = []
+    if data_type:
+        candidate_data_types.append(str(data_type))
+    elif len(defaults) == 1:
+        candidate_data_types.append(str(next(iter(defaults))))
+
+    for candidate_data_type in candidate_data_types:
+        data_defaults = defaults.get(candidate_data_type)
+        if not isinstance(data_defaults, Mapping):
+            continue
+        eval_gt = data_defaults.get("eval_gt")
+        if eval_gt is not None:
+            return str(eval_gt)
+    return None
+
+
+def _resolve_eval_gt(
+    *,
+    eval_gt: str | None,
+    data_cfg: Mapping[str, Any],
+    dataset_info: Mapping[str, Any] | None,
+    fallback_to_training: bool = True,
+) -> EvalGtResolution:
+    if eval_gt == EVAL_GT_NONE:
+        return EvalGtResolution(target=None, force_no_gt=True)
+    if eval_gt == EVAL_GT_TRAINING:
+        return EvalGtResolution(target=_training_target(data_cfg))
+    if eval_gt is not None:
+        return EvalGtResolution(target=str(eval_gt))
+
+    registry_target = _registry_eval_gt(dataset_info, data_cfg.get("data_type"))
+    if registry_target is not None:
+        return EvalGtResolution(target=registry_target)
+    if fallback_to_training:
+        return EvalGtResolution(target=_training_target(data_cfg))
+    return EvalGtResolution(target=None, force_no_gt=True)
+
+
+def _ensure_gt_normalization_defaults(
+    model_norm_prm: dict[str, Any] | None,
+    *,
+    use_input_stats_for_gt: bool = False,
+) -> dict[str, Any]:
+    if model_norm_prm is None:
+        model_norm_prm = {}
+
+    default_gt_mean = 0
+    default_gt_std = 1
+    if use_input_stats_for_gt:
+        default_gt_mean = model_norm_prm.get("data_mean")
+        default_gt_std = model_norm_prm.get("data_std")
+        if default_gt_mean is None:
+            default_gt_mean = 0
+        if default_gt_std is None:
+            default_gt_std = 1
+
+    if model_norm_prm.get("data_mean_gt") is None:
+        model_norm_prm["data_mean_gt"] = default_gt_mean
+    if model_norm_prm.get("data_std_gt") is None:
+        model_norm_prm["data_std_gt"] = default_gt_std
+    if model_norm_prm["data_std_gt"] == 0:
+        raise ValueError(
+            "`model_norm_prm.data_std_gt` must not be zero for evaluation with ground truth."
+        )
+    return model_norm_prm
 
 
 def _collect_split_files(data_dir: Path, filters: list[str]) -> list[Path]:
@@ -398,17 +664,91 @@ def _count_eval_samples(*, inp_path: Path, gt_path: Path | None, config: DataSec
     return inp_img.shape[0]
 
 
-def _time_indices_for_item(*, data_format: str, sample_count: int, config: DataSection) -> tuple[int | None, ...]:
-    """Map prepared sample indices back to original timelapse indices."""
-    if data_format != "timelapse":
+def _source_id(path: Path, *, data_dir: Path | None) -> str:
+    """Return a stable source identity relative to the evaluation dataset root when possible."""
+    path = Path(path)
+    if data_dir is not None:
+        data_dir = Path(data_dir)
+        try:
+            return path.relative_to(data_dir).as_posix()
+        except ValueError:
+            try:
+                return path.resolve().relative_to(data_dir.resolve()).as_posix()
+            except (ValueError, OSError):
+                pass
+    return path.as_posix()
+
+
+def _source_axis_length(path: Path) -> int:
+    """Read the first TIFF series-axis length without loading the full image stack."""
+    with TiffFile(path) as tif:
+        shape = tif.series[0].shape
+    if not shape:
+        raise ValueError(f"Could not determine image shape for {path}.")
+    return int(shape[0])
+
+
+def _source_provenance_for_item(
+    *,
+    inp_path: Path,
+    data_format: str,
+    sample_count: int,
+    config: DataSection,
+) -> tuple[SourceAxis | None, SourceIndices | None]:
+    """Describe which original source-axis positions produced the model calls for an item."""
+    if data_format == "timelapse":
+        timelapse_prm = config.timelapse_prm
+        if timelapse_prm is None:
+            # Without timelapse parameters the whole stack is one model input, not one
+            # model call per original timepoint.
+            return None, None
+
+        source_frame_count = _source_axis_length(inp_path)
+        max_frames = timelapse_prm.timelapse_max_frames
+        shuffled_subset = (
+            max_frames is not None
+            and source_frame_count > max_frames
+            and timelapse_prm.shuffle
+        )
+        if shuffled_subset:
+            return "time", UNKNOWN_SOURCE_INDICES
+
+        if timelapse_prm.context_length is None:
+            indices = tuple(range(sample_count))
+        else:
+            side_frames = timelapse_prm.context_length // 2
+            indices = tuple(range(side_frames, side_frames + sample_count))
+        return "time", indices
+
+    if data_format == "mltpl_snr":
+        mltpl_snr_prm = config.mltpl_snr_prm
+        if mltpl_snr_prm is None or mltpl_snr_prm.snr_idx is None:
+            # The whole SNR stack is then passed as one model input, so there is no
+            # one-to-one source-axis index to attach to that model call.
+            return None, None
+
+        snr_idx = mltpl_snr_prm.snr_idx
+        if snr_idx == "random":
+            return "snr", UNKNOWN_SOURCE_INDICES
+        if snr_idx == "last":
+            return "snr", (_source_axis_length(inp_path) - 1,)
+        if isinstance(snr_idx, int):
+            return "snr", (snr_idx,)
+        return "snr", tuple(snr_idx)
+
+    return None, None
+
+
+def _time_indices_from_source_provenance(
+    *,
+    source_axis: SourceAxis | None,
+    source_indices: SourceIndices | None,
+    sample_count: int,
+) -> tuple[int | None, ...]:
+    """Keep the legacy time-index view without inventing indices when provenance is unknown."""
+    if source_axis != "time" or source_indices in (None, UNKNOWN_SOURCE_INDICES):
         return (None,) * sample_count
-
-    timelapse_prm = config.timelapse_prm
-    if timelapse_prm is None or timelapse_prm.context_length is None:
-        return tuple(range(sample_count))
-
-    side_frames = timelapse_prm.context_length // 2
-    return tuple(range(side_frames, side_frames + sample_count))
+    return tuple(source_indices)
 
 
 def build_eval_source(
@@ -417,56 +757,100 @@ def build_eval_source(
     split: str = "test",
     crop_size: int | tuple[int, int] | None = None,
     eval_gt=None,
-    data_prm_update: Mapping[str, Any] | None = None,
+    data_overrides: Mapping[str, Any] | None = None,
+    evaluation_dataset: EvaluationDatasetSpec | None = None,
 ):
-    """Build the evaluation sample source for a saved run and eval overrides."""
+    """Build the evaluation sample source for a saved model and resolved dataset source."""
 
-    # load data preparation config from the trained model
+    # Model-derived data preparation remains the inference recipe. Dataset identity,
+    # location, input/GT paths and format can be replaced by an independent registered
+    # evaluation dataset without changing the model runtime itself.
     data_cfg = dict(saved_run.data_cfg)
+    training_target = _training_target(saved_run.data_cfg)
     model_norm_prm = dict(saved_run.model_norm_prm) if saved_run.model_norm_prm is not None else None
 
-    # Update parameters from evaluation overrides.
-    if eval_gt is not None and data_cfg.get("paired") is False:
-        data_cfg["paired"] = True
-        data_cfg["target"] = eval_gt
-        if model_norm_prm is None:
-            model_norm_prm = {}
-        model_norm_prm["data_mean_gt"] = 0
-        model_norm_prm["data_std_gt"] = 1
+    if evaluation_dataset is not None:
+        data_cfg["dataset_name"] = evaluation_dataset.name
+        data_cfg["data_type"] = evaluation_dataset.data_type
+        data_cfg["input"] = evaluation_dataset.input
+        data_cfg["target"] = None
+        data_cfg["gt"] = None
+        data_cfg["data_dir"] = str(evaluation_dataset.data_dir)
+        if evaluation_dataset.data_format is not None:
+            data_cfg["data_format"] = evaluation_dataset.data_format
 
     if crop_size is not None:
         data_cfg["initial_crop"] = crop_size
 
-    if data_prm_update is not None:
-        data_cfg = deep_merge(data_cfg, dict(data_prm_update))
+    if data_overrides is not None:
+        data_cfg = deep_merge(data_cfg, dict(data_overrides))
+
+    if evaluation_dataset is not None:
+        if eval_gt == EVAL_GT_TRAINING:
+            eval_gt = training_target
+        # `--on DATASET` owns the dataset identity even when expert data overrides are
+        # supplied. Other fields (e.g. input/data_dir) may still be overridden.
+        data_cfg["dataset_name"] = evaluation_dataset.name
+        data_cfg["data_type"] = evaluation_dataset.data_type
+        dataset_info = dict(evaluation_dataset.dataset_info)
+        if eval_gt is None and evaluation_dataset.eval_gt is not None:
+            eval_gt = evaluation_dataset.eval_gt
+    else:
+        dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
+
+    eval_gt_resolution = _resolve_eval_gt(
+        eval_gt=eval_gt,
+        data_cfg=data_cfg,
+        dataset_info=dataset_info,
+        fallback_to_training=evaluation_dataset is None,
+    )
+    if eval_gt_resolution.force_no_gt:
+        data_cfg["paired"] = False
+        data_cfg["target"] = None
+        data_cfg["gt"] = None
+    elif eval_gt_resolution.target is not None:
+        training_was_paired = bool(data_cfg.get("paired"))
+        data_cfg["paired"] = True
+        data_cfg["target"] = eval_gt_resolution.target
+        model_norm_prm = _ensure_gt_normalization_defaults(
+            model_norm_prm,
+            use_input_stats_for_gt=saved_run.is_lvae and not training_was_paired,
+        )
+
+    if evaluation_dataset is not None and not data_cfg.get("data_dir"):
+        data_cfg["data_dir"] = str(evaluation_dataset.data_dir)
 
     data_dir = resolve_eval_data_dir(saved_run, data_cfg)
     if data_dir is None:
         raise ValueError(
             "Could not resolve `data_dir` for evaluation. "
-            "Provide it through `data_prm_update={\'data_dir\': \'...path...\'}`."
+            "Provide it through `data_overrides={'data_dir': '...path...'}`."
         )
 
-    dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
-
-    # build data prep config with updated parameters
+    resolved_split = None if evaluation_dataset is not None else split
     prep_cfg = DataSection.model_validate(data_cfg).resolved(
         data_dir=Path(data_dir),
         norm_prm=saved_run.data_norm_prm,
         dataset_info=dataset_info,
         model_norm_prm=model_norm_prm,
-        split=split,
+        split=resolved_split,
     )
 
-    return EvalSampleSource.from_config(prep_cfg, split_manifest=saved_run.split_manifest)
+    return EvalSampleSource.from_config(
+        prep_cfg,
+        split_manifest=None if evaluation_dataset is not None else saved_run.split_manifest,
+        use_split=evaluation_dataset is None,
+    )
 
 
 
 __all__ = [
+    "EvaluationDatasetSpec",
     "EvalItem",
     "EvalSample",
     "EvalSampleSource",
     "build_eval_source",
     "resolve_dataset_info",
+    "resolve_evaluation_dataset",
     "resolve_eval_data_dir",
 ]

@@ -5,7 +5,8 @@ data_type: "recon"
 fmt: "single"
 
 pipeline_cfg:
-  dump_subfolder: ''
+  base_subfolder: ''
+  input_subfolder: ''
   combine_subfolders: false
   crop_size: 1200
 

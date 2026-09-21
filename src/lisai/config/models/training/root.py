@@ -11,6 +11,7 @@ from .loss import LossFunctionConfig
 from .model import ModelSection
 from .normalization import NormalizationSection
 from .sections import (
+    InferenceSection,
     NoiseModelSection,
     ResolvedExperimentSection,
     RoutingSection,
@@ -78,6 +79,10 @@ class ResolvedExperiment(BaseModel):
     recovery: RecoveryConfig = Field(
         default_factory=RecoveryConfig,
         description="Resolved recovery behavior for continue/restart flows.",
+    )
+    inference: InferenceSection = Field(
+        default_factory=InferenceSection,
+        description="Inference defaults saved with this training run.",
     )
 
     @model_validator(mode="before")

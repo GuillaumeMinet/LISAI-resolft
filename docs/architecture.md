@@ -13,13 +13,21 @@ This page describes the current production architecture under `src/lisai/**`.
 5. [`build_model`](../src/lisai/training/setup/model.py) returns the model and optional restored state.
 6. [`get_trainer`](../src/lisai/training/trainers/factory.py) selects the trainer and runs the loop.
 
+### Config Catalog
+
+1. `lisai configs ...` is registered by [`src/lisai/cli.py`](../src/lisai/cli.py) through [`src/lisai/config/cli.py`](../src/lisai/config/cli.py).
+2. [`src/lisai/config/catalog.py`](../src/lisai/config/catalog.py) discovers training configs under `presets/`, `templates/`, `examples/`, and `local/`.
+3. Top-level `metadata` is catalog-only and stripped before training validation.
+4. Presets and templates are not trainable directly; instantiate them into `configs/training/local/` first.
+
 ### Evaluation
 
 1. [`run_apply_model`](../src/lisai/evaluation/run_apply_model.py) and [`run_evaluate`](../src/lisai/evaluation/run_evaluate.py) are the entrypoints.
 2. [`load_saved_run`](../src/lisai/evaluation/saved_run.py) turns a saved `config_train.yaml` into `SavedTrainingRun`.
-3. [`initialize_runtime`](../src/lisai/evaluation/runtime.py) loads the model checkpoint into `InferenceRuntime`.
-4. [`build_eval_source`](../src/lisai/evaluation/data.py) rebuilds an evaluation sample source when dataset-based evaluation is needed.
-5. [`src/lisai/evaluation/inference/**`](../src/lisai/evaluation/inference) performs inference, and [`src/lisai/evaluation/io.py`](../src/lisai/evaluation/io.py) saves outputs.
+3. `SavedTrainingRun.default_tiling_size` resolves per-run inference hints, compatibility defaults, and architecture defaults.
+4. [`initialize_runtime`](../src/lisai/evaluation/runtime.py) loads the model checkpoint into `InferenceRuntime`.
+5. [`build_eval_source`](../src/lisai/evaluation/data.py) rebuilds an evaluation sample source when dataset-based evaluation is needed.
+6. [`src/lisai/evaluation/inference/**`](../src/lisai/evaluation/inference) performs inference, and [`src/lisai/evaluation/io.py`](../src/lisai/evaluation/io.py) saves outputs.
 
 ### Preprocess
 

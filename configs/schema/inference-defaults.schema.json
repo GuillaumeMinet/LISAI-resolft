@@ -2,75 +2,30 @@
   "$defs": {
     "ApplyDefaults": {
       "additionalProperties": false,
-      "description": "Fully resolved defaults for the `apply` inference section.",
+      "description": "Canonical LISAI defaults for the `apply` inference section.",
       "properties": {
-        "save_folder": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": "default",
-          "description": "Output folder for saved predictions or evaluation artifacts. Use 'default' for apply to save next to the inputs, or null for evaluate to save inside the model run directory.",
-          "title": "Save Folder"
+        "checkpoint": {
+          "$ref": "#/$defs/CheckpointDefaults"
         },
-        "in_place": {
-          "default": false,
-          "description": "Whether apply outputs should be written back into the input location.",
-          "title": "In Place",
-          "type": "boolean"
+        "input": {
+          "$ref": "#/$defs/ApplyInputDefaults"
         },
-        "epoch_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Explicit checkpoint epoch number to load. Use null to select the checkpoint through best_or_last instead.",
-          "title": "Epoch Number"
+        "inference": {
+          "$ref": "#/$defs/ApplyInferenceDefaults"
         },
-        "best_or_last": {
-          "default": "best",
-          "description": "Checkpoint selector used when epoch_number is null. Supported values are 'best', 'last', and 'both'.",
-          "enum": [
-            "best",
-            "last",
-            "both"
-          ],
-          "title": "Best Or Last",
-          "type": "string"
+        "postprocess": {
+          "$ref": "#/$defs/ApplyPostprocessDefaults"
         },
-        "filters": {
-          "description": "File extensions accepted when apply input points to a directory.",
-          "items": {
-            "type": "string"
-          },
-          "title": "Filters",
-          "type": "array"
-        },
-        "skip_if_contain": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional substrings; matching filenames are skipped during apply.",
-          "title": "Skip If Contain"
-        },
+        "saving": {
+          "$ref": "#/$defs/ApplySavingDefaults"
+        }
+      },
+      "title": "ApplyDefaults",
+      "type": "object"
+    },
+    "ApplyInferenceDefaults": {
+      "additionalProperties": false,
+      "properties": {
         "crop_size": {
           "anyOf": [
             {
@@ -106,41 +61,23 @@
         "tiling_size": {
           "anyOf": [
             {
+              "exclusiveMinimum": 0,
               "type": "integer"
+            },
+            {
+              "enum": [
+                "auto",
+                "off"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "Tile size used for patch-wise inference. Use null to fall back to the model/runtime default.",
+          "default": "auto",
+          "description": "Tile size used for patch-wise inference. Use 'auto' or null to fall back to the saved model default, use a positive integer to force a tile size, or use 'off' to disable tiling.",
           "title": "Tiling Size"
-        },
-        "stack_selection_idx": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional stack or channel index selected before converting the input to a 4D tensor.",
-          "title": "Stack Selection Idx"
-        },
-        "timelapse_max": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional maximum number of timelapse frames to process during apply.",
-          "title": "Timelapse Max"
         },
         "lvae_num_samples": {
           "anyOf": [
@@ -154,24 +91,6 @@
           "default": 20,
           "description": "Number of stochastic samples drawn when running LVAE models.",
           "title": "Lvae Num Samples"
-        },
-        "lvae_save_samples": {
-          "default": true,
-          "description": "Whether individual LVAE samples should be saved in addition to the main prediction.",
-          "title": "Lvae Save Samples",
-          "type": "boolean"
-        },
-        "denormalize_output": {
-          "default": true,
-          "description": "Whether model outputs should be converted back from normalized model space before saving.",
-          "title": "Denormalize Output",
-          "type": "boolean"
-        },
-        "save_inp": {
-          "default": false,
-          "description": "Whether the input image or tensor should also be saved alongside predictions.",
-          "title": "Save Inp",
-          "type": "boolean"
         },
         "downsamp": {
           "anyOf": [
@@ -201,16 +120,6 @@
           "description": "Optional fill factor used with deterministic 'multiple' apply downsampling. When set, apply uses generate_downsamp_inp with random=false.",
           "title": "Fill Factor"
         },
-        "apply_color_code": {
-          "default": false,
-          "description": "Whether an additional color-coded visualization should be saved for volumetric apply outputs.",
-          "title": "Apply Color Code",
-          "type": "boolean"
-        },
-        "color_code_prm": {
-          "$ref": "#/$defs/ColorCodeDefaults",
-          "description": "Nested volumetric color-coding settings used when apply_color_code is true."
-        },
         "dark_frame_context_length": {
           "default": false,
           "description": "Whether missing timelapse context frames should be replaced with dark frames instead of skipping sequence edges.",
@@ -218,13 +127,214 @@
           "type": "boolean"
         }
       },
-      "title": "ApplyDefaults",
+      "title": "ApplyInferenceDefaults",
+      "type": "object"
+    },
+    "ApplyInputDefaults": {
+      "additionalProperties": false,
+      "properties": {
+        "filters": {
+          "description": "File extensions accepted when apply input points to a directory.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Filters",
+          "type": "array"
+        },
+        "skip_if_contain": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional substrings; matching filenames are skipped during apply.",
+          "title": "Skip If Contain"
+        },
+        "stack_selection_idx": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional stack or channel index selected before converting the input to a 4D tensor.",
+          "title": "Stack Selection Idx"
+        },
+        "limit_n_imgs": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional cap on the number of input images or batches processed.",
+          "title": "Limit N Imgs"
+        },
+        "timelapse_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional maximum number of timelapse frames to process.",
+          "title": "Timelapse Max"
+        }
+      },
+      "title": "ApplyInputDefaults",
+      "type": "object"
+    },
+    "ApplyPostprocessDefaults": {
+      "additionalProperties": false,
+      "properties": {
+        "denormalize": {
+          "default": true,
+          "description": "Whether model outputs should be converted back from normalized model space before saving.",
+          "title": "Denormalize",
+          "type": "boolean"
+        },
+        "color_code": {
+          "$ref": "#/$defs/ColorCodeDefaults"
+        }
+      },
+      "title": "ApplyPostprocessDefaults",
+      "type": "object"
+    },
+    "ApplySavingDefaults": {
+      "additionalProperties": false,
+      "description": "Saving behavior. Routing values default to null so local_config remains the baseline.",
+      "properties": {
+        "lvae_save_samples": {
+          "default": true,
+          "description": "Whether individual LVAE samples should be saved in addition to the main prediction.",
+          "title": "Lvae Save Samples",
+          "type": "boolean"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "default",
+                "in_place",
+                "folder_inside",
+                "folder_outside"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Output placement for apply predictions: default uses the configured inference directory, in_place writes directly with the input data, folder_inside creates a dedicated prediction folder inside the input directory, and folder_outside creates that folder beside the input directory.",
+          "title": "Mode"
+        },
+        "save_input_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "never",
+                "if_not_in_place"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Policy controlling whether apply also saves its input: always saves it, never omits it, and if_not_in_place saves it unless predictions are written directly with the source data.",
+          "title": "Save Input Mode"
+        },
+        "save_folder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit output directory for apply predictions. When omitted, output routing falls back to the local/project inference defaults.",
+          "title": "Save Folder"
+        },
+        "in_place": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether apply outputs should be written alongside the input data. Use false to explicitly force normal inference-directory routing.",
+          "title": "In Place"
+        }
+      },
+      "title": "ApplySavingDefaults",
+      "type": "object"
+    },
+    "CheckpointDefaults": {
+      "additionalProperties": false,
+      "properties": {
+        "epoch_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Explicit checkpoint epoch number to load. Use null to select the checkpoint through best_or_last instead.",
+          "title": "Epoch Number"
+        },
+        "best_or_last": {
+          "default": "best",
+          "description": "Checkpoint selector used when epoch_number is null. Supported values are 'best', 'last', and 'both'.",
+          "enum": [
+            "best",
+            "last",
+            "both"
+          ],
+          "title": "Best Or Last",
+          "type": "string"
+        }
+      },
+      "title": "CheckpointDefaults",
       "type": "object"
     },
     "ColorCodeDefaults": {
       "additionalProperties": false,
       "description": "Complete color-coding settings used for volumetric apply outputs.",
       "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether an additional color-coded visualization should be saved for volumetric apply outputs.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
         "colormap": {
           "default": "turbo",
           "description": "Matplotlib colormap name used for volumetric color-coding.",
@@ -253,24 +363,46 @@
       "title": "ColorCodeDefaults",
       "type": "object"
     },
-    "EvaluateDefaults": {
+    "EvaluateDataDefaults": {
       "additionalProperties": false,
-      "description": "Fully resolved defaults for the `evaluate` inference section.",
       "properties": {
-        "best_or_last": {
-          "default": "best",
-          "description": "Checkpoint selector used when epoch_number is null. Supported values are 'best', 'last', and 'both'.",
-          "enum": [
-            "best",
-            "last",
-            "both"
-          ],
-          "title": "Best Or Last",
+        "split": {
+          "default": "test",
+          "description": "Dataset split to evaluate, typically 'test' or 'val'.",
+          "title": "Split",
           "type": "string"
         },
-        "epoch_number": {
+        "eval_gt": {
           "anyOf": [
             {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional evaluation ground-truth path/key. If omitted, evaluation uses the dataset registry eval_gt default when present, otherwise the training target. Use @training to force the saved training target and @none to evaluate without ground truth.",
+          "title": "Eval Gt"
+        },
+        "overrides": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional extra data-loader overrides such as {'data_dir': '...'} or {'subfolder': '...'} used during evaluation.",
+          "title": "Overrides"
+        },
+        "limit_n_imgs": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
               "type": "integer"
             },
             {
@@ -278,20 +410,85 @@
             }
           ],
           "default": null,
-          "description": "Explicit checkpoint epoch number to load. Use null to select the checkpoint through best_or_last instead.",
-          "title": "Epoch Number"
+          "description": "Optional cap on the number of input images or batches processed.",
+          "title": "Limit N Imgs"
         },
+        "timelapse_max": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional maximum number of timelapse frames to process.",
+          "title": "Timelapse Max"
+        }
+      },
+      "title": "EvaluateDataDefaults",
+      "type": "object"
+    },
+    "EvaluateDefaults": {
+      "additionalProperties": false,
+      "description": "Canonical LISAI defaults for the `evaluate` inference section.",
+      "properties": {
+        "checkpoint": {
+          "$ref": "#/$defs/CheckpointDefaults"
+        },
+        "data": {
+          "$ref": "#/$defs/EvaluateDataDefaults"
+        },
+        "inference": {
+          "$ref": "#/$defs/EvaluateInferenceDefaults"
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Metrics to compute during evaluation, for example ['psnr', 'ssim']. Use null to skip metrics.",
+          "title": "Metrics"
+        },
+        "saving": {
+          "$ref": "#/$defs/EvaluateSavingDefaults"
+        }
+      },
+      "title": "EvaluateDefaults",
+      "type": "object"
+    },
+    "EvaluateInferenceDefaults": {
+      "additionalProperties": false,
+      "properties": {
         "tiling_size": {
           "anyOf": [
             {
+              "exclusiveMinimum": 0,
               "type": "integer"
+            },
+            {
+              "enum": [
+                "auto",
+                "off"
+              ],
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
-          "default": null,
-          "description": "Tile size used for patch-wise inference. Use null to fall back to the model/runtime default.",
+          "default": "auto",
+          "description": "Tile size used for patch-wise inference. Use 'auto' or null to fall back to the saved model default, use a positive integer to force a tile size, or use 'off' to disable tiling.",
           "title": "Tiling Size"
         },
         "crop_size": {
@@ -320,22 +517,6 @@
           "description": "Optional center crop used before inference. Use a single integer for a square crop or a height,width tuple.",
           "title": "Crop Size"
         },
-        "metrics_list": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Metrics to compute during evaluation, for example ['psnr', 'ssim']. Use null to skip metrics.",
-          "title": "Metrics List"
-        },
         "lvae_num_samples": {
           "anyOf": [
             {
@@ -349,66 +530,6 @@
           "description": "Number of stochastic samples drawn when running LVAE models.",
           "title": "Lvae Num Samples"
         },
-        "results": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional in-memory metrics accumulator used by the Python API when evaluating programmatically.",
-          "title": "Results"
-        },
-        "save_folder": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Output folder for saved predictions or evaluation artifacts. Use 'default' for apply to save next to the inputs, or null for evaluate to save inside the model run directory.",
-          "title": "Save Folder"
-        },
-        "overwrite": {
-          "default": false,
-          "description": "Whether an existing save folder may be overwritten.",
-          "title": "Overwrite",
-          "type": "boolean"
-        },
-        "eval_gt": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional ground-truth override path used when evaluating against a custom target location.",
-          "title": "Eval Gt"
-        },
-        "data_prm_update": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Optional extra data-loader overrides such as {'data_dir': '...'} or {'subfolder': '...'} used during evaluation.",
-          "title": "Data Prm Update"
-        },
         "ch_out": {
           "anyOf": [
             {
@@ -421,33 +542,40 @@
           "default": 1,
           "description": "Output channel count forwarded to inference. Defaults to 1 for evaluation because models are trained to predict a single target frame even when inputs contain multiple context channels.",
           "title": "Ch Out"
-        },
-        "split": {
-          "default": "test",
-          "description": "Dataset split to evaluate, typically 'test' or 'val'.",
-          "title": "Split",
-          "type": "string"
-        },
-        "limit_n_imgs": {
+        }
+      },
+      "title": "EvaluateInferenceDefaults",
+      "type": "object"
+    },
+    "EvaluateSavingDefaults": {
+      "additionalProperties": false,
+      "properties": {
+        "save_folder": {
           "anyOf": [
             {
-              "type": "integer"
+              "type": "string"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Optional cap on the number of images or batches evaluated.",
-          "title": "Limit N Imgs"
+          "description": "Output folder for evaluation artifacts. Use null to save inside the model run directory.",
+          "title": "Save Folder"
+        },
+        "overwrite": {
+          "default": false,
+          "description": "Whether an existing save folder may be overwritten.",
+          "title": "Overwrite",
+          "type": "boolean"
         }
       },
-      "title": "EvaluateDefaults",
+      "title": "EvaluateSavingDefaults",
       "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "Fully resolved inference settings used at runtime.\n\nThis object represents the complete inference configuration after defaults\nhave been applied. It is the typed counterpart of the final merged settings\nconsumed by apply/evaluate entrypoints.",
+  "description": "Fully resolved inference settings used at runtime.\n\nThis object defines the canonical LISAI inference defaults in the same\nnested layout used by inference YAML files. Runtime apply/evaluate options\nare flattened by the inference resolver.",
   "properties": {
     "apply": {
       "$ref": "#/$defs/ApplyDefaults",

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Sequence
 
 from lisai.config import settings
+from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.listing import (
     is_run_likely_active,
@@ -29,6 +30,7 @@ def continue_run(
     stdout=None,
     stderr=None,
     now: datetime | None = None,
+    progress_bar: bool | None = None,
 ) -> int:
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
@@ -90,10 +92,11 @@ def continue_run(
             )
             return 1
         else:
-            confirmed = _prompt_yes_no(
+            confirmed = prompt_yes_no(
                 "Selected run has inconsistent path metadata. Continue anyway? [y/N]: ",
                 stdin=in_stream,
                 stdout=out,
+                require_interactive=True,
             )
             if confirmed is None:
                 print(
@@ -112,10 +115,11 @@ def continue_run(
             prompt = "Continue training this run in place? [y/N]: "
 
         if prompt is not None:
-            confirmed = _prompt_yes_no(
+            confirmed = prompt_yes_no(
                 prompt,
                 stdin=in_stream,
                 stdout=out,
+                require_interactive=True,
             )
             if confirmed is None:
                 print("Confirmation required. Rerun with --yes to continue non-interactively.", file=err)
@@ -124,7 +128,11 @@ def continue_run(
                 print("Continue cancelled.", file=err)
                 return 1
 
-    run_training_from_config_dict(_build_continue_training_config(selected_run))
+    config = _build_continue_training_config(selected_run)
+    if progress_bar is None:
+        run_training_from_config_dict(config)
+    else:
+        run_training_from_config_dict(config, progress_bar=progress_bar)
     return 0
 
 
@@ -140,18 +148,6 @@ def _build_continue_training_config(run: DiscoveredRun) -> dict:
     }
 
 
-def _prompt_yes_no(prompt: str, *, stdin, stdout) -> bool | None:
-    is_tty = getattr(stdin, "isatty", None)
-    if not callable(is_tty) or not is_tty():
-        return None
-
-    print(prompt, end="", file=stdout, flush=True)
-    answer = stdin.readline()
-    if answer == "":
-        return None
-    return answer.strip().lower() in {"y", "yes"}
-
-
 def run_from_args(args: argparse.Namespace) -> int:
     return continue_run(
         selector=args.run,
@@ -160,6 +156,7 @@ def run_from_args(args: argparse.Namespace) -> int:
         model_subfolder=args.model_subfolder,
         assume_yes=args.yes,
         force=args.force,
+        progress_bar=getattr(args, "progress_bar", None),
     )
 
 
@@ -187,6 +184,13 @@ def add_continue_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
             "Allow continuation even if the selected run still appears active from a recent heartbeat, "
             "and permit non-interactive continuation of path-inconsistent runs with --yes."
         ),
+    )
+    parser.add_argument(
+        "--progress-bar",
+        dest="progress_bar",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Override the local/configured tqdm progress-bar preference for the continued training run.",
     )
     return parser
 

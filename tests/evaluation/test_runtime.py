@@ -58,6 +58,27 @@ def _make_saved_run(*, checkpoint_methods=('state_dict',), default_tiling_size=1
     )
 
 
+def test_resolve_tiling_size_uses_saved_default_for_auto_and_null():
+    saved_run = _make_saved_run(default_tiling_size=300)
+
+    assert runtime_mod.resolve_tiling_size(saved_run, "auto") == 300
+    assert runtime_mod.resolve_tiling_size(saved_run, None) == 300
+
+
+def test_resolve_tiling_size_supports_forced_size_and_off():
+    saved_run = _make_saved_run(default_tiling_size=300)
+
+    assert runtime_mod.resolve_tiling_size(saved_run, 2000) == 2000
+    assert runtime_mod.resolve_tiling_size(saved_run, "512") == 512
+    assert runtime_mod.resolve_tiling_size(saved_run, "off") is None
+
+
+@pytest.mark.parametrize("tiling_size", [0, -1, True, "small"])
+def test_resolve_tiling_size_rejects_invalid_values(tiling_size):
+    with pytest.raises(ValueError, match="tiling_size"):
+        runtime_mod.resolve_tiling_size(_make_saved_run(), tiling_size)
+
+
 
 def test_initialize_runtime_builds_inference_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     checkpoint_path = tmp_path / 'checkpoint.pt'
@@ -125,6 +146,39 @@ def test_initialize_runtime_loads_full_model_and_applies_tiling_override(monkeyp
     assert runtime.tiling_size == 256
     assert runtime.resolved_epoch == 9
     assert model_obj.evaluated is True
+
+
+def test_initialize_runtime_best_falls_back_to_highest_epoch_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    canonical_best = tmp_path / "model_best_state_dict.pt"
+    epoch_checkpoint = tmp_path / "model_epoch_4_state_dict.pt"
+    epoch_checkpoint.write_text("ok", encoding="utf-8")
+    fake_paths = SelectorAwarePaths(
+        best_path=canonical_best,
+        last_path=tmp_path / "model_last_state_dict.pt",
+    )
+    model_obj = object()
+
+    monkeypatch.setattr(runtime_mod, "Paths", lambda _settings: fake_paths)
+    monkeypatch.setattr(
+        runtime_mod,
+        "_load_state_dict_model",
+        lambda saved_run, checkpoint_path, device, paths: (model_obj, 4),
+    )
+
+    runtime = runtime_mod.initialize_runtime(
+        saved_run=_make_saved_run(),
+        device="cpu",
+        best_or_last="best",
+        epoch_number=None,
+        tiling_size=None,
+    )
+
+    assert runtime.model is model_obj
+    assert runtime.checkpoint_path == epoch_checkpoint
+    assert runtime.resolved_epoch == 4
 
 
 def test_initialize_runtime_with_both_selector_falls_back_to_last(

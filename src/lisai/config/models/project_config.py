@@ -13,7 +13,39 @@ class ProjectMeta(BaseModel):
 class ProjectPaths(BaseModel):
     model_config = ConfigDict(extra="forbid")
     roots: Dict[str, str]
+    dataset_usage_subfolders: Dict[str, str]
     templates: Dict[str, str]
+
+    @field_validator("dataset_usage_subfolders", mode="before")
+    @classmethod
+    def _normalize_dataset_usage_subfolders(cls, value):
+        if not isinstance(value, dict):
+            raise TypeError(
+                "paths.dataset_usage_subfolders must be an object mapping "
+                "dataset usages to folder names."
+            )
+
+        normalized = {}
+        for usage, raw in value.items():
+            text = str(raw).strip().strip("/\\")
+            if not text:
+                raise ValueError(
+                    f"paths.dataset_usage_subfolders.{usage} must not be empty."
+                )
+            if "/" in text or "\\" in text:
+                raise ValueError(
+                    f"paths.dataset_usage_subfolders.{usage} must be a single directory name."
+                )
+            normalized[str(usage)] = text
+
+        missing = {"training", "evaluation"} - set(normalized)
+        if missing:
+            missing_text = ", ".join(sorted(missing))
+            raise ValueError(
+                "paths.dataset_usage_subfolders must define semantic usages: "
+                f"{missing_text}."
+            )
+        return normalized
 
     @field_validator("roots", mode="before")
     @classmethod
@@ -21,7 +53,7 @@ class ProjectPaths(BaseModel):
         if not isinstance(value, dict):
             raise TypeError("paths.roots must be an object mapping string keys to templates.")
         roots = dict(value)
-        raw = roots.get("run_container_dirname", "models")
+        raw = roots.get("run_container_dirname", "runs")
         if not isinstance(raw, str):
             raise TypeError("paths.roots.run_container_dirname must be a string.")
         normalized = raw.strip().strip("/\\")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Literal, Optional
 
 from .constants import MAIN_OUTPUT_KEY
@@ -13,6 +14,8 @@ class OutputDecl:
     key: str
     axes: Axes
     role: Role
+    data_format_override: Optional[str] = None
+    path: Optional[str] = None
 
 @dataclass(frozen=True)
 class OutputSpec:
@@ -30,6 +33,10 @@ class OutputSpec:
 
       - axes: expected array layout ("YX" for 2D images, "TYX" for stacks).
       - role: semantic meaning ("inp", "gt", or "aux"), useful for training logic.
+      - data_format_override: optional loader format for outputs whose format differs
+        from the dataset-level data_format.
+      - path: optional processed-data subfolder override. If omitted, the existing
+        key/save_at_root behavior is used. An empty string explicitly saves at root.
 
     Example:
         OutputSpec(
@@ -58,15 +65,33 @@ class OutputSpec:
         if self.save_at_root and MAIN_OUTPUT_KEY not in self.output_keys():
             raise ValueError(f"save_at_root=True requires an output with key='{MAIN_OUTPUT_KEY}'")
 
-    def folder_for(self, key: str) -> str:
-        # If enabled, one specific output is saved at preprocess/<data_type>/ (no subfolder)
-        if self.save_at_root and key == MAIN_OUTPUT_KEY:
-            return ""
+        folders = [self.folder_for(o.key) for o in self.outputs]
+        duplicates = sorted({folder for folder in folders if folders.count(folder) > 1})
+        if duplicates:
+            rendered = ["<root>" if folder == "" else folder for folder in duplicates]
+            raise ValueError(f"Output folders must be unique; conflicting paths: {rendered}")
 
-        # Otherwise, folder name == key
+    def folder_for(self, key: str) -> str:
         for o in self.outputs:
-            if o.key == key:
-                return o.key
+            if o.key != key:
+                continue
+
+            if o.path is not None:
+                path = o.path.strip().replace("\\", "/")
+                if path:
+                    pure = PurePosixPath(path)
+                    if pure.is_absolute() or ".." in pure.parts:
+                        raise ValueError(
+                            f"Output path for '{key}' must be a relative subfolder without '..': {o.path!r}"
+                        )
+                    return pure.as_posix()
+                return ""
+
+            # Historical behavior when no explicit path override is declared.
+            if self.save_at_root and key == MAIN_OUTPUT_KEY:
+                return ""
+            return o.key
+
         raise KeyError(key)
 
     def axes_for(self, key: str) -> Axes:
@@ -80,8 +105,20 @@ class OutputSpec:
         # Root output is represented by "".
         out: list[str] = []
         for o in self.outputs:
-            if self.save_at_root and o.key == MAIN_OUTPUT_KEY:
-                out.append("")
-            else:
-                out.append(o.key)
+            out.append(self.folder_for(o.key))
         return out
+
+    def output_entries(self) -> list[dict[str, str]]:
+        """Registry-ready descriptions of produced outputs."""
+        entries: list[dict[str, str]] = []
+        for o in self.outputs:
+            entry = {
+                "key": o.key,
+                "path": self.folder_for(o.key),
+                "role": o.role,
+                "axes": o.axes,
+            }
+            if o.data_format_override is not None:
+                entry["data_format_override"] = o.data_format_override
+            entries.append(entry)
+        return entries

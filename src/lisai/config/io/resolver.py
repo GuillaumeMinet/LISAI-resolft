@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Mapping
 
-from .merge import deep_merge
-from ..models import ContinueTrainingConfig, ExperimentConfig, ResolvedExperiment, RetrainConfig
-from .yaml import load_yaml
-
+from lisai.data.dataset_registry import (
+    load_dataset_registry,
+    registry_data_format_for_output,
+    registry_data_types,
+    registry_value_for_data_type,
+)
 from lisai.runs.io import read_run_metadata
+
+from ..models import ContinueTrainingConfig, ExperimentConfig, ResolvedExperiment, RetrainConfig
+from .merge import deep_merge
+from .metadata import split_config_metadata
+from .yaml import load_yaml
 
 if TYPE_CHECKING:
     from lisai.infra.paths import Paths
@@ -43,6 +50,105 @@ def _dset(d: dict, path: str, value):
             cur[k] = nxt
         cur = nxt
     cur[keys[-1]] = value
+
+
+def _data_section(cfg: dict) -> dict:
+    data = cfg.get("data")
+    if not isinstance(data, dict):
+        data = {}
+        cfg["data"] = data
+    return data
+
+
+def _last_path_component(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).replace("\\", "/").strip("/")
+    if not text:
+        return None
+    return text.rsplit("/", 1)[-1]
+
+
+def _infer_registry_data_type(cfg: dict, info: Mapping[str, Any]) -> str | None:
+    explicit = _dget(cfg, "data.data_type")
+    if explicit not in (None, ""):
+        return str(explicit)
+
+    known = registry_data_types(info)
+    routing_data_type = _last_path_component(_dget(cfg, "routing.data_subfolder"))
+    if routing_data_type in known:
+        return routing_data_type
+
+    defaults = info.get("defaults")
+    if isinstance(defaults, Mapping) and len(defaults) == 1:
+        return str(next(iter(defaults)))
+    if len(known) == 1:
+        return next(iter(known))
+    return None
+
+
+def _has_authored_data_value(data: Mapping[str, Any], *keys: str) -> bool:
+    return any(data.get(key) is not None for key in keys)
+
+
+def _data_value(data: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _single_root_input_for_data_type(info: Mapping[str, Any], data_type: str | None) -> str | None:
+    outputs = registry_value_for_data_type(info, "outputs", data_type)
+    if not isinstance(outputs, list):
+        return None
+
+    input_outputs = [
+        output
+        for output in outputs
+        if isinstance(output, Mapping) and output.get("role") == "inp"
+    ]
+    if len(input_outputs) != 1:
+        return None
+
+    return "" if input_outputs[0].get("path") == "" else None
+
+
+def _apply_registry_resolution(cfg: dict, paths: Paths) -> None:
+    data = _data_section(cfg)
+    data["registry_checked"] = True
+
+    dataset_name = data.get("dataset_name")
+    if not dataset_name:
+        data["dataset_info"] = None
+        return
+
+    registry = load_dataset_registry(paths.dataset_registry_path())
+    dataset_info = registry.get(str(dataset_name))
+    if not isinstance(dataset_info, Mapping):
+        data["dataset_info"] = None
+        return
+
+    dataset_info = dict(dataset_info)
+    data["dataset_info"] = dataset_info
+
+    data_type = _infer_registry_data_type(cfg, dataset_info)
+    if data_type is not None:
+        data["registry_data_type"] = data_type
+
+    if not _has_authored_data_value(data, "input", "inp"):
+        root_input = _single_root_input_for_data_type(dataset_info, data_type)
+        if root_input is not None:
+            data["input"] = root_input
+
+    if data.get("data_format") is None:
+        input_value = _data_value(data, "input", "inp")
+        data_format = registry_data_format_for_output(dataset_info, data_type, input_value)
+        if data_format is None and dataset_info.get("data_format") is not None:
+            data_format = dataset_info["data_format"]
+        if data_format is not None:
+            data["data_format"] = data_format
 
 
 def _normalize_mode(cfg: dict) -> str:
@@ -175,7 +281,15 @@ def _apply_mode_resolution(user_cfg: dict, mode: str, paths: Paths) -> dict:
 
     # logic: resume mode should only change minimal things, but retrain can have major changes
     override_roots_by_mode = {
-        "continue_training": ["experiment", "training", "saving", "tensorboard", "load_model", "recovery"],
+        "continue_training": [
+            "experiment",
+            "training",
+            "saving",
+            "tensorboard",
+            "load_model",
+            "recovery",
+            "inference",
+        ],
         "retrain": [
             "experiment",
             "routing",
@@ -188,6 +302,7 @@ def _apply_mode_resolution(user_cfg: dict, mode: str, paths: Paths) -> dict:
             "saving",
             "tensorboard",
             "load_model",
+            "inference",
         ],
     }
 
@@ -268,7 +383,14 @@ def _resolve_loaded_config(
     data_cfg = stg.data_cfg.model_dump(mode="python")
     paths = Paths(stg)
 
-    # save experiment config 
+    # save experiment config
+    exp_cfg, metadata = split_config_metadata(exp_cfg)
+    if metadata is not None and metadata.get("kind") == "template":
+        raise ValueError("Training templates must be instantiated before they can be resolved or trained.")
+    changeme_paths = _changeme_paths(exp_cfg)
+    if changeme_paths:
+        joined = ", ".join(changeme_paths)
+        raise ValueError(f"Training config still contains CHANGEME placeholder(s): {joined}")
     exp_cfg = deepcopy(exp_cfg)
     
     # mode normalization and validation of experiment config
@@ -282,6 +404,7 @@ def _resolve_loaded_config(
         cfg = deep_merge(cfg, exp_cfg)
         _normalize_mode(cfg) # safety protection of mode
         _normalize_load_model(mode, cfg, paths)
+        _apply_registry_resolution(cfg, paths)
         return ResolvedExperiment.model_validate(cfg)
 
     # other modes: continue/retrain
@@ -313,6 +436,7 @@ def _resolve_loaded_config(
     _normalize_mode(cfg)
     _normalize_load_model(mode, cfg, paths)
     _apply_safe_resume_resolution(mode, cfg, paths)
+    _apply_registry_resolution(cfg, paths)
     return ResolvedExperiment.model_validate(cfg)
 
 
@@ -335,6 +459,23 @@ def resolve_config_dict(
 
     return _resolve_loaded_config(experiment_cfg, stg=stg)
 
+
+def _changeme_paths(value, *, path: str = "") -> list[str]:
+    if isinstance(value, dict):
+        out: list[str] = []
+        for key, item in value.items():
+            child_path = f"{path}.{key}" if path else str(key)
+            out.extend(_changeme_paths(item, path=child_path))
+        return out
+    if isinstance(value, list):
+        out: list[str] = []
+        for index, item in enumerate(value):
+            out.extend(_changeme_paths(item, path=f"{path}[{index}]"))
+        return out
+    if value == "CHANGEME":
+        return [path or "<root>"]
+    return []
+
 def prune_config_for_saving(cfg: ResolvedExperiment) -> dict:
     out = cfg.model_dump(exclude_none=True)
 
@@ -348,5 +489,8 @@ def prune_config_for_saving(cfg: ResolvedExperiment) -> dict:
 
     if not bool(cfg.tensorboard.enabled):
         out.pop("tensorboard", None)
+
+    if not out.get("inference"):
+        out.pop("inference", None)
 
     return out

@@ -6,6 +6,8 @@ This module remains as a thin shim so older imports keep working.
 
 from .inference import (
     ApplyDefaults,
+    ApplyOutputOverrides,
+    SaveInputMode,
     ApplyOverrides,
     ColorCodeDefaults,
     ColorCodeOverrides,
@@ -14,16 +16,22 @@ from .inference import (
     InferenceConfig,
     InferenceDefaults,
     InferenceOverrides,
+    PositiveTilingSize,
     ResolvedInferenceConfig,
+    TilingSizePolicy,
 )
 
 __all__ = [
     "ColorCodeDefaults",
     "ColorCodeOverrides",
     "ApplyDefaults",
+    "ApplyOutputOverrides",
+    "SaveInputMode",
     "ApplyOverrides",
     "EvaluateDefaults",
     "EvaluateOverrides",
+    "PositiveTilingSize",
+    "TilingSizePolicy",
     "InferenceOverrides",
     "ResolvedInferenceConfig",
     "InferenceConfig",

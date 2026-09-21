@@ -1,0 +1,6281 @@
+{
+  "$defs": {
+    "ArtificialMovementParams": {
+      "additionalProperties": false,
+      "description": "Parameters controlling synthetic motion applied to timelapse sequences.",
+      "properties": {
+        "movement_type": {
+          "anyOf": [
+            {
+              "const": "translation",
+              "default": "translation",
+              "description": "Synthetic motion model applied to the stack. Only 'translation' is currently supported.",
+              "title": "Movement Type",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "speed": {
+          "anyOf": [
+            {
+              "description": "Base movement speed in pixels per frame.",
+              "title": "Speed",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "description": "Movement direction. Use 'random' to sample directions dynamically.",
+              "enum": [
+                "random",
+                "h+",
+                "h-",
+                "v+",
+                "v-",
+                "h+v+",
+                "h+v-",
+                "h-v+",
+                "h-v-"
+              ],
+              "title": "Direction",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "nFrames": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional number of frames to move. Use null to use the full input sequence length.",
+          "title": "Nframes"
+        },
+        "dynamic_direction": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether direction can change over time. Requires direction='random'.",
+              "title": "Dynamic Direction",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "variable_speed": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether movement speed can vary during the sequence.",
+              "title": "Variable Speed",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "keep_center_fixed": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether the effective crop should stay centered while movement is applied.",
+              "title": "Keep Center Fixed",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "keep_input_size": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether the transformed output should preserve the original input size.",
+              "title": "Keep Input Size",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "speed",
+        "direction"
+      ],
+      "title": "ArtificialMovementParams",
+      "type": "object"
+    },
+    "AutoStopSection": {
+      "additionalProperties": false,
+      "description": "Metric-based automatic stopping.",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Enable metric-based auto-stop.",
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "metrics": {
+          "anyOf": [
+            {
+              "default": "val_loss",
+              "description": "Metric monitored for auto-stop decisions.",
+              "enum": [
+                "loss",
+                "val_loss"
+              ],
+              "title": "Metrics",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "patience": {
+          "anyOf": [
+            {
+              "default": 30,
+              "description": "Number of non-improving epochs tolerated before stop.",
+              "minimum": 0,
+              "title": "Patience",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "AutoStopSection",
+      "type": "object"
+    },
+    "CharEdgeLossParams": {
+      "additionalProperties": false,
+      "description": "Parameters for the CharEdge loss.",
+      "properties": {
+        "alpha": {
+          "anyOf": [
+            {
+              "description": "Weight applied to the edge-loss term in the CharEdge objective.",
+              "title": "Alpha",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "alpha"
+      ],
+      "title": "CharEdgeLossParams",
+      "type": "object"
+    },
+    "CustomTaskSection": {
+      "additionalProperties": true,
+      "description": "No-op task preset. Low-level config values are used as authored.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "const": "custom",
+              "default": "custom",
+              "description": "Do not apply task-specific config overrides.",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "CustomTaskSection",
+      "type": "object"
+    },
+    "DataNormalizationParams": {
+      "additionalProperties": true,
+      "description": "Normalization coefficients consumed by the training data pipeline.",
+      "properties": {
+        "clip": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": false,
+          "description": "Whether to clip low values before normalization. Use true to clip negatives to 0, or provide a numeric threshold.",
+          "title": "Clip"
+        },
+        "normSig2Obs": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether to remap signal statistics to observation statistics for multi-noise paired datasets.",
+              "title": "Normsig2Obs",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "normalize_data": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether to normalize the loaded data using the provided observation and signal statistics.",
+              "title": "Normalize Data",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "avgObs": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Mean observation intensity used by the normalization pipeline.",
+          "title": "Avgobs"
+        },
+        "stdObs": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Standard deviation of the observation intensities used by the normalization pipeline.",
+          "title": "Stdobs"
+        },
+        "avgSig": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Mean signal intensity used when paired data normalization needs signal statistics.",
+          "title": "Avgsig"
+        },
+        "stdSig": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Standard deviation of the signal intensities used when paired data normalization needs signal statistics.",
+          "title": "Stdsig"
+        }
+      },
+      "title": "DataNormalizationParams",
+      "type": "object"
+    },
+    "DenoisingCARETaskSection": {
+      "additionalProperties": false,
+      "description": "Supervised U-Net denoising task.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "const": "denoising_care",
+              "default": "denoising_care",
+              "description": "Supervised CARE-style U-Net denoising.",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "loss": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "MSE",
+                    "mse",
+                    "l2",
+                    "L2",
+                    "MAE",
+                    "mae",
+                    "l1",
+                    "L1"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "CharEdge_loss",
+                    "CharEdge"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "description": "Loss used for supervised CARE-style denoising.",
+          "title": "Loss"
+        }
+      },
+      "required": [
+        "loss"
+      ],
+      "title": "DenoisingCARETaskSection",
+      "type": "object"
+    },
+    "DenoisingHDNTaskSection": {
+      "additionalProperties": false,
+      "description": "HDN/LVAE denoising task.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "const": "denoising_hdn",
+              "default": "denoising_hdn",
+              "description": "HDN/LVAE denoising. Requires an LVAE model and a task-level betaKL value.",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "betaKL": {
+          "anyOf": [
+            {
+              "description": "Weight applied to the LVAE KL loss term.",
+              "title": "Betakl",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "supervised": {
+          "anyOf": [
+            {
+              "description": "Whether the HDN task expects an explicitly paired target dataset.",
+              "title": "Supervised",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "betaKL",
+        "supervised"
+      ],
+      "title": "DenoisingHDNTaskSection",
+      "type": "object"
+    },
+    "DenoisingUNetRCANTaskSection": {
+      "additionalProperties": false,
+      "description": "Supervised UNet-RCAN denoising task.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "const": "denoising_unetrcan",
+              "default": "denoising_unetrcan",
+              "description": "Supervised UNet-RCAN denoising.",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "loss": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "MSE",
+                    "mse",
+                    "l2",
+                    "L2",
+                    "MAE",
+                    "mae",
+                    "l1",
+                    "L1"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "CharEdge_loss",
+                    "CharEdge"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "description": "Loss used for supervised UNet-RCAN denoising.",
+          "title": "Loss"
+        }
+      },
+      "required": [
+        "loss"
+      ],
+      "title": "DenoisingUNetRCANTaskSection",
+      "type": "object"
+    },
+    "DownsamplingMultipleParams": {
+      "additionalProperties": false,
+      "description": "Parameters specific to the 'multiple' downsampling method.",
+      "properties": {
+        "fill_factor": {
+          "anyOf": [
+            {
+              "description": "Fraction of pixels kept in each generated sparse observation, in the interval (0, 1].",
+              "title": "Fill Factor",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "random": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether each generated observation should use a random sparse sampling pattern.",
+              "title": "Random",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fill_factor"
+      ],
+      "title": "DownsamplingMultipleParams",
+      "type": "object"
+    },
+    "DownsamplingParams": {
+      "additionalProperties": false,
+      "description": "Parameters controlling synthetic low-resolution input generation for upsampling training.",
+      "properties": {
+        "supervised_training": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether the downsampled input is paired with a supervised target during training.",
+              "title": "Supervised Training",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "downsamp_factor": {
+          "anyOf": [
+            {
+              "description": "Spatial downsampling factor applied to the input.",
+              "title": "Downsamp Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "downsamp_method": {
+          "anyOf": [
+            {
+              "description": "Downsampling strategy. Supported values are blur, multiple, random, real, and all.",
+              "enum": [
+                "blur",
+                "multiple",
+                "random",
+                "real",
+                "all"
+              ],
+              "title": "Downsamp Method",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "multiple_prm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DownsamplingMultipleParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Extra parameters used when downsamp_method is 'multiple'."
+        },
+        "sampling_strategy": {
+          "anyOf": [
+            {
+              "items": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string",
+                      "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Explicit real-sampling positions as two rows: y indices then x indices.",
+          "title": "Sampling Strategy"
+        }
+      },
+      "required": [
+        "downsamp_factor",
+        "downsamp_method"
+      ],
+      "title": "DownsamplingParams",
+      "type": "object"
+    },
+    "ExperimentDataSection": {
+      "additionalProperties": true,
+      "description": "User-authored data-loading and preprocessing settings for a training run.",
+      "properties": {
+        "dataset_name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "actin_fixed_multi_snr",
+                "gag_live_denoise_eval",
+                "gag_live_tl_highON",
+                "gag_live_tl_lowON",
+                "gag_live_upsamp_eval",
+                "mito_live_tl_highON",
+                "mito_live_tl_lowON",
+                "vim_fixed_multi_snr",
+                "vim_live_tl_highON"
+              ],
+              "description": "Registered dataset names available in the current dataset registry."
+            },
+            {
+              "default": "unknown_dataset",
+              "description": "Dataset registry name used to resolve dataset metadata and canonical paths.",
+              "title": "Dataset Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "examples": [
+            "actin_fixed_multi_snr",
+            "gag_live_denoise_eval",
+            "gag_live_tl_highON",
+            "gag_live_tl_lowON",
+            "gag_live_upsamp_eval",
+            "mito_live_tl_highON",
+            "mito_live_tl_lowON",
+            "vim_fixed_multi_snr",
+            "vim_live_tl_highON"
+          ]
+        },
+        "canonical_load": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether dataset paths should be resolved through the canonical project routing rules.",
+              "title": "Canonical Load",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "prep_before": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether configured preprocessing should be applied before patch extraction or batching.",
+              "title": "Prep Before",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "already_split": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether the dataset already contains separate train/val/test splits on disk.",
+              "title": "Already Split",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "paired": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether each input sample is paired with an explicit target sample.",
+              "title": "Paired",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "input": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Relative input subpath or key used to locate model inputs inside the dataset.",
+          "title": "Input"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Relative target or ground-truth subpath used for supervised training.",
+          "title": "Target"
+        },
+        "inp": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Legacy alias for input. Prefer using input in new configs.",
+          "title": "Inp"
+        },
+        "gt": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Legacy alias for target. Prefer using target in new configs.",
+          "title": "Gt"
+        },
+        "data_format": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Dataset format identifier, for example single, timelapse, or other loader-specific formats.",
+          "title": "Data Format"
+        },
+        "filters": {
+          "description": "Filename extensions accepted when scanning dataset folders.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+              }
+            ]
+          },
+          "title": "Filters",
+          "type": "array"
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Mini-batch size used by the dataset loader.",
+              "title": "Batch Size",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "patch_size": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Training patch size. Use null to train on full images or dataset-native crops.",
+          "title": "Patch Size"
+        },
+        "val_patch_size": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Validation patch size. Use null to reuse patch_size or evaluate full images.",
+          "title": "Val Patch Size"
+        },
+        "patch_thresh": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional threshold used by patch selection logic to keep informative patches only.",
+          "title": "Patch Thresh"
+        },
+        "select_on_gt": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether patch selection should use the target image instead of the input image.",
+              "title": "Select On Gt",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "augmentation": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether built-in data augmentation should be applied during training.",
+              "title": "Augmentation",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "initial_crop": {
+          "anyOf": [
+            {},
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional crop applied before patch extraction. Shape and meaning depend on the loader implementation.",
+          "title": "Initial Crop"
+        },
+        "mltpl_noise": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether the dataset contains multiple noise observations per sample.",
+              "title": "Mltpl Noise",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "inp_transform": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional transform configuration applied to the input before it is fed to the model.",
+          "title": "Inp Transform"
+        },
+        "gt_transform": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional transform configuration applied to the target or ground truth.",
+          "title": "Gt Transform"
+        },
+        "timelapse_prm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimelapseParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Timelapse-specific loading options, used for temporal datasets."
+        },
+        "mltpl_snr_prm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MultipleSnrParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Multi-SNR selection options, used when a dataset contains several noise levels per sample."
+        },
+        "split_manifest": {
+          "$ref": "#/$defs/SplitManifestParams",
+          "description": "File-level split manifest options used only when prep_before is false."
+        },
+        "downsampling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DownsamplingParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Upsampling-training settings for generating downsampled model inputs."
+        },
+        "artificial_movement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtificialMovementParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Upsampling-training settings for adding synthetic motion to temporal inputs."
+        },
+        "norm_prm": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional normalization statistics or settings applied to the input data.",
+          "title": "Norm Prm"
+        },
+        "model_norm_prm": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional normalization settings specific to the model output space.",
+          "title": "Model Norm Prm"
+        },
+        "avgObs_per_noise": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional per-noise-level average observation values used by specialized normalization flows.",
+          "title": "Avgobs Per Noise"
+        },
+        "stdObs_per_noise": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional per-noise-level standard deviations used by specialized normalization flows.",
+          "title": "Stdobs Per Noise"
+        }
+      },
+      "title": "ExperimentDataSection",
+      "type": "object"
+    },
+    "InferenceSection": {
+      "additionalProperties": false,
+      "description": "Inference defaults saved with a training run.",
+      "properties": {
+        "default_tiling_size": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "exclusiveMinimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "auto",
+                    "off"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional saved default for inference tiling. Use null or 'auto' to fall back to the architecture default, a positive integer to force a run-specific tile size, or 'off' to disable tiling by default.",
+          "title": "Default Tiling Size"
+        }
+      },
+      "title": "InferenceSection",
+      "type": "object"
+    },
+    "LVAEModelSection": {
+      "additionalProperties": false,
+      "description": "Typed model section for LadderVAE.",
+      "properties": {
+        "architecture": {
+          "anyOf": [
+            {
+              "const": "lvae",
+              "default": "lvae",
+              "description": "Select the LadderVAE architecture.",
+              "title": "Architecture",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "parameters": {
+          "$ref": "#/$defs/LVAEParams"
+        }
+      },
+      "title": "LVAEModelSection",
+      "type": "object"
+    },
+    "LVAEParams": {
+      "additionalProperties": false,
+      "description": "Typed constructor parameters for LadderVAE.",
+      "properties": {
+        "num_latents": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional number of latent levels. Required when z_dims is provided as a single integer.",
+          "title": "Num Latents"
+        },
+        "z_dims": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "description": "Latent dimensionality per level, either as one integer or an explicit list.",
+          "title": "Z Dims"
+        },
+        "color_ch": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of image channels handled by LadderVAE.",
+              "title": "Color Ch",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "blocks_per_layer": {
+          "anyOf": [
+            {
+              "default": 5,
+              "description": "Number of residual blocks per hierarchical layer.",
+              "title": "Blocks Per Layer",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "nonlin": {
+          "anyOf": [
+            {
+              "default": "elu",
+              "description": "Nonlinearity used inside LadderVAE blocks.",
+              "enum": [
+                "relu",
+                "leakyrelu",
+                "elu",
+                "selu"
+              ],
+              "title": "Nonlin",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "merge_type": {
+          "anyOf": [
+            {
+              "default": "residual",
+              "description": "Top-down and bottom-up merge strategy.",
+              "title": "Merge Type",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "norm": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "group",
+                    "batch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": "group",
+          "description": "Normalization type used inside LadderVAE residual blocks.",
+          "title": "Norm"
+        },
+        "gr_norm": {
+          "anyOf": [
+            {
+              "default": 8,
+              "description": "Group count used when norm='group'.",
+              "title": "Gr Norm",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "batchnorm": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Deprecated legacy toggle. If provided without `norm`, true maps to `norm='group'` and false maps to `norm=None`.",
+          "title": "Batchnorm"
+        },
+        "stochastic_skip": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether stochastic skip connections are enabled.",
+              "title": "Stochastic Skip",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "n_filters": {
+          "anyOf": [
+            {
+              "default": 64,
+              "description": "Feature-channel width used inside LadderVAE blocks.",
+              "title": "N Filters",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "dropout": {
+          "anyOf": [
+            {
+              "default": 0.2,
+              "description": "Dropout probability used inside LadderVAE blocks.",
+              "title": "Dropout",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "free_bits": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "description": "Free-bits threshold applied to the KL term.",
+              "title": "Free Bits",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "learn_top_prior": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether the top latent prior should be learned.",
+              "title": "Learn Top Prior",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "res_block_type": {
+          "anyOf": [
+            {
+              "default": "bacdbacd",
+              "description": "Residual-block implementation variant.",
+              "title": "Res Block Type",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "gated": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether gated residual blocks are enabled.",
+              "title": "Gated",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "no_initial_downscaling": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether the initial convolution skips the first spatial downscaling step.",
+              "title": "No Initial Downscaling",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "analytical_kl": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether to use the analytical KL computation.",
+              "title": "Analytical Kl",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "mode_pred": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether LadderVAE runs in prediction mode instead of training mode.",
+              "title": "Mode Pred",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "use_uncond_mode_at": {
+          "description": "Latent levels where unconditional mode should be used.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string",
+                "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+              }
+            ]
+          },
+          "title": "Use Uncond Mode At",
+          "type": "array"
+        }
+      },
+      "title": "LVAEParams",
+      "type": "object"
+    },
+    "LossFunctionConfig": {
+      "additionalProperties": false,
+      "description": "Typed training loss configuration passed to the trainer.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "MSE",
+                    "mse",
+                    "l2",
+                    "L2",
+                    "MAE",
+                    "mae",
+                    "l1",
+                    "L1"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "CharEdge_loss",
+                    "CharEdge"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "const": "MSE_upsampling",
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "description": "Loss function name. Supported values are MSE/L2, MAE/L1, CharEdge_loss, CharEdge, and MSE_upsampling.",
+          "title": "Name"
+        },
+        "CharEdge_loss_prm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CharEdgeLossParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Parameter block required when using CharEdge_loss or CharEdge."
+        },
+        "MSE_upsampling_prm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MSEUpsamplingLossParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Parameter block required when using MSE_upsampling."
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "LossFunctionConfig",
+      "type": "object"
+    },
+    "MSEUpsamplingLossParams": {
+      "additionalProperties": false,
+      "description": "Parameters for the custom upsampling-aware MSE loss.",
+      "properties": {
+        "upsampling_factor": {
+          "anyOf": [
+            {
+              "description": "Upsampling factor used by the custom loss. The current implementation only supports a factor of 2.",
+              "title": "Upsampling Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "alpha": {
+          "anyOf": [
+            {
+              "default": 0.5,
+              "description": "Weight applied to the custom sub-pixel consistency term, in the interval [0, 1).",
+              "title": "Alpha",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "upsampling_factor"
+      ],
+      "title": "MSEUpsamplingLossParams",
+      "type": "object"
+    },
+    "MultipleSnrParams": {
+      "additionalProperties": false,
+      "description": "Options used when selecting a noise level from multi-SNR datasets.",
+      "properties": {
+        "snr_idx": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "last",
+                    "random"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Noise level selection strategy: a single index, a list of indices, 'last', 'random', or null.",
+          "title": "Snr Idx"
+        }
+      },
+      "title": "MultipleSnrParams",
+      "type": "object"
+    },
+    "NoiseModelSection": {
+      "additionalProperties": true,
+      "description": "Optional auxiliary noise-model configuration.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Registered noise-model name to attach to the experiment. Use null to disable it.",
+          "title": "Name"
+        }
+      },
+      "title": "NoiseModelSection",
+      "type": "object"
+    },
+    "NormalizationSection": {
+      "additionalProperties": true,
+      "description": "Training normalization settings resolved before data loading.",
+      "properties": {
+        "load_from_noise_model": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether Stage A normalization metadata should be loaded automatically from the configured noise model.",
+              "title": "Load From Noise Model",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "norm_prm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DataNormalizationParams"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Explicit normalization parameters consumed by the data-loading pipeline."
+        }
+      },
+      "title": "NormalizationSection",
+      "type": "object"
+    },
+    "RCANBackboneParams": {
+      "additionalProperties": false,
+      "description": "Typed backbone parameters for RCAN blocks embedded in larger architectures.",
+      "properties": {
+        "in_channels": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Number of input channels. When omitted inside UNet-RCAN, it is derived automatically.",
+          "title": "In Channels"
+        },
+        "out_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of output channels produced by RCAN.",
+              "title": "Out Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "num_features": {
+          "anyOf": [
+            {
+              "default": 64,
+              "description": "Feature-channel width used inside the RCAN body.",
+              "title": "Num Features",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "num_rg": {
+          "anyOf": [
+            {
+              "default": 8,
+              "description": "Number of residual groups.",
+              "title": "Num Rg",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "num_rcab": {
+          "anyOf": [
+            {
+              "default": 12,
+              "description": "Number of RCAB blocks per residual group.",
+              "title": "Num Rcab",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "reduction": {
+          "anyOf": [
+            {
+              "default": 16,
+              "description": "Channel-attention reduction factor.",
+              "title": "Reduction",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "dropout": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "description": "Dropout probability used inside RCAN residual blocks.",
+              "title": "Dropout",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsamp_kernel_factor": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Extra multiplier applied to the transposed-convolution kernel when RCAN performs upsampling.",
+              "title": "Upsamp Kernel Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_method": {
+          "anyOf": [
+            {
+              "default": "conv",
+              "description": "RCAN upsampling method when standalone or when UNet-RCAN delegates upsampling to RCAN.",
+              "enum": [
+                "conv",
+                "pixelshuffle"
+              ],
+              "title": "Upsampling Method",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "collapse_ch_before_upsamp": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether RCAN should collapse features to out_channels before running the upsampling head.",
+              "title": "Collapse Ch Before Upsamp",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "RCANBackboneParams",
+      "type": "object"
+    },
+    "RCANModelSection": {
+      "additionalProperties": false,
+      "description": "Typed model section for the standalone RCAN architecture.",
+      "properties": {
+        "architecture": {
+          "anyOf": [
+            {
+              "const": "rcan",
+              "default": "rcan",
+              "description": "Select the standalone RCAN architecture.",
+              "title": "Architecture",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "parameters": {
+          "$ref": "#/$defs/RCANParams"
+        }
+      },
+      "title": "RCANModelSection",
+      "type": "object"
+    },
+    "RCANParams": {
+      "additionalProperties": false,
+      "description": "Typed constructor parameters for the standalone RCAN model.",
+      "properties": {
+        "in_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of input channels expected by the standalone RCAN model.",
+              "title": "In Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "out_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of output channels produced by RCAN.",
+              "title": "Out Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "num_features": {
+          "anyOf": [
+            {
+              "default": 64,
+              "description": "Feature-channel width used inside the RCAN body.",
+              "title": "Num Features",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "num_rg": {
+          "anyOf": [
+            {
+              "default": 8,
+              "description": "Number of residual groups.",
+              "title": "Num Rg",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "num_rcab": {
+          "anyOf": [
+            {
+              "default": 12,
+              "description": "Number of RCAB blocks per residual group.",
+              "title": "Num Rcab",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "reduction": {
+          "anyOf": [
+            {
+              "default": 16,
+              "description": "Channel-attention reduction factor.",
+              "title": "Reduction",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "dropout": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "description": "Dropout probability used inside RCAN residual blocks.",
+              "title": "Dropout",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsamp_kernel_factor": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Extra multiplier applied to the transposed-convolution kernel when RCAN performs upsampling.",
+              "title": "Upsamp Kernel Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_method": {
+          "anyOf": [
+            {
+              "default": "conv",
+              "description": "RCAN upsampling method when standalone or when UNet-RCAN delegates upsampling to RCAN.",
+              "enum": [
+                "conv",
+                "pixelshuffle"
+              ],
+              "title": "Upsampling Method",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "collapse_ch_before_upsamp": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether RCAN should collapse features to out_channels before running the upsampling head.",
+              "title": "Collapse Ch Before Upsamp",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsamp": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional standalone upsampling factor performed by RCAN.",
+          "title": "Upsamp"
+        },
+        "upsamp_stride": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Stride used by the RCAN upsampling block when upsamp is enabled.",
+              "title": "Upsamp Stride",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "RCANParams",
+      "type": "object"
+    },
+    "RoutingSection": {
+      "additionalProperties": true,
+      "description": "Subfolder routing used to place datasets, checkpoints, logs, and inference outputs.",
+      "properties": {
+        "data_subfolder": {
+          "anyOf": [
+            {
+              "default": "",
+              "description": "Dataset subfolder selected under the configured data root.",
+              "title": "Data Subfolder",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "models_subfolder": {
+          "anyOf": [
+            {
+              "default": "",
+              "description": "Subfolder under the models root where checkpoints and training artifacts are stored.",
+              "title": "Models Subfolder",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "tensorboard_subfolder": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Subfolder under the tensorboard root. Defaults to the models_subfolder when omitted.",
+          "title": "Tensorboard Subfolder"
+        },
+        "inference_subfolder": {
+          "anyOf": [
+            {
+              "default": "",
+              "description": "Subfolder under the inference root where evaluation or apply outputs are written.",
+              "title": "Inference Subfolder",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "RoutingSection",
+      "type": "object"
+    },
+    "SavingSection": {
+      "additionalProperties": true,
+      "description": "Checkpoint and validation-image saving behavior.",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether checkpoints and other training artifacts should be written to disk.",
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "canonical_save": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether checkpoint/output paths should be resolved through the canonical project routing rules.",
+              "title": "Canonical Save",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "validation_images": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether to save validation image previews during training.",
+              "title": "Validation Images",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "validation_freq": {
+          "anyOf": [
+            {
+              "default": 10,
+              "description": "Number of epochs between validation-image saves.",
+              "title": "Validation Freq",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "state_dict": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether checkpoints should be saved as state_dict files.",
+              "title": "State Dict",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "entire_model": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether checkpoints should be saved as serialized full-model files.",
+              "title": "Entire Model",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "overwrite_best": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether the current best checkpoint may overwrite the previously saved best checkpoint.",
+              "title": "Overwrite Best",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "SavingSection",
+      "type": "object"
+    },
+    "SplitManifestParams": {
+      "additionalProperties": false,
+      "description": "Options for file-level split manifests used by prep_before=false.",
+      "properties": {
+        "seed": {
+          "anyOf": [
+            {
+              "default": 0,
+              "description": "Random seed used when creating a new unprepared-data split manifest.",
+              "minimum": 0,
+              "title": "Seed",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "ratios": {
+          "$ref": "#/$defs/SplitRatios",
+          "description": "Train/validation/test file-level split ratios for unprepared datasets."
+        },
+        "retrain_policy": {
+          "anyOf": [
+            {
+              "default": "reuse",
+              "description": "For retrain with prep_before=false, reuse the origin split manifest or create a new one.",
+              "enum": [
+                "reuse",
+                "new"
+              ],
+              "title": "Retrain Policy",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "SplitManifestParams",
+      "type": "object"
+    },
+    "SplitRatios": {
+      "additionalProperties": false,
+      "description": "File-level split ratios used for unprepared, unpaired datasets.",
+      "properties": {
+        "train": {
+          "anyOf": [
+            {
+              "default": 0.6,
+              "description": "Fraction of files assigned to training.",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Train",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "val": {
+          "anyOf": [
+            {
+              "default": 0.2,
+              "description": "Fraction of files assigned to validation.",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Val",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "test": {
+          "anyOf": [
+            {
+              "default": 0.2,
+              "description": "Fraction of files assigned to testing.",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Test",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "SplitRatios",
+      "type": "object"
+    },
+    "TensorboardSection": {
+      "additionalProperties": true,
+      "description": "TensorBoard logging settings.",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether TensorBoard summaries should be written during training.",
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "TensorboardSection",
+      "type": "object"
+    },
+    "TimelapseParams": {
+      "additionalProperties": false,
+      "description": "Options used when loading timelapse datasets.",
+      "properties": {
+        "timelapse_max_frames": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional maximum number of frames to load from each timelapse stack.",
+          "title": "Timelapse Max Frames"
+        },
+        "context_length": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Odd temporal window size centered on the current frame. Use null to keep the full sequence.",
+          "title": "Context Length"
+        },
+        "shuffle": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether timelapse frames should be shuffled before sampling.",
+              "title": "Shuffle",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "sampling_seed": {
+          "anyOf": [
+            {
+              "default": 0,
+              "description": "Base seed used to deterministically sample timelapse frames when shuffling is enabled. The effective per-file seed is derived from this base seed and a stable timelapse identifier.",
+              "title": "Sampling Seed",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "TimelapseParams",
+      "type": "object"
+    },
+    "TrainExperimentSection": {
+      "additionalProperties": true,
+      "description": "Experiment metadata for a fresh training run that creates a new run directory.",
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "const": "train",
+              "default": "train",
+              "description": "Launch a fresh training run with an explicitly configured model and dataset.",
+              "title": "Mode",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "exp_name": {
+          "anyOf": [
+            {
+              "default": "unnamed_experiment",
+              "description": "Experiment name used to create the output run directory and derived artifact names.",
+              "title": "Exp Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "overwrite": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether an existing experiment directory with the same name may be overwritten.",
+              "title": "Overwrite",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "post_training_inference": {
+          "anyOf": [
+            {
+              "default": true,
+              "description": "Whether to trigger automatic post-training evaluation when training completes or stops early.",
+              "title": "Post Training Inference",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "task": {
+          "description": "Optional high-level task preset. Use 'custom' to keep the low-level data and model sections exactly as authored.",
+          "discriminator": {
+            "mapping": {
+              "custom": "#/$defs/CustomTaskSection",
+              "denoising_care": "#/$defs/DenoisingCARETaskSection",
+              "denoising_hdn": "#/$defs/DenoisingHDNTaskSection",
+              "denoising_unetrcan": "#/$defs/DenoisingUNetRCANTaskSection",
+              "upsamp_multiframes": "#/$defs/UpsampMultipleSamplingTaskSection",
+              "upsamp_single_frame": "#/$defs/UpsampSingleFrameTaskSection"
+            },
+            "propertyName": "name"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CustomTaskSection"
+            },
+            {
+              "$ref": "#/$defs/UpsampSingleFrameTaskSection"
+            },
+            {
+              "$ref": "#/$defs/UpsampMultipleSamplingTaskSection"
+            },
+            {
+              "$ref": "#/$defs/DenoisingHDNTaskSection"
+            },
+            {
+              "$ref": "#/$defs/DenoisingCARETaskSection"
+            },
+            {
+              "$ref": "#/$defs/DenoisingUNetRCANTaskSection"
+            }
+          ],
+          "title": "Task"
+        }
+      },
+      "title": "TrainExperimentSection",
+      "type": "object"
+    },
+    "TrainingSection": {
+      "additionalProperties": true,
+      "description": "Core optimization settings for the training loop.",
+      "properties": {
+        "n_epochs": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Maximum number of training epochs to run.",
+              "title": "N Epochs",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "batch_size": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Fallback batch size used by the trainer when the data section does not provide one.",
+              "title": "Batch Size",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "learning_rate": {
+          "anyOf": [
+            {
+              "default": 0.0001,
+              "description": "Initial learning rate passed to the optimizer.",
+              "title": "Learning Rate",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "optimizer": {
+          "anyOf": [
+            {
+              "default": "Adam",
+              "description": "Optimizer name used to update the model parameters.",
+              "title": "Optimizer",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "scheduler": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Optional learning-rate scheduler. Use a string name (legacy) or an object with `name` plus scheduler kwargs.",
+          "title": "Scheduler"
+        },
+        "progress_bar": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether to show a live progress bar during training iterations.",
+              "title": "Progress Bar",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "early_stop": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Legacy debug-stop flag. Keeps historical truncated-training behavior for backward compatibility.",
+              "title": "Early Stop",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "debug_stop": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Debug helper: when true, stop after 3 full epochs.",
+              "title": "Debug Stop",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "pos_encod": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether positional encoding should be enabled for models that support it.",
+              "title": "Pos Encod",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "max_grad_norm": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "To clip grad norm value. Set to None to disable gradient clipping.",
+          "title": "Max Grad Norm"
+        },
+        "val_loss_patience": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "deprecated": true,
+          "description": "Deprecated and ignored. Use `training.auto_stop.patience` instead.",
+          "title": "Val Loss Patience"
+        },
+        "warmup": {
+          "$ref": "#/$defs/WarmupSection",
+          "description": "Optional optimizer-step warmup. Active only when scheduler is ReduceLROnPlateau."
+        },
+        "auto_stop": {
+          "$ref": "#/$defs/AutoStopSection",
+          "description": "Optional metric-based automatic stopping."
+        }
+      },
+      "title": "TrainingSection",
+      "type": "object"
+    },
+    "UNet3DModelSection": {
+      "additionalProperties": false,
+      "description": "Typed model section for the standalone 3D U-Net architecture.",
+      "properties": {
+        "architecture": {
+          "anyOf": [
+            {
+              "const": "unet3d",
+              "default": "unet3d",
+              "description": "Select the standalone 3D U-Net architecture.",
+              "title": "Architecture",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "parameters": {
+          "$ref": "#/$defs/UNet3DParams",
+          "description": "Typed constructor parameters for the standalone 3D U-Net model."
+        }
+      },
+      "title": "UNet3DModelSection",
+      "type": "object"
+    },
+    "UNet3DParams": {
+      "additionalProperties": false,
+      "description": "Typed constructor parameters for the 3D U-Net model.",
+      "properties": {
+        "feat": {
+          "anyOf": [
+            {
+              "default": 64,
+              "description": "Base number of feature channels in the first encoder level.",
+              "title": "Feat",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "default": 3,
+              "description": "Number of encoder/decoder levels in the 3D U-Net.",
+              "title": "Depth",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "in_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of input channels expected by the model.",
+              "title": "In Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "out_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of output channels produced by the model.",
+              "title": "Out Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "activation": {
+          "anyOf": [
+            {
+              "default": "swish",
+              "description": "Activation function used inside the convolutional blocks.",
+              "enum": [
+                "ReLU",
+                "swish"
+              ],
+              "title": "Activation",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "norm": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "group",
+                    "batch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": "group",
+          "description": "Normalization type used in the convolutional blocks.",
+          "title": "Norm"
+        },
+        "gr_norm": {
+          "anyOf": [
+            {
+              "default": 8,
+              "description": "Group count used when norm='group'.",
+              "title": "Gr Norm",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "dropout": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "description": "Dropout probability used inside convolutional blocks.",
+              "title": "Dropout",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_factor": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Spatial upsampling factor applied by the standalone 3D U-Net.",
+              "title": "Upsampling Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_order": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "before",
+                    "after"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Whether standalone upsampling happens before or after the 3D U-Net body. Required when upsampling_factor > 1.",
+          "title": "Upsampling Order"
+        },
+        "upsampling_method": {
+          "anyOf": [
+            {
+              "default": "conv",
+              "description": "Standalone upsampling method used when upsampling_factor > 1.",
+              "enum": [
+                "conv",
+                "nearest",
+                "trilinear"
+              ],
+              "title": "Upsampling Method",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "remove_skip_con": {
+          "anyOf": [
+            {
+              "default": 0,
+              "description": "Number of last skip connections to remove. 0 keeps all skip connections.",
+              "title": "Remove Skip Con",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "cab_skip_con": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether CAB skip connections should be used instead of plain skip connections. Accepted for configuration but not implemented yet.",
+              "title": "Cab Skip Con",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "ch": {
+          "anyOf": [
+            {
+              "default": 128,
+              "description": "Base positional-embedding channel width.",
+              "title": "Ch",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "UNet3DParams",
+      "type": "object"
+    },
+    "UNetBackboneParams": {
+      "additionalProperties": false,
+      "description": "Typed backbone parameters for the 2D U-Net family.",
+      "properties": {
+        "feat": {
+          "anyOf": [
+            {
+              "default": 64,
+              "description": "Base number of feature channels in the first encoder level.",
+              "title": "Feat",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "default": 3,
+              "description": "Number of encoder/decoder levels in the U-Net.",
+              "title": "Depth",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "in_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of input channels expected by the model.",
+              "title": "In Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "out_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of output channels produced by the model.",
+              "title": "Out Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "activation": {
+          "anyOf": [
+            {
+              "default": "swish",
+              "description": "Activation function used inside the convolutional blocks.",
+              "enum": [
+                "ReLU",
+                "swish"
+              ],
+              "title": "Activation",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "norm": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "group",
+                    "batch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": "group",
+          "description": "Normalization type used in the convolutional blocks.",
+          "title": "Norm"
+        },
+        "gr_norm": {
+          "anyOf": [
+            {
+              "default": 8,
+              "description": "Group count used when norm='group'.",
+              "title": "Gr Norm",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "dropout": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "description": "Dropout probability used inside convolutional blocks.",
+              "title": "Dropout",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "remove_skip_con": {
+          "anyOf": [
+            {
+              "default": 0,
+              "description": "Number of last skip connections to remove. 0 keeps all skip connections.",
+              "title": "Remove Skip Con",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "cab_skip_con": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether CAB skip connections should be used instead of plain skip connections.",
+              "title": "Cab Skip Con",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "filters_cab": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Hidden channel width used inside CAB skip connections. If None, defaults to `feat` at runtime.",
+          "title": "Filters Cab"
+        },
+        "ch": {
+          "anyOf": [
+            {
+              "default": 128,
+              "description": "Base positional-embedding channel width.",
+              "title": "Ch",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "UNetBackboneParams",
+      "type": "object"
+    },
+    "UNetModelSection": {
+      "additionalProperties": false,
+      "description": "Typed model section for the standalone 2D U-Net architecture.",
+      "properties": {
+        "architecture": {
+          "anyOf": [
+            {
+              "const": "unet",
+              "default": "unet",
+              "description": "Select the standalone 2D U-Net architecture.",
+              "title": "Architecture",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "parameters": {
+          "$ref": "#/$defs/UNetParams"
+        }
+      },
+      "title": "UNetModelSection",
+      "type": "object"
+    },
+    "UNetParams": {
+      "additionalProperties": false,
+      "description": "Typed constructor parameters for the standalone 2D U-Net model.",
+      "properties": {
+        "feat": {
+          "anyOf": [
+            {
+              "default": 64,
+              "description": "Base number of feature channels in the first encoder level.",
+              "title": "Feat",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "depth": {
+          "anyOf": [
+            {
+              "default": 3,
+              "description": "Number of encoder/decoder levels in the U-Net.",
+              "title": "Depth",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "in_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of input channels expected by the model.",
+              "title": "In Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "out_channels": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Number of output channels produced by the model.",
+              "title": "Out Channels",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "activation": {
+          "anyOf": [
+            {
+              "default": "swish",
+              "description": "Activation function used inside the convolutional blocks.",
+              "enum": [
+                "ReLU",
+                "swish"
+              ],
+              "title": "Activation",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "norm": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "group",
+                    "batch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": "group",
+          "description": "Normalization type used in the convolutional blocks.",
+          "title": "Norm"
+        },
+        "gr_norm": {
+          "anyOf": [
+            {
+              "default": 8,
+              "description": "Group count used when norm='group'.",
+              "title": "Gr Norm",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "dropout": {
+          "anyOf": [
+            {
+              "default": 0.0,
+              "description": "Dropout probability used inside convolutional blocks.",
+              "title": "Dropout",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "remove_skip_con": {
+          "anyOf": [
+            {
+              "default": 0,
+              "description": "Number of last skip connections to remove. 0 keeps all skip connections.",
+              "title": "Remove Skip Con",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "cab_skip_con": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Whether CAB skip connections should be used instead of plain skip connections.",
+              "title": "Cab Skip Con",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "filters_cab": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Hidden channel width used inside CAB skip connections. If None, defaults to `feat` at runtime.",
+          "title": "Filters Cab"
+        },
+        "ch": {
+          "anyOf": [
+            {
+              "default": 128,
+              "description": "Base positional-embedding channel width.",
+              "title": "Ch",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_factor": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Spatial upsampling factor applied by the standalone U-Net.",
+              "title": "Upsampling Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_order": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "enum": [
+                    "before",
+                    "after"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                }
+              ]
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ],
+          "default": null,
+          "description": "Whether standalone upsampling happens before or after the U-Net body. Required when upsampling_factor > 1.",
+          "title": "Upsampling Order"
+        },
+        "upsampling_method": {
+          "anyOf": [
+            {
+              "default": "conv",
+              "description": "Standalone upsampling method used when upsampling_factor > 1.",
+              "enum": [
+                "conv",
+                "nearest",
+                "bilinear",
+                "bicubic"
+              ],
+              "title": "Upsampling Method",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "UNetParams",
+      "type": "object"
+    },
+    "UNetRCANModelSection": {
+      "additionalProperties": false,
+      "description": "Typed model section for the hybrid UNet-RCAN architecture.",
+      "properties": {
+        "architecture": {
+          "anyOf": [
+            {
+              "const": "unet_rcan",
+              "default": "unet_rcan",
+              "description": "Select the hybrid UNet-RCAN architecture.",
+              "title": "Architecture",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "parameters": {
+          "$ref": "#/$defs/UNetRCANParams",
+          "description": "Typed constructor parameters for the hybrid UNet-RCAN model."
+        }
+      },
+      "title": "UNetRCANModelSection",
+      "type": "object"
+    },
+    "UNetRCANParams": {
+      "additionalProperties": false,
+      "description": "Typed constructor parameters for the hybrid UNet-RCAN architecture.",
+      "properties": {
+        "upsampling_net": {
+          "anyOf": [
+            {
+              "default": "unet",
+              "description": "Which sub-network performs learned upsampling when upsampling_factor > 1.",
+              "enum": [
+                "unet",
+                "rcan"
+              ],
+              "title": "Upsampling Net",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_factor": {
+          "anyOf": [
+            {
+              "default": 1,
+              "description": "Global upsampling factor performed by the hybrid model.",
+              "title": "Upsampling Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "UNet_prm": {
+          "$ref": "#/$defs/UNetBackboneParams",
+          "description": "Typed U-Net backbone parameters used inside the hybrid model."
+        },
+        "RCAN_prm": {
+          "$ref": "#/$defs/RCANBackboneParams",
+          "description": "Typed RCAN backbone parameters used inside the hybrid model."
+        }
+      },
+      "title": "UNetRCANParams",
+      "type": "object"
+    },
+    "UpsampMultipleSamplingTaskSection": {
+      "additionalProperties": false,
+      "description": "Temporal-window upsampling task using frame context as input channels.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "const": "upsamp_multiframes",
+              "default": "upsamp_multiframes",
+              "description": "Upsampling with a temporal context window packed into input channels.",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_factor": {
+          "anyOf": [
+            {
+              "description": "Spatial upsampling factor. Also used as the data downsampling factor.",
+              "title": "Upsampling Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "temporal_window": {
+          "anyOf": [
+            {
+              "description": "Odd temporal context window size. This overrides data.timelapse_prm.context_length.",
+              "title": "Temporal Window",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "upsampling_factor",
+        "temporal_window"
+      ],
+      "title": "UpsampMultipleSamplingTaskSection",
+      "type": "object"
+    },
+    "UpsampSingleFrameTaskSection": {
+      "additionalProperties": false,
+      "description": "Single-frame upsampling task using multiple sparse samples as input channels.",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "const": "upsamp_single_frame",
+              "default": "upsamp_single_frame",
+              "description": "Single-frame upsampling with multiple sparse input samples.",
+              "title": "Name",
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "upsampling_factor": {
+          "anyOf": [
+            {
+              "description": "Spatial upsampling factor. Also used as the data downsampling factor.",
+              "title": "Upsampling Factor",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "sampling_ratio": {
+          "anyOf": [
+            {
+              "description": "Fraction of sparse samples kept for multiple-sampling input generation.",
+              "enum": [
+                0.25,
+                0.5,
+                0.75
+              ],
+              "title": "Sampling Ratio",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "upsampling_factor",
+        "sampling_ratio"
+      ],
+      "title": "UpsampSingleFrameTaskSection",
+      "type": "object"
+    },
+    "WarmupSection": {
+      "additionalProperties": false,
+      "description": "Manual optimizer-step warmup settings.",
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "default": false,
+              "description": "Enable optimizer-step LR warmup.",
+              "title": "Enabled",
+              "type": "boolean"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "steps": {
+          "anyOf": [
+            {
+              "default": 500,
+              "description": "Number of optimizer steps used for warmup.",
+              "minimum": 0,
+              "title": "Steps",
+              "type": "integer"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "start_factor": {
+          "anyOf": [
+            {
+              "default": 0.1,
+              "description": "Initial LR factor relative to base LR at warmup start.",
+              "exclusiveMinimum": 0.0,
+              "maximum": 1.0,
+              "title": "Start Factor",
+              "type": "number"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      },
+      "title": "WarmupSection",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Relaxed training config schema for editable templates. Placeholder strings such as `<dataset_name>` or `${dataset_name}` are allowed and must be replaced before training.",
+  "properties": {
+    "experiment": {
+      "$ref": "#/$defs/TrainExperimentSection",
+      "description": "High-level metadata for a fresh training run."
+    },
+    "routing": {
+      "$ref": "#/$defs/RoutingSection",
+      "description": "Subfolder routing that determines where data, models, logs, and inference outputs live."
+    },
+    "data": {
+      "$ref": "#/$defs/ExperimentDataSection",
+      "description": "User-authored data-loading, patching, and preprocessing settings."
+    },
+    "model": {
+      "anyOf": [
+        {
+          "discriminator": {
+            "mapping": {
+              "lvae": "#/$defs/LVAEModelSection",
+              "rcan": "#/$defs/RCANModelSection",
+              "unet": "#/$defs/UNetModelSection",
+              "unet3d": "#/$defs/UNet3DModelSection",
+              "unet_rcan": "#/$defs/UNetRCANModelSection"
+            },
+            "propertyName": "architecture"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/UNetModelSection"
+            },
+            {
+              "$ref": "#/$defs/UNet3DModelSection"
+            },
+            {
+              "$ref": "#/$defs/RCANModelSection"
+            },
+            {
+              "$ref": "#/$defs/UNetRCANModelSection"
+            },
+            {
+              "$ref": "#/$defs/LVAEModelSection"
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+        }
+      ],
+      "default": null,
+      "description": "Model architecture selection and typed constructor parameters.",
+      "title": "Model"
+    },
+    "training": {
+      "$ref": "#/$defs/TrainingSection"
+    },
+    "normalization": {
+      "$ref": "#/$defs/NormalizationSection",
+      "description": "Dataset normalization settings applied before or during data loading."
+    },
+    "model_norm_prm": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+        }
+      ],
+      "default": null,
+      "description": "Optional model-output normalization settings kept separate from the main data normalization block.",
+      "title": "Model Norm Prm"
+    },
+    "loss_function": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LossFunctionConfig"
+        },
+        {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+        }
+      ],
+      "default": null,
+      "description": "Typed loss-function configuration used to instantiate the trainer loss."
+    },
+    "noise_model": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NoiseModelSection"
+        },
+        {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        {
+          "type": "string",
+          "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+        }
+      ],
+      "default": null,
+      "description": "Optional noise-model configuration or shortcut name.",
+      "title": "Noise Model"
+    },
+    "saving": {
+      "$ref": "#/$defs/SavingSection"
+    },
+    "tensorboard": {
+      "$ref": "#/$defs/TensorboardSection"
+    },
+    "inference": {
+      "$ref": "#/$defs/InferenceSection",
+      "description": "Inference defaults to save with the run."
+    },
+    "metadata": {
+      "type": "object",
+      "title": "ConfigMetadata",
+      "description": "Catalog metadata used by `lisai configs`; stripped before runtime validation.",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "preset",
+                "template",
+                "example",
+                "local"
+              ],
+              "description": "Config catalog kind."
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Human-readable config name."
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "task": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Associated training task name."
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string",
+              "description": "Short catalog description."
+            },
+            {
+              "type": "string",
+              "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "title": "ExperimentTemplateConfig",
+  "type": "object",
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "actin_fixed_multi_snr"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr"
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "mltpl_snr"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "paired": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "paired"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "target"
+                      ],
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "gt"
+                      ],
+                      "properties": {
+                        "gt": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "gag_live_denoise_eval"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "low"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "low"
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "high"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "high"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "single"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "paired": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "paired"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "target"
+                      ],
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "enum": [
+                            "high"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "gt"
+                      ],
+                      "properties": {
+                        "gt": {
+                          "type": "string",
+                          "enum": [
+                            "high"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "low"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "low"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "gag_live_tl_highON"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "gag_live_tl_lowON"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "gag_live_upsamp_eval"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "resolft"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "resolft"
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "single"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "resolft"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "resolft"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "mito_live_tl_highON"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "mito_live_tl_lowON"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "vim_fixed_multi_snr"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr",
+                  "inp_single"
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  "inp_mltpl_snr",
+                  "inp_single"
+                ]
+              },
+              "target": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gt": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "gt_avg",
+                      "gt_snr0"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "mltpl_snr",
+                      "single"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "paired": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "paired"
+                  ]
+                },
+                "then": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "target"
+                      ],
+                      "properties": {
+                        "target": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "required": [
+                        "gt"
+                      ],
+                      "properties": {
+                        "gt": {
+                          "type": "string",
+                          "enum": [
+                            "gt_avg",
+                            "gt_snr0"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp_mltpl_snr"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "mltpl_snr"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": "inp_single"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": "inp_single"
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "single"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "const": "vim_live_tl_highON"
+              },
+              "prep_before": {
+                "not": {
+                  "const": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "properties": {
+              "input": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "inp": {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              },
+              "data_format": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "timelapse"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "input"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "inp"
+                    ]
+                  }
+                ]
+              },
+              {
+                "if": {
+                  "properties": {
+                    "input": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "inp": {
+                      "const": ""
+                    }
+                  },
+                  "required": [
+                    "inp"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "data_format": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "timelapse"
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "required": [
+              "dataset_name"
+            ],
+            "properties": {
+              "dataset_name": {
+                "allOf": [
+                  {
+                    "not": {
+                      "enum": [
+                        "actin_fixed_multi_snr",
+                        "gag_live_denoise_eval",
+                        "gag_live_tl_highON",
+                        "gag_live_tl_lowON",
+                        "gag_live_upsamp_eval",
+                        "mito_live_tl_highON",
+                        "mito_live_tl_lowON",
+                        "vim_fixed_multi_snr",
+                        "vim_live_tl_highON"
+                      ]
+                    }
+                  },
+                  {
+                    "not": {
+                      "type": "string",
+                      "pattern": "^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\\$\\{[A-Za-z_][A-Za-z0-9_.-]*\\})$"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "prep_before"
+            ],
+            "properties": {
+              "prep_before": {
+                "const": false
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
