@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../schema/inference.schema.json
+apply:
+  inference:
+    lvae_num_samples: 50
+evaluate:
+  inference:
+    lvae_num_samples: 50
