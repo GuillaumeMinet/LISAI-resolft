@@ -11,20 +11,32 @@ from lisai.evaluation.defaults import resolve_evaluate_config
 from lisai.evaluation.run_evaluate import run_evaluate
 from lisai.infra.paths import Paths
 
-dataset = "vim_fixed_multi_snr"
-model_subfolder = "HDN"
 
-inference_config: str | Path | None = "default"
 
-evaluation_dataset_name: str | None = None  # equivalent of `lisai evaluate --on DATASET`.
-split: str | None = "train"                  # if evaluation_dataset_name is None.
-eval_gt: str | None = None
+overwrite: bool | None = True # WARNING: Overwrite will delete completely any data present in existing target folder, use with caution...
+dry_run = True
+stop_on_error = False
 
-# Checkpoint options. Leave as None to keep the value from the inference config.
-best_or_last: str | None = "best" 
+# dataset 
+dataset = "gag_live_tl_highON"
+
+# models selection
+model_subfolder = "Upsamp"
+best_or_last: str | None = "last" 
 epoch_number: int | None = None
 
-# Runtime/evaluation options. Leave as None to keep the value from the inference config.
+skip_if_contain: list[str] = []
+skip_folders: list[str] = []
+case_sensitive_skip = False
+
+# evaluation data selection
+inference_config: str | Path | None = "default"
+evaluation_dataset_name: str | None = None  # equivalent of `lisai evaluate --on DATASET`.
+split: str | None = "test"                  # if evaluation_dataset_name is None.
+eval_gt: str | None = None
+
+# Runtime/evaluation options. 
+# Leave as None to keep the value from the inference config.
 metrics: list[str] | None = None  
 tiling_size: int | str | None = None  
 crop_size: int | tuple[int, int] | None = None
@@ -32,23 +44,13 @@ lvae_num_samples: int | None = None
 ch_out: int | None = None
 limit_n_imgs: int | None = None
 timelapse_max: int | None = None
-overwrite: bool | None = True
 progress_bar: bool | None = None
-
-# Run-folder filtering.
-skip_if_contain: list[str] = []
-skip_folders: list[str] = ["hdn_sup_betaKL001_00"]
-case_sensitive_skip = False
-
 
 # commmon saving option: to save under a common save folder 
 common_save_location = False
 common_save_folder: str | Path = r""
 include_checkpoint_in_common_folder_name = True
 
-# Safety and error handling.
-dry_run = False
-stop_on_error = False
 
 
 @dataclass(frozen=True)

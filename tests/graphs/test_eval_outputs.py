@@ -48,6 +48,14 @@ def _write_timelapse_item(evaluation, *, indices, values, input_id="cell.tif", s
     )
 
 
+def _use_canonical_data_dir(monkeypatch, data_dir):
+    monkeypatch.setattr(
+        eval_outputs_mod,
+        "_canonical_dataset_data_dir",
+        lambda **_kwargs: data_dir,
+    )
+
+
 def test_comparison_aligns_common_timepoints(tmp_path):
     first = _evaluation(tmp_path, "run_1")
     second = _evaluation(tmp_path, "run_2")
@@ -106,6 +114,7 @@ def test_load_aux_data_uses_registered_auxiliary_and_source_indices(monkeypatch,
     _write_timelapse_item(evaluation, indices=[1, 3], values=[1, 3], input_id="low/cell.tif")
 
     data_dir = tmp_path / "evaluation_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
     (data_dir / "conf").mkdir(parents=True)
     imwrite(data_dir / "conf" / "cell.tif", np.arange(5, dtype=np.float32)[:, None, None], photometric="minisblack")
 
@@ -141,6 +150,7 @@ def test_load_aux_data_lists_registered_auxiliary_names(monkeypatch, tmp_path):
     _write_timelapse_item(evaluation, indices=[0], values=[0], input_id="low/cell.tif")
 
     data_dir = tmp_path / "evaluation_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
     (evaluation.folder / "evaluation.yaml").write_text(
         f"""version: 1
 dataset:
@@ -163,6 +173,7 @@ def test_external_prediction_manifest_can_load_gt_from_registered_dataset(monkey
     evaluation = _evaluation(tmp_path, "external_run")
     folder = evaluation.folder
     data_dir = tmp_path / "evaluation_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
     (data_dir / "low").mkdir(parents=True)
     (data_dir / "high").mkdir(parents=True)
     imwrite(data_dir / "low" / "cell.tif", np.ones((4, 5), dtype=np.float32))
@@ -214,6 +225,7 @@ def test_shared_dataset_gt_is_identical_for_lisai_and_external_runs(monkeypatch,
     external_eval = _evaluation(tmp_path, "external_run")
 
     data_dir = tmp_path / "training_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
     (data_dir / "inp").mkdir(parents=True)
     (data_dir / "gt").mkdir(parents=True)
     imwrite(data_dir / "inp" / "cell.tif", np.ones((4, 5), dtype=np.float32))
@@ -281,6 +293,64 @@ dataset:
     assert np.all(external_gt[0] == 7)
 
 
+def test_shared_dataset_gt_ignores_stale_recorded_roots(monkeypatch, tmp_path):
+    first = _evaluation(tmp_path, "run_1")
+    second = _evaluation(tmp_path, "run_2")
+
+    data_dir = tmp_path / "current_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
+    (data_dir / "inp").mkdir(parents=True)
+    (data_dir / "gt").mkdir(parents=True)
+    imwrite(data_dir / "inp" / "cell.tif", np.ones((4, 5), dtype=np.float32))
+    imwrite(data_dir / "gt" / "cell.tif", np.full((4, 5), 7, dtype=np.float32))
+
+    for evaluation, recorded_root, pred_value in (
+        (first, tmp_path / "old_root_a" / "preprocess" / "recon", 10),
+        (second, tmp_path / "old_root_b" / "preprocess" / "recon", 11),
+    ):
+        imwrite(evaluation.folder / "cell_pred.tif", np.full((4, 5), pred_value, dtype=np.float32))
+        save_outputs_manifest(
+            evaluation.folder,
+            [{
+                "name": "cell",
+                "input_id": "inp/cell.tif",
+                "gt_id": "gt/cell.tif",
+                "outputs": {"pred": {"files": ["cell_pred.tif"], "sample_axis": None}},
+            }],
+        )
+        (evaluation.folder / "evaluation.yaml").write_text(
+            f"""version: 1
+dataset:
+  name: vim_fixed_multi_snr
+  usage: training
+  data_type: recon
+  split: test
+  data_dir: {recorded_root.as_posix()}
+  input: inp
+  eval_gt: gt
+"""
+        )
+
+    registry_info = {
+        "outputs": {
+            "recon": [
+                {"key": "inp", "path": "inp", "role": "inp", "axes": "YX"},
+                {"key": "gt", "path": "gt", "role": "gt", "axes": "YX"},
+            ]
+        }
+    }
+    monkeypatch.setattr(eval_outputs_mod, "load_dataset_info", lambda *_args, **_kwargs: registry_info)
+
+    comparison = prepare_comparison_outputs([first, second], gt_reference="dataset")
+
+    first_gt, first_pred = comparison.load_gt_pred(comparison.items_for(first)[0])
+    second_gt, second_pred = comparison.load_gt_pred(comparison.items_for(second)[0])
+    assert np.all(first_gt[0] == 7)
+    assert np.all(second_gt[0] == 7)
+    assert np.all(first_pred[0] == 10)
+    assert np.all(second_pred[0] == 11)
+
+
 def test_reference_evaluation_gt_can_be_shared_across_runs(monkeypatch, tmp_path):
     first = _evaluation(tmp_path, "run_1")
     second = _evaluation(tmp_path, "run_2")
@@ -308,6 +378,7 @@ def test_dataset_gt_without_source_axis_is_reused_for_selected_snr_samples(monke
     )
 
     data_dir = tmp_path / "training_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
     (data_dir / "inp_mltpl_snr").mkdir(parents=True)
     (data_dir / "gt_avg").mkdir(parents=True)
     imwrite(
@@ -353,6 +424,7 @@ def test_shared_dataset_gt_rejects_different_registered_targets(monkeypatch, tmp
     _write_timelapse_item(second, indices=[0], values=[2], input_id="inp/cell.tif")
 
     data_dir = tmp_path / "training_data" / "preprocess" / "recon"
+    _use_canonical_data_dir(monkeypatch, data_dir)
     for evaluation, gt_name in ((first, "gt_avg"), (second, "gt_snr0")):
         (evaluation.folder / "evaluation.yaml").write_text(
             f"""version: 1

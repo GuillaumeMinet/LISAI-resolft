@@ -5,6 +5,7 @@ Filesystem layout in LISAI is defined through [`Paths`](../src/lisai/infra/paths
 ## Main Locations
 
 - Dataset registry: `Paths.dataset_registry_path()`
+- Local data root: `Paths.data_root()`
 - Dataset root for loading: `Paths.dataset_dir(dataset_name=..., data_subfolder=...)`
 - Training run folder: `Paths.run_dir(dataset_name=..., models_subfolder=..., exp_name=...)`
 - TensorBoard runs: `Paths.tensorboard_dir(...)`

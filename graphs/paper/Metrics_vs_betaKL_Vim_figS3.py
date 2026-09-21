@@ -25,7 +25,7 @@ full_dataset = True
 
 # data selection
 dataset_name = "vim_fixed_multi_snr"
-model_subfolder = "HDN"
+model_subfolder = "HDN_benchmark"
 
 run_names = [
     "vim_single_betaKL03_01",
@@ -124,7 +124,7 @@ for evaluation_source in evaluation_sources:
     evaluations.sort(key=lambda evaluation: evaluation.beta_kl)
 
     # align exact same source images across betaKL values
-    comparison = prepare_comparison_outputs(evaluations)
+    comparison = prepare_comparison_outputs(evaluations, gt_reference="dataset")
 
     print(f"\nEvaluation source: {evaluation_source.folder_name}")
 
@@ -135,19 +135,17 @@ for evaluation_source in evaluation_sources:
         n_images = 0
 
         for item in comparison.items_for(evaluation):
-            gt_frames, pred_frames = item.load_gt_pred()
+            gt_frames, pred_frames = comparison.load_gt_pred(item)
 
             for gt, pred in zip(gt_frames, pred_frames):
                 n_images += 1
+                
+                if smooth_gt:
+                    gt = gaussian_filter(gt, sigma=0.5, radius=3)
 
-                gt = gt.copy()
-                gt[gt < -3] = -3
-
+                gt[gt<-3]=-3
                 gt = (gt - np.mean(gt)) / np.std(gt)
                 pred = (pred - np.mean(pred)) / np.std(pred)
-
-                if smooth_gt:
-                    gt = gaussian_filter(gt, sigma=0.6, radius=3)
 
                 data_range = np.max(gt) - np.min(gt)
 

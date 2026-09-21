@@ -8,6 +8,7 @@ from .schema import PromotedModelManifest
 AUTO_OVERVIEW_START = "<!-- lisai:auto:overview:start -->"
 AUTO_OVERVIEW_END = "<!-- lisai:auto:overview:end -->"
 
+LISAI_GITHUB_URL = "https://github.com/GuillaumeMinet/LISAI-resolft"
 
 def _format_value(value: Any) -> str:
     if value is None:
@@ -91,7 +92,7 @@ def render_model_card(
     lines = [
         f"# {manifest.name}",
         "",
-        "LISAI promoted model.",
+        f"LISAI promoted model. Created and packaged with [LISAI]({LISAI_GITHUB_URL}).",
         "",
         _render_auto_overview_block(manifest),
         "",
@@ -150,31 +151,37 @@ def render_model_card(
     lines.extend(
         [
             "",
-            "## Description",
+            "## Description & Intended use",
             "",
             "TODO: Add a short scientific description of this promoted model.",
-            "",
-            "## Intended use",
-            "",
-            "TODO: Describe the intended microscopy data and use case.",
             "",
             "## Limitations",
             "",
             "TODO: Describe known limitations and conditions under which predictions should be validated.",
             "",
-            "## Citation",
-            "",
-            "TODO: Add the publication citation and/or DOI.",
-            "",
-            "## Authors and license",
-            "",
-            "TODO: Add authorship and license information.",
+            "Deep-learning predictions should be validated on representative data against appropriate "
+            "experimental references before quantitative or biological interpretation. ",
             "",
             "## Reproducibility",
             "",
             "`lisai_model.yaml` contains the machine-readable model identity, source-run provenance, "
             "artifact locations, and SHA256 checksums. `config_train.yaml` is the resolved training "
-            "configuration saved by the original LISAI run.",
+            "configuration saved by the original LISAI run. `config_inference.yaml`, when present, "
+            "contains the model-specific default inference settings used by `lisai apply --model`; "
+            "these settings can be overridden for individual inference runs.",
+            "",
+            "## Citation & Authorship",
+            "",
+            "Minet, G., Ray, A., Pennacchietti, F., Coceano, G., Jug, F. & Testa, I."
+            "*RESOLFT time lapse imaging empowered by deep learning*.",
+            "",
+            "Training datasets and trained models: "
+            "Zenodo, DOI: 10.5281/zenodo.17132698",
+            "",
+            "Please cite the associated publication once the final journal citation and DOI become available.",
+            "## Authors and license",
+            "",
+            "TODO: Add authorship and license information.",
             "",
         ]
     )

@@ -225,7 +225,13 @@ def _render_runs_snapshot(
         )
     )
 
-    body = "No LISAI runs found." if external_runs else "No runs found."
+    if kind is not None and kind == ["external"]:
+        body = "Only external runs are listed. LISAI runs omitted."
+    elif external_runs:
+        body = "No LISAI runs found."
+    else:
+        body = "No runs found"
+
     if filtered_runs:
         body = render_runs_table(filtered_runs, full=full)
         if has_path_inconsistencies(filtered_runs):

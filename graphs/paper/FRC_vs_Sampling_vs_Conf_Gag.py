@@ -33,6 +33,7 @@ smooth_gt = True
 
 # figure parameters
 show_figure = True
+include_legend=False
 colors_list = ["black", "grey", "#a70048ff", "#0000ffff"]
 linewidth = 0.4
 figure_size = (1, 1)
@@ -76,7 +77,7 @@ def add_frc(arr, cond):
         arr = crop_center(arr, crop_size)
     if cond == "GT" and smooth_gt: 
         arr = gaussian_filter(arr, sigma=0.3, radius=3)
-    if cond in ("Confocal"): 
+    if cond in ("GT","Confocal"): 
         arr[arr < 0] = 0
     arr = (arr - np.mean(arr)) / np.std(arr)
     arr = arr - np.min(arr)
@@ -134,16 +135,22 @@ for cond, color in zip(conditions, colors_list):
     xs_nm_freq = xs_pix * scale
     ax.plot(xs_nm_freq, frc_curve, label=cond, linewidth=linewidth, color=color)
     ax.fill_between(xs_nm_freq, frc_curve - std_curve, frc_curve + std_curve, alpha=0.3, color=color, linewidth=0)
-
+if include_legend:
+    plt.legend()
 
 ticks_prms = {"labelsize": fontsize, "width": 0.7, "length": 2}
 ax.set_xlabel("Spatial frequency (µm$^{-1}$)", fontsize=fontsize)
 ax.set_ylabel("Correlation", fontsize=fontsize)
-ax.set_xlim(0, 15); ax.set_ylim(0, 1)
-ax.set_xticks([0, 5, 10, 15]); ax.set_yticks([0, 0.5, 1])
-ax.tick_params(axis="x", which="major", **ticks_prms); ax.tick_params(axis="y", which="major", **ticks_prms)
-ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-ax.spines["left"].set_linewidth(0.7); ax.spines["bottom"].set_linewidth(0.7)
+ax.set_xlim(0, 15)
+ax.set_ylim(0, 1)
+ax.set_xticks([0, 5, 10, 15])
+ax.set_yticks([0, 0.5, 1])
+ax.tick_params(axis="x", which="major", **ticks_prms)
+ax.tick_params(axis="y", which="major", **ticks_prms)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["left"].set_linewidth(0.7)
+ax.spines["bottom"].set_linewidth(0.7)
 
 if show_figure: 
     plt.show()

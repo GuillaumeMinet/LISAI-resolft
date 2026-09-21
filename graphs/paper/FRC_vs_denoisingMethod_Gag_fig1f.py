@@ -132,11 +132,15 @@ for cond, color in zip(conditions, colors_list):
 ticks_prms = {"labelsize": fontsize, "width": 2, "length": 8}
 ax.set_xlabel("Spatial frequency (µm$^{-1}$)", fontsize=fontsize)
 ax.set_ylabel("Correlation", fontsize=fontsize)
-ax.set_xlim(0, 15); ax.set_ylim(0, 1)
+ax.set_xlim(0, 15)
+ax.set_ylim(0, 1)
 ax.set_xticks([0, 5, 10, 15])
-ax.tick_params(axis="x", which="major", **ticks_prms); ax.tick_params(axis="y", which="major", **ticks_prms)
-ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
-ax.spines["left"].set_linewidth(2); ax.spines["bottom"].set_linewidth(2)
+ax.tick_params(axis="x", which="major", **ticks_prms)
+ax.tick_params(axis="y", which="major", **ticks_prms)
+ax.spines["top"].set_visible(False)
+ax.spines["right"].set_visible(False)
+ax.spines["left"].set_linewidth(2)
+ax.spines["bottom"].set_linewidth(2)
 ax.legend()
 
 if show_figure: 

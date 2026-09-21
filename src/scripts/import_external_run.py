@@ -17,8 +17,8 @@ from lisai.runs.external import import_external_run
 run_name = "SN2N_Gag"
 trained_on = "gag_live_tl_lowON"
 
-checkpoint_path = None #Path(r"E:\lisai\imports\sn2n_vim\model_11_15_full.pth")
-evaluation_data_path = Path(r"E:\lisai\imports\sn2n_gag\eval_dataset")
+checkpoint_path = Path(r"E:\lisai\datasets\training\gag_live_tl_lowON\sn2n\models\last_model\model_9_20_full.pth")
+evaluation_data_path = Path(r"E:\lisai\datasets\evaluation\gag_live_denoise_eval\preprocess\recon\predictions")
 
 # Optional external config - copied into external_runs/<run>/config/.
 config_path = None

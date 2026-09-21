@@ -101,7 +101,7 @@ def _run_rewrites(
     if not runs_dir.is_dir():
         return (), 0, 0, 0, 0
 
-    stored_root = paths.datasets_root().parent.resolve()
+    stored_root = paths.data_root().resolve()
     old_prefix = source_dir.resolve().relative_to(stored_root).as_posix()
     new_dataset_dir = source_dir.with_name(new_name).resolve()
     new_prefix = new_dataset_dir.relative_to(stored_root).as_posix()

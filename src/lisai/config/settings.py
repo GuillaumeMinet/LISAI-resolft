@@ -227,6 +227,10 @@ class Settings:
         return self._project_yaml_path
 
     @property
+    def DATA_ROOT(self) -> Path:
+        return Path(self._ctx.data_root).resolve()
+
+    @property
     def DATA_CONFIG_PATH(self) -> Path:
         return self._data_yaml_path
         

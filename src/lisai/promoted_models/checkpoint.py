@@ -8,6 +8,9 @@ import torch
 from lisai.config import settings
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
+from lisai.infra.paths.checkpoint_resolution import (
+    resolve_checkpoint_path as resolve_existing_checkpoint_path,
+)
 
 PromotionCheckpointSelector = Literal["best", "last"]
 
@@ -28,16 +31,13 @@ def resolve_promotion_checkpoint(
         )
 
     resolved_paths = paths or Paths(settings)
-    checkpoint_path = resolved_paths.checkpoint_path(
+    _, checkpoint_path = resolve_existing_checkpoint_path(
+        paths=resolved_paths,
         run_dir=saved_run.run_dir,
-        load_method="state_dict",
+        load_methods=("state_dict",),
         best_or_last=selector,
+        missing_description=f"the {selector!r} state-dict checkpoint for promotion",
     )
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(
-            f"Could not find the {selector!r} state-dict checkpoint for promotion: "
-            f"{checkpoint_path}"
-        )
     return checkpoint_path
 
 

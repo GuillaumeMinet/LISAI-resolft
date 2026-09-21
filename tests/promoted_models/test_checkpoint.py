@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -40,6 +39,18 @@ class FakePaths:
 def test_resolve_promotion_checkpoint_uses_canonical_state_dict(tmp_path: Path):
     checkpoint = tmp_path / "checkpoints" / "model_best_state_dict.pt"
     checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"checkpoint")
+
+    resolved = resolve_promotion_checkpoint(_saved_run(tmp_path), paths=FakePaths())
+
+    assert resolved == checkpoint
+
+
+def test_resolve_promotion_checkpoint_falls_back_to_highest_epoch_best(tmp_path: Path):
+    checkpoints = tmp_path / "checkpoints"
+    checkpoints.mkdir()
+    (checkpoints / "model_epoch_2_state_dict.pt").write_bytes(b"checkpoint")
+    checkpoint = checkpoints / "model_epoch_5_state_dict.pt"
     checkpoint.write_bytes(b"checkpoint")
 
     resolved = resolve_promotion_checkpoint(_saved_run(tmp_path), paths=FakePaths())

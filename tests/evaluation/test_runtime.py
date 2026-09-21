@@ -148,6 +148,39 @@ def test_initialize_runtime_loads_full_model_and_applies_tiling_override(monkeyp
     assert model_obj.evaluated is True
 
 
+def test_initialize_runtime_best_falls_back_to_highest_epoch_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    canonical_best = tmp_path / "model_best_state_dict.pt"
+    epoch_checkpoint = tmp_path / "model_epoch_4_state_dict.pt"
+    epoch_checkpoint.write_text("ok", encoding="utf-8")
+    fake_paths = SelectorAwarePaths(
+        best_path=canonical_best,
+        last_path=tmp_path / "model_last_state_dict.pt",
+    )
+    model_obj = object()
+
+    monkeypatch.setattr(runtime_mod, "Paths", lambda _settings: fake_paths)
+    monkeypatch.setattr(
+        runtime_mod,
+        "_load_state_dict_model",
+        lambda saved_run, checkpoint_path, device, paths: (model_obj, 4),
+    )
+
+    runtime = runtime_mod.initialize_runtime(
+        saved_run=_make_saved_run(),
+        device="cpu",
+        best_or_last="best",
+        epoch_number=None,
+        tiling_size=None,
+    )
+
+    assert runtime.model is model_obj
+    assert runtime.checkpoint_path == epoch_checkpoint
+    assert runtime.resolved_epoch == 4
+
+
 def test_initialize_runtime_with_both_selector_falls_back_to_last(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

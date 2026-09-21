@@ -1,4 +1,11 @@
-import os
+import os,sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SRC_ROOT = PROJECT_ROOT / "src"
+for path in (PROJECT_ROOT, SRC_ROOT):
+    if str(path) not in sys.path: sys.path.insert(0, str(path))
+
 import tifffile
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,9 +13,13 @@ from matplotlib.lines import Line2D
 from matplotlib.legend import Legend
 
 from graphs.utils.paths import get_saved_graphs_dir
+from lisai.infra.paths import Paths
+
 
 # Path to the main folder
-main_folder = r"E:\lisai\inference\vim_noisy"
+lisaiPaths=Paths()
+root = lisaiPaths.data_root()
+data_folder = Path(root) / r"paper_dataset\application_denoising\vimentin\bleaching_experiment"
 
 mean_all = []
 mean_norm_all = []
@@ -33,7 +44,7 @@ legend_save_title = f"{save_title}_legend.svg"
 
 # Iterate through each folder in the main folder
 for folder_name in folder_names:
-    folder_path = os.path.join(main_folder, folder_name)
+    folder_path = data_folder / folder_name
     intensity_mean = []
     intensity_mean_norm = []
     min_length=1000

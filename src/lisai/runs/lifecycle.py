@@ -31,8 +31,7 @@ _PATHS = Paths(settings)
 
 def stored_run_path(run_dir: str | Path) -> str:
     path = Path(run_dir).resolve()
-    data_dir = _PATHS.datasets_root()
-    data_root = data_dir.parent
+    data_root = _PATHS.data_root()
 
     try:
         return path.relative_to(data_root).as_posix()

@@ -10,7 +10,7 @@ for path in (PROJECT_ROOT, SRC_ROOT):
 import frc
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.ndimage import gaussian_filter
 from graphs.utils.eval_folder import EvalSource, discover_evaluations
 from graphs.utils.eval_outputs import prepare_comparison_outputs
 from graphs.utils.paths import get_saved_graphs_dir
@@ -27,7 +27,7 @@ run_names = [
 ]
 
 evaluation_source = EvalSource.training_split("test")
-checkpoint = "last"  # "best" or "last"
+checkpoint = "best"  # "best" or "last"
 
 
 # FRC parameters
@@ -70,7 +70,7 @@ sampling_labels = [f"S={sampling:g}" for sampling in sampling_ratios]
 
 
 # exact same source images across sampling ratios
-comparison = prepare_comparison_outputs(evaluations)
+comparison = prepare_comparison_outputs(evaluations, gt_reference="dataset")
 
 
 # initialize FRC storage
@@ -91,12 +91,15 @@ for evaluation, label in zip(evaluations, sampling_labels):
         for gt, pred in zip(gt_frames, pred_frames):
             count += 1
             print(f"Relative FRC {count} for {label}")
+            gt = gaussian_filter(gt, sigma=0.6, radius=3)
+
+            gt[gt<-3] = -3
 
             gt = (gt - np.mean(gt)) / np.std(gt)
             pred = (pred - np.mean(pred)) / np.std(pred)
 
             gt = gt - np.min(gt)
-            pred = pred - np.min(gt)
+            pred = pred - np.min(pred)
             gt = frc.util.apply_tukey(gt)
             pred = frc.util.apply_tukey(pred)
 

@@ -19,7 +19,7 @@ from graphs.utils.paths import get_saved_graphs_dir
 
 # data selection
 dataset_name = "vim_fixed_multi_snr"
-model_subfolder = "denoising_legacy"
+model_subfolder = "Denoising"
 lisai_run_names = ["UNetRCAN_single_to_avg", "UNet_single_to_avg", "HDN_unsup_KL05", "HDN_sup_KL001"]
 external_run_names = ["SN2N_Vim", "N2V_Vim"]
 evaluation_source = EvalSource.training_split("test")
@@ -118,7 +118,8 @@ for cond, evaluation in evaluation_by_condition.items():
 
 
 # average and standard deviation
-avg_frc_curves = {}; std_frc_curves = {}
+avg_frc_curves = {}
+std_frc_curves = {}
 for cond in conditions:
     curves = np.stack(frc_curves[cond])
     avg_frc_curves[cond] = np.mean(curves, axis=0)
@@ -133,7 +134,8 @@ for ax, panel_conditions in zip(axs, [unsup_conditions, sup_conditions]):
         color = colors_per_cond[cond]
         frc_curve = avg_frc_curves[cond]
         std_curve = std_frc_curves[cond]
-        xs_pix = np.arange(len(frc_curve)) / img_size[0]; xs_nm_freq = xs_pix * scale
+        xs_pix = np.arange(len(frc_curve)) / img_size[0]
+        xs_nm_freq = xs_pix * scale
         ax.plot(xs_nm_freq, frc_curve, label=cond, linewidth=linewidth,color=color)
         ax.fill_between(xs_nm_freq, frc_curve - std_curve, frc_curve + std_curve, 
                         alpha=0.5, color=color, linewidth=0)
@@ -141,7 +143,8 @@ for ax, panel_conditions in zip(axs, [unsup_conditions, sup_conditions]):
     ax.set_xticks([0, 5, 10, 15])
     ax.set_xlim(0, 15)
     ax.set_ylim(0, 1)
-    ax.set_xlabel("Spatial frequency (µm$^{-1}$)"); ax.set_ylabel("Correlation")
+    ax.set_xlabel("Spatial frequency (µm$^{-1}$)")
+    ax.set_ylabel("Correlation")
 
 if show_figure: 
     plt.show()

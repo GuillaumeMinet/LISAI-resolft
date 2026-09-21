@@ -83,8 +83,10 @@ class DatasetOutputSpec:
 @dataclass(frozen=True)
 class DatasetOutputsSpec:
     dataset_name: str
+    usage: str
     data_type: str
     data_dir: Path
+    recorded_data_dir: Path | None
     input_path: str
     outputs: Mapping[str, DatasetOutputSpec]
     gt: DatasetOutputSpec | None = None
@@ -498,12 +500,14 @@ def _load_dataset_outputs_spec(evaluation: RunEvaluation) -> DatasetOutputsSpec 
         return None
 
     dataset_name = dataset.get("name")
+    usage = str(dataset["usage"])
     data_type = dataset.get("data_type")
     data_dir = dataset.get("data_dir")
     input_path = dataset.get("input")
     gt_path = dataset.get("eval_gt")
-    if dataset_name is None or data_dir is None or input_path is None:
+    if dataset_name is None or input_path is None:
         return None
+    recorded_data_dir = None if data_dir is None else Path(data_dir)
 
     dataset_info = load_dataset_info(Paths(settings).dataset_registry_path(), str(dataset_name))
     if not isinstance(dataset_info, Mapping):
@@ -518,6 +522,13 @@ def _load_dataset_outputs_spec(evaluation: RunEvaluation) -> DatasetOutputsSpec 
     )
     if data_type is None:
         return None
+
+    resolved_data_dir = _canonical_dataset_data_dir(
+        dataset_name=str(dataset_name),
+        data_type=data_type,
+        usage=usage,
+        recorded_data_dir=recorded_data_dir,
+    )
 
     input_output = _registered_output_spec(dataset_info, data_type, input_path)
     resolved_input_path = str(input_path) if input_output is None else input_output.path
@@ -538,12 +549,31 @@ def _load_dataset_outputs_spec(evaluation: RunEvaluation) -> DatasetOutputsSpec 
 
     return DatasetOutputsSpec(
         dataset_name=str(dataset_name),
+        usage=usage,
         data_type=data_type,
-        data_dir=Path(data_dir),
+        data_dir=resolved_data_dir,
+        recorded_data_dir=recorded_data_dir,
         input_path=resolved_input_path,
         outputs=auxiliary_outputs,
         gt=None if gt_path is None else _registered_output_spec(dataset_info, data_type, gt_path),
     )
+
+
+def _canonical_dataset_data_dir(
+    *,
+    dataset_name: str,
+    data_type: str,
+    usage: str,
+    recorded_data_dir: Path | None = None,
+) -> Path:
+    data_dir = Paths(settings).dataset_preprocess_dir(
+        dataset_name=dataset_name,
+        data_type=data_type,
+        usage=usage,
+    )
+    if data_dir.exists() or recorded_data_dir is None:
+        return data_dir
+    return recorded_data_dir
 
 
 def _resolve_registry_data_type(
@@ -632,8 +662,8 @@ def _dataset_reference_identity(spec: DatasetOutputsSpec) -> tuple[str, str, str
     assert spec.gt is not None
     return (
         spec.dataset_name,
+        spec.usage,
         spec.data_type,
-        str(spec.data_dir),
         spec.input_path,
         spec.gt.path,
     )
@@ -641,7 +671,16 @@ def _dataset_reference_identity(spec: DatasetOutputsSpec) -> tuple[str, str, str
 
 def _dataset_reference_description(spec: DatasetOutputsSpec) -> str:
     assert spec.gt is not None
-    return f"{spec.dataset_name}/{spec.data_type}: input={spec.input_path!r}, gt={spec.gt.path!r}"
+    root = str(spec.data_dir)
+    recorded = (
+        ""
+        if spec.recorded_data_dir in (None, spec.data_dir)
+        else f", recorded_root={str(spec.recorded_data_dir)!r}"
+    )
+    return (
+        f"{spec.dataset_name}/{spec.usage}/{spec.data_type}: "
+        f"input={spec.input_path!r}, gt={spec.gt.path!r}, root={root!r}{recorded}"
+    )
 
 
 def _output_has_source_axis(axes: str | None) -> bool:

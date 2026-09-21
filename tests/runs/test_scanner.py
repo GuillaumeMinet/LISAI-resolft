@@ -52,7 +52,7 @@ def test_scan_runs_discovers_nested_run_directories(tmp_path):
         dataset="Gag",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/Gag/models/HDN/HDN_Gag_KL07_01",
+        path="datasets/Gag/runs/HDN/HDN_Gag_KL07_01",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
     )
     _write_metadata(
@@ -60,7 +60,7 @@ def test_scan_runs_discovers_nested_run_directories(tmp_path):
         dataset="Gag",
         model_subfolder="HDN/ablationA",
         group_path="ablationA",
-        path="datasets/Gag/models/HDN/ablationA/HDN_Gag_KL07_02",
+        path="datasets/Gag/runs/HDN/ablationA/HDN_Gag_KL07_02",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
     )
     _write_metadata(
@@ -68,7 +68,7 @@ def test_scan_runs_discovers_nested_run_directories(tmp_path):
         dataset="Gag",
         model_subfolder="Upsamp/2026_03/test1",
         group_path="2026_03/test1",
-        path="datasets/Gag/models/Upsamp/2026_03/test1/Upsamp_Gag_CL5",
+        path="datasets/Gag/runs/Upsamp/2026_03/test1/Upsamp_Gag_CL5",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
     )
 
@@ -94,7 +94,7 @@ def test_scan_runs_skips_invalid_metadata_files(tmp_path):
         dataset="Gag",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/Gag/models/HDN/valid_run",
+        path="datasets/Gag/runs/HDN/valid_run",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA0",
     )
     (invalid_json_run / ".lisai_run_meta.json").parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +143,7 @@ def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
         dataset="Gag",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/Gag/models/HDN/folder_name_00",
+        path="datasets/Gag/runs/HDN/folder_name_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA2",
     )
 
@@ -172,7 +172,7 @@ def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
         dataset="Gag",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/Gag/models/HDN/beta_00",
+        path="datasets/Gag/runs/HDN/beta_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAA",
     )
     _write_metadata(
@@ -180,7 +180,7 @@ def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
         dataset="Gag",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/Gag/models/HDN/beta_01",
+        path="datasets/Gag/runs/HDN/beta_01",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
     )
 
@@ -204,7 +204,7 @@ def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, m
         dataset="Gag",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/train_bucket/Gag/models/HDN/train_00",
+        path="datasets/train_bucket/Gag/runs/HDN/train_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA3",
     )
     _write_metadata(
@@ -212,15 +212,16 @@ def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, m
         dataset="EvalSet",
         model_subfolder="HDN",
         group_path=None,
-        path="datasets/eval_bucket/EvalSet/models/HDN/eval_00",
+        path="datasets/eval_bucket/EvalSet/runs/HDN/eval_00",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA4",
     )
 
+    monkeypatch.setattr(scanner_mod._PATHS, "data_root", lambda: tmp_path)
     monkeypatch.setattr(scanner_mod._PATHS, "datasets_root", lambda: datasets_root)
     monkeypatch.setattr(scanner_mod._PATHS, "training_datasets_root", lambda: training_root)
 
     results = scanner_mod.scan_runs()
 
     assert [run.dataset for run in results.runs] == ["Gag"]
-    assert results.runs[0].path == "datasets/train_bucket/Gag/models/HDN/train_00"
+    assert results.runs[0].path == "datasets/train_bucket/Gag/runs/HDN/train_00"
     assert results.runs[0].path_consistent is True

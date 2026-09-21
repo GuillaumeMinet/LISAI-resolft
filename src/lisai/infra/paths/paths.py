@@ -40,6 +40,9 @@ class Paths:
     def project_root(self) -> Path:
         return Path(self.settings.PROJECT_ROOT).resolve()
 
+    def data_root(self) -> Path:
+        return Path(self.settings.DATA_ROOT).resolve()
+
     def datasets_root(self) -> Path:
         return Path(self.settings.resolve_path(self.settings.project_cfg.paths.roots["data_dir"])).resolve()
 

@@ -11,6 +11,12 @@ def test_paths_exposes_project_root(tmp_path):
     assert Paths(settings).project_root() == tmp_path.resolve()
 
 
+def test_paths_exposes_data_root(tmp_path):
+    settings = SimpleNamespace(DATA_ROOT=tmp_path / "data")
+
+    assert Paths(settings).data_root() == (tmp_path / "data").resolve()
+
+
 def test_dataset_usage_subfolders_control_dataset_location(monkeypatch):
     from lisai.config import settings
 

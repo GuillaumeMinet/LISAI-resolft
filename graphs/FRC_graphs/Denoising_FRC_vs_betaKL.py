@@ -28,7 +28,7 @@ gt_folders_list = ["train","val","test"]
 betaKL_list = ["0.3", "0.5","0.7"]
 colors_list = ["#2ee2f0ff","#52c2f3ff","#0a6f9cff","black"]
 
-show_figure = False
+show_figure = True
 plot_gt = False
 
 # saving parameters
@@ -87,7 +87,7 @@ for folder_idx,betaKL in  enumerate(betaKL_list):
             pred = imread(eval_folder/f"img_{i}_pred.tif")
             pred = pred - np.min(pred)
             pred = frc.util.apply_tukey(pred)
-            frc_curve,_,_ = frc.one_frc(pred)
+            frc_curve = frc.one_frc(pred)
             if np.isnan(frc_curve).any():
                 print(f"Skipping a patch in image {i} due to NaN values in FRC curve.")
             else:
@@ -152,26 +152,26 @@ if show_figure:
 
 
 
-# Saving
-if save_figure:
-    ax.get_legend().remove()
-    fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')
+# # Saving
+# if save_figure:
+#     ax.get_legend().remove()
+#     fig.savefig(os.path.join(save_folder, save_title), bbox_inches='tight')
 
 
-labels_list = [r"$\beta_{\mathrm{KL}}=0.3$",
-               r"$\beta_{\mathrm{KL}}=0.5$",
-               r"$\beta_{\mathrm{KL}}=0.7$",
-               "GT"]
-if save_legend:
-    custom_lines = [
-        Line2D([0], [0], color=colors_list[i], lw=4, solid_capstyle='butt', label=labels_list[i])
-        for i in range(len(labels_list))
-    ]
+# labels_list = [r"$\beta_{\mathrm{KL}}=0.3$",
+#                r"$\beta_{\mathrm{KL}}=0.5$",
+#                r"$\beta_{\mathrm{KL}}=0.7$",
+#                "GT"]
+# if save_legend:
+#     custom_lines = [
+#         Line2D([0], [0], color=colors_list[i], lw=4, solid_capstyle='butt', label=labels_list[i])
+#         for i in range(len(labels_list))
+#     ]
 
-    legend_fig = plt.figure(figsize=(2, 2))
-    legend_ax = legend_fig.add_subplot(111)
-    legend_ax.axis('off')
-    legend = Legend(legend_ax, custom_lines, labels_list, loc='center', frameon=False, fontsize=16, handlelength=1.5, handleheight=1.0)
-    legend_ax.add_artist(legend)
+#     legend_fig = plt.figure(figsize=(2, 2))
+#     legend_ax = legend_fig.add_subplot(111)
+#     legend_ax.axis('off')
+#     legend = Legend(legend_ax, custom_lines, labels_list, loc='center', frameon=False, fontsize=16, handlelength=1.5, handleheight=1.0)
+#     legend_ax.add_artist(legend)
 
-    legend_fig.savefig(os.path.join(save_folder, legend_save_title), bbox_inches='tight')
+#     legend_fig.savefig(os.path.join(save_folder, legend_save_title), bbox_inches='tight')

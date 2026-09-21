@@ -17,6 +17,9 @@ import torch
 
 from lisai.config import settings
 from lisai.infra.paths import Paths
+from lisai.infra.paths.checkpoint_resolution import (
+    resolve_checkpoint_path as resolve_existing_checkpoint_path,
+)
 from lisai.models import load_noise_model, load_noise_model_from_paths
 from lisai.models.loader import init_model
 
@@ -53,42 +56,6 @@ def _compute_img_shape(patch_size: int | None, downsamp_factor: int) -> int | No
 
 
 
-def _iter_checkpoint_candidates(
-    saved_run: SavedTrainingRun,
-    *,
-    best_or_last: str,
-    epoch_number: int | None,
-    paths: Paths,
-):
-    """Yield candidate checkpoint paths allowed by the saved run configuration."""
-    if epoch_number is not None:
-        for method in saved_run.checkpoint_methods:
-            kwargs: dict[str, Any] = {
-                "run_dir": saved_run.run_dir,
-                "load_method": method,
-                "epoch_number": epoch_number,
-            }
-            yield method, paths.checkpoint_path(**kwargs)
-        return
-
-    if best_or_last == "both":
-        selectors = ("best", "last")
-    elif best_or_last in {"best", "last"}:
-        selectors = (best_or_last,)
-    else:
-        raise ValueError("best_or_last must be 'best', 'last', or 'both'.")
-
-    for selector in selectors:
-        for method in saved_run.checkpoint_methods:
-            kwargs = {
-                "run_dir": saved_run.run_dir,
-                "load_method": method,
-                "best_or_last": selector,
-            }
-            yield method, paths.checkpoint_path(**kwargs)
-
-
-
 def _resolve_checkpoint_path(
     saved_run: SavedTrainingRun,
     *,
@@ -97,20 +64,15 @@ def _resolve_checkpoint_path(
     paths: Paths,
 ) -> tuple[CheckpointMethod, Path]:
     """Find the first existing checkpoint matching the requested selector."""
-    checked_paths: list[str] = []
-    for method, checkpoint_path in _iter_checkpoint_candidates(
-        saved_run,
+    method, checkpoint_path = resolve_existing_checkpoint_path(
+        paths=paths,
+        run_dir=saved_run.run_dir,
+        load_methods=saved_run.checkpoint_methods,
         best_or_last=best_or_last,
         epoch_number=epoch_number,
-        paths=paths,
-    ):
-        checked_paths.append(str(checkpoint_path))
-        if checkpoint_path.exists():
-            return method, checkpoint_path
-
-    raise FileNotFoundError(
-        "Could not find a model checkpoint for inference. Checked:\n" + "\n".join(checked_paths)
+        missing_description="a model checkpoint for inference",
     )
+    return method, checkpoint_path
 
 
 
