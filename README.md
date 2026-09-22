@@ -8,6 +8,7 @@ This repository contains the code associated with our preprint:
 
 This project implements a deep learning framework to enhance RESOLFT (Reversible Saturable Optical Fluorescence Transitions) time-lapse nanoscopy.  More specifically, we use the parallelized RESOLFT implementation **MoNaLISA** together with both denoising and up-sampling approaches to enable **prolonged imaging**, or a **4-fold speed improvement**, pushing the boundaries of **live-cell nanoscopy**.
 
+> Example datasets and trained models used in the manuscript, are available from the [accompanying Zenodo repository](https://doi.org/10.5281/zenodo.17132698).
 
 ## Package overview
 
@@ -101,7 +102,6 @@ lisai preprocess configs/preprocess/single.yml
 ```
 
 Successful preprocessing registers the resulting dataset automatically.
-
 
 ### 2. Create a Training Configuration
 
