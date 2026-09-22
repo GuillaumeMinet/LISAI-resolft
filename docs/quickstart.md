@@ -26,7 +26,7 @@ pip install -e . --no-deps
 
 ## Local Data Root
 
-LISAI resolves datasets, saved runs, inference outputs, and noise models from a local data root. Create `configs/local_config.yml` on your machine:
+LISAI resolves datasets, saved runs, promoted models, inference outputs, and noise models from a local data root. Create `configs/local_config.yml` on your machine:
 
 ```yaml
 infrastructure:
@@ -44,6 +44,19 @@ lisai --help
 lisai train --help
 ```
 
+## Datasets
+
+Inspect datasets already registered under the local data root:
+
+```powershell
+lisai datasets list
+lisai datasets list --training
+lisai datasets list --evaluation
+lisai datasets show <dataset>
+```
+
+Training datasets and evaluation-only datasets are stored separately. A training dataset can provide train/validation/test splits, while an evaluation-only dataset is consumed as one complete independent evaluation resource.
+
 ## Training
 
 List available training configs:
@@ -60,6 +73,8 @@ lisai configs new denoising_hdn_unsup --name my_hdn
 # or to specify the configs subfolder:
 lisai configs new denoising_hdn_unsup --output local/my_hdn
 
+# Registered datasets can also pre-fill dataset-dependent fields:
+lisai configs new denoising_hdn_unsup --output local/my_hdn --dataset <dataset>
 
 # Edit configs/training/local/my_hdn.yml and replace CHANGEME values.
 lisai configs validate local/my_hdn
@@ -89,24 +104,50 @@ lisai train configs/training/examples/vim_denoising_unet.yml
 
 Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into `configs/training/local/` before training. Example configs assume the referenced datasets already exist under your configured data root.
 
-## Evaluation
+## Evaluation and Apply
 
-Use the CLI for evaluation workflows:
+Use the CLI for run-based evaluation and inference:
 
 ```powershell
 lisai evaluate Gag/Upsamp/my_model_00 --split val --metrics psnr,ssim
+lisai evaluate Gag/Upsamp/my_model_00 --on gag_independent --metrics psnr,ssim
 lisai apply Gag/Upsamp/my_model_00 /data/images --tiling-size 512
 lisai apply --run-id 01ARZ3NDEKTSV4RRFFQ69G7ACD /data/images
 ```
 
-Both commands accept `--config <name>` to load settings from `configs/inference/<name>.yml`,
-with unspecified settings inherited from `configs/inference/local/defaults.yml`. Values written
-in the selected config override those defaults, and any CLI argument overrides the config value.
-`tiling_size: auto` uses the saved model
-default, a positive integer forces a tile size, and `tiling_size: off` or `--no-tiling`
-disables tiling. Run selectors must refer to a discovered run folder, either by `--run-id`,
-`dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial experiment name when it can
-be resolved unambiguously.
+`evaluate` rebuilds dataset inputs from the selected run and either one of its train/val/test splits or a registered evaluation-only dataset. Its results are stored under the source run's `evaluations/` directory. `apply` consumes normal input files/directories and uses the configured inference output routing.
+
+Both commands accept `--config <name>` for settings under `configs/inference/`. Inference settings are resolved in this order, with later layers taking precedence:
+
+```text
+built-in typed defaults
+    < configs/inference/local/defaults.yml
+    < promoted-model inference config (apply --model only)
+    < selected inference config
+    < explicit CLI options
+```
+
+`tiling_size: auto` uses the saved model default, a positive integer forces a tile size, and `tiling_size: off` or `--no-tiling` disables tiling.
+
+Run selectors must refer to a discovered LISAI training run, either by `--run-id`, `dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial experiment name. See [`docs/run_selectors.md`](run_selectors.md) for details.
+
+## Promoted Models
+
+A completed or stopped training run can be promoted into the reusable local model library:
+
+```powershell
+lisai runs promote my_model_00 --name my_model
+lisai models list
+lisai models show my_model
+```
+
+Promoted models can be applied without referring back to the training-run hierarchy:
+
+```powershell
+lisai apply --model my_model /data/images
+```
+
+They can also carry a model-specific inference config and can be exported, installed, or downloaded from the LISAI model catalog. Use `lisai models --help` and the README for the full model-management workflow.
 
 ## Preprocess
 
@@ -117,7 +158,7 @@ lisai preprocess single
 lisai preprocess configs/preprocess/single.yml
 ```
 
-Tracked preprocess examples are available in `configs/preprocess/`. They assume the corresponding dataset dump folders already exist under your configured data root.
+Tracked preprocess examples are available in `configs/preprocess/`. They assume the corresponding dataset dump folders already exist under your configured data root. Successful preprocessing updates the dataset registry.
 
 ## Where To Look Next
 

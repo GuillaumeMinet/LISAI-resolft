@@ -71,10 +71,11 @@ This file is local-machine configuration and is ignored by Git. If it is missing
 
 With the default project config, the main data locations are:
 
-- datasets: `<data_root>/datasets`
+- datasets: `<data_root>/datasets` (split into `training/` and `evaluation/`)
 - noise models: `<data_root>/noise_models`
-- training runs: `<data_root>/datasets/<dataset>/models/<models_subfolder>/<exp_name>`
-- inference outputs: `<data_root>/datasets/<dataset>/inference/<inference_subfolder>/<exp_name>`
+- promoted models: `<data_root>/models`
+- training runs: `<data_root>/datasets/training/<dataset>/runs/<models_subfolder>/<exp_name>`
+- inference outputs: `<data_root>/inference/<source_name>/<model_name>`
 
 
 ## Typical workflow
@@ -182,7 +183,7 @@ To **apply** a model:
 lisai apply <run-selector> /path/to/images
 ```
 
->**NOTE**: The main difference between apply and evaluate is that evaluate expects data in the same form than the training data, while apply is to be used on "real application data". For example for the *upsampling task*, the test dataset contains fully-sampled data that is first downsampled, like in training, while evaluate expects real-word sub-sampled data. Also, evaluate will runs some metrics if a GT is available. 
+>**NOTE**: The main difference between apply and evaluate is that evaluate expects data in the same form than the training data, while apply is to be used on "real application data". For example for the *upsampling task*, the test dataset contains fully-sampled data that is first downsampled, like in training, while apply expects real-world sub-sampled data. Also, evaluate will runs some metrics if a GT is available.
 
 #### Inference configuration
 
@@ -233,7 +234,7 @@ lisai apply <run-selector> images/ --tiling-size 512
 - folder_inside: in a folder located inside the source_data root
 - folder_outside: in a folder located outside the source_data root
 
-You can specify your preference directly in the `local_config.yaml`under `inference`section, or for one-time usage, specify as a cli argument:
+You can specify your preference directly in the `local_config.yml` under the `inference` section, or for one-time usage, specify as a cli argument:
 
 ```bash
 lisai apply <run-selector> images/ --output-mode in_place

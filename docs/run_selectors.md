@@ -6,6 +6,7 @@ Run selectors are used by:
 
 - `lisai runs open`
 - `lisai runs plot`
+- `lisai runs promote`
 - `lisai evaluate`
 - `lisai apply`
 - `lisai continue`
@@ -20,10 +21,19 @@ lisai runs list --dataset Gag
 lisai runs list --exp-name upsamp
 lisai runs list --run-dir my_model_00
 lisai runs list --status running
+lisai runs list --kind lisai
+lisai runs list --kind external
+lisai runs list --promoted
+lisai runs list --kept
+lisai runs list --recent 10
 lisai runs list --full
 ```
 
 The `run_dir` column is the actual run folder name, for example `my_model_00`. This is the most common selector to copy into other commands.
+
+By default, `runs list` can show both normal LISAI training runs and imported external runs. Use `--kind lisai` or `--kind external` to restrict the table. `--promoted` and `--kept` are LISAI-run filters; `--recent N` limits the result after other filters. `--live` continuously refreshes the table in an interactive terminal.
+
+Imported external runs are a separate run kind. They can be listed and opened, but they do not have the executable training/runtime contract required by `continue`, `apply`, `evaluate`, or `runs promote`.
 
 ## Selector Forms
 
@@ -137,8 +147,25 @@ lisai apply my_model_00 /data/images --tiling-size 512
 Use `--tiling-size auto` to use the saved model default, pass a positive integer
 to force a tile size, or pass `--no-tiling` to run without tiling.
 
+Promote a LISAI training run into the reusable model library:
+
+```powershell
+lisai runs promote my_model_00 --name my_model
+```
+
 Continue training in place:
 
 ```powershell
 lisai continue my_model_00 --yes
 ```
+
+## External Runs
+
+Imported external runs use their own metadata under `datasets/training/<dataset>/external_runs/<run_name>/`. They appear in `lisai runs list` and can be opened explicitly:
+
+```powershell
+lisai runs list --kind external
+lisai runs open <external-run-name> --kind external --dataset <dataset>
+```
+
+They are intended for inspection and comparison of imported evaluation outputs. They are not valid selectors for `lisai evaluate`, `lisai apply`, `lisai continue`, `lisai runs plot`, or `lisai runs promote`.
