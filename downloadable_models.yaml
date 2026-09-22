@@ -8,4 +8,73 @@
 # Detailed model metadata stays inside each archive's lisai_model.yaml manifest.
 
 schema_version: 1
-models: {}
+models:
+  vim_denoise_hdnsup:
+    task: denoising_hdn
+    description: "Supervised HDN denoising model for vimentin RESOLFT images"
+    archive_sha256: "78641F63FA048EA6035F2617E7FB13E7A906968CEC0166FAA69EFE4A2477EFB4"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "vim_denoise_hdnsup.lisai.zip"
+
+  actin_denoise_hdnsup:
+    task: denoising_hdn
+    description: "Supervised HDN denoising model for actin RESOLFT images"
+    archive_sha256: "1A7C4A407AA1ADCC14C47C7E4668818705951E18A1B80ABF1D63349EFD78E3CD"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "actin_denoise_hdnsup.lisai.zip"
+
+  gag_denoise_hdn:
+    task: denoising_hdn
+    description: "Unsupervised HDN denoising model for HIV Gag-IM RESOLFT images"
+    archive_sha256: "350EF8A0FFC41E71B0862C3708E1C4CE380D3B4D4BE482C1B50A509AA1255D99"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "gag_denoise_hdn.lisai.zip"
+
+  mito_denoise_hdn:
+    task: denoising_hdn
+    description: "Unsupervised HDN denoising model for mitochondrial RESOLFT images"
+    archive_sha256: "01FF18971A7EF94FAAFA4A5BE71E2B76D8295C63A37E7F2CB45B9FB56750AAFC"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "mito_denoise_hdn.lisai.zip"
+
+  vim_upsamp_5frames:
+    task: upsamp_multiframes
+    description: "5-frame Fast-MoNaLISA upsampling model for live-cell vimentin imaging"
+    archive_sha256: "D829B11AAE2671452A5AA5EC26F59A732A8187DFECF4567E3E51AB4217AE846F"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "vim_upsamp_5frames.lisai.zip"
+
+  mito_upsamp_5frames:
+    task: upsamp_multiframes
+    description: "5-frame Fast-MoNaLISA upsampling model for live-cell mitochondrial imaging"
+    archive_sha256: "B664E7A6A76F8C2D56E1A44E52F8B4C3A967D94BBAE147E8A20136B4C27D0FEF"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "mito_upsamp_5frames.lisai.zip"
+
+  gag_upsamp_multiframes:
+    task: upsamp_multiframes
+    description: "5-frame Fast-MoNaLISA upsampling model for live-cell HIV Gag-IM imaging"
+    archive_sha256: "7DBFCCE554A2D4708D413C91C632B47953BED750FED8BED41509A61C47FD71AE"
+    download:
+      source:
+        type: zenodo
+        record_id: "22877255"
+        filename: "gag_upsamp_multiframes.lisai.zip"
