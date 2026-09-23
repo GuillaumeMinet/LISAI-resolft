@@ -15,7 +15,7 @@ from lisai.promoted_models.sources.zenodo import (
 
 
 DATASET_CATALOG_SCHEMA_VERSION = 1
-DEFAULT_DATASET_RECORD_ID = "17132698"
+DEFAULT_DATASET_RECORD_ID = "22877255"
 DEFAULT_DATASET_CATALOG_FILENAME = "dataset_catalog.json"
 DEFAULT_CATALOG_TIMEOUT_SECONDS = 30.0
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
