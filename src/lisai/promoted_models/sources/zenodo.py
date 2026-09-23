@@ -61,27 +61,41 @@ def _download_url(file_info: dict) -> str | None:
     return None
 
 
-def resolve_download_url(
-    source: ZenodoDownloadSource,
+def resolve_record_file_download_url(
+    record_id: str,
+    filename: str,
     *,
     timeout: float = DEFAULT_ZENODO_TIMEOUT_SECONDS,
 ) -> str:
-    """Resolve an exact filename from an exact Zenodo record to its download URL."""
-    record = _fetch_record(source.record_id, timeout=timeout)
+    """Resolve one exact file in a Zenodo record to its download URL."""
+    record = _fetch_record(record_id, timeout=timeout)
     for file_info in _iter_files(record):
         key = file_info.get("key") or file_info.get("filename")
-        if key != source.filename:
+        if key != filename:
             continue
         url = _download_url(file_info)
         if url is None:
             raise ZenodoSourceError(
-                f"Zenodo file {source.filename!r} in record {source.record_id!r} "
+                f"Zenodo file {filename!r} in record {record_id!r} "
                 "does not expose a download URL."
             )
         return url
 
     raise ZenodoSourceError(
-        f"Zenodo record {source.record_id!r} does not contain file {source.filename!r}."
+        f"Zenodo record {record_id!r} does not contain file {filename!r}."
+    )
+
+
+def resolve_download_url(
+    source: ZenodoDownloadSource,
+    *,
+    timeout: float = DEFAULT_ZENODO_TIMEOUT_SECONDS,
+) -> str:
+    """Resolve a promoted-model Zenodo source to its exact file download URL."""
+    return resolve_record_file_download_url(
+        source.record_id,
+        source.filename,
+        timeout=timeout,
     )
 
 
@@ -90,4 +104,5 @@ __all__ = [
     "ZENODO_RECORD_API_URL",
     "ZenodoSourceError",
     "resolve_download_url",
+    "resolve_record_file_download_url",
 ]

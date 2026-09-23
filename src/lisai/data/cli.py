@@ -10,13 +10,29 @@ from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.infra.cli.selection import resolve_partial_name
 from lisai.infra.paths import Paths
 
+from . import catalog as download_catalog
 from .dataset_registry import load_dataset_registry
+from .download import (
+    DatasetDownloadError,
+    download_and_install_dataset_plan,
+    download_summary,
+)
+from .install import (
+    DatasetInstallConflictError,
+    DatasetInstallError,
+    discover_install_source,
+    install_dataset_plan,
+    missing_evaluation_dependencies,
+    resolve_dataset_plan,
+    validate_install_source,
+)
 from .readme import dataset_readme_path, ensure_dataset_readme
 from .rename import DatasetRenameError, apply_dataset_rename, build_dataset_rename_plan
 
 
 DESCRIPTION_PREVIEW_MAX_CHARS = 20
 _DATASET_LIST_HINT = "Use 'lisai datasets list' to inspect available datasets."
+_DATASET_CATALOG_HINT = "Use 'lisai datasets catalog' to inspect downloadable datasets."
 
 
 def _paths() -> Paths:
@@ -486,6 +502,324 @@ def run_rename_from_args(args: argparse.Namespace) -> int:
     return rename_dataset(args.old_name, args.new_name)
 
 
+
+def _format_download_size(size_bytes: int) -> str:
+    gib = 1024**3
+    mib = 1024**2
+    if size_bytes >= gib:
+        return f"{size_bytes / gib:.2f} GiB"
+    if size_bytes >= mib:
+        return f"{size_bytes / mib:.1f} MiB"
+    if size_bytes >= 1024:
+        return f"{size_bytes / 1024:.1f} KiB"
+    return f"{size_bytes} B"
+
+
+def _render_download_catalog(catalog: download_catalog.DatasetCatalog) -> str:
+    if not catalog.datasets:
+        return "No downloadable datasets found."
+
+    rows: list[tuple[str, str, str, str]] = []
+    for name in sorted(catalog.datasets, key=str.casefold):
+        dataset = catalog.datasets[name]
+        size = sum(archive.size_bytes for archive in dataset.archives)
+        description = _format_description(
+            dataset.registry_entry.get("description"),
+            full=False,
+        )
+        rows.append((name, dataset.usage, _format_download_size(size), description))
+    return _table(("name", "usage", "download", "description"), rows)
+
+
+def run_catalog_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    try:
+        catalog = download_catalog.load_catalog()
+    except (download_catalog.DatasetCatalogUnavailableError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+    print(_render_download_catalog(catalog))
+    return 0
+
+
+def _resolve_download_dataset_names(
+    requested: Sequence[str],
+    *,
+    catalog: download_catalog.DatasetCatalog,
+    parser: argparse.ArgumentParser,
+) -> list[str]:
+    resolved: list[str] = []
+    for query in requested:
+        name = resolve_partial_name(
+            query,
+            catalog.datasets,
+            entity_name="downloadable dataset",
+            column_name="dataset",
+            help_hint=_DATASET_CATALOG_HINT,
+        )
+        if name is None:
+            parser.exit(status=1)
+        if name not in resolved:
+            resolved.append(name)
+    return resolved
+
+
+def _print_evaluation_dependencies(
+    names: Sequence[str],
+    *,
+    catalog: download_catalog.DatasetCatalog,
+) -> None:
+    print("Related evaluation datasets referenced by included runs:")
+    for name in names:
+        dataset = catalog.datasets[name]
+        size = sum(archive.size_bytes for archive in dataset.archives)
+        print(f"  {name:<34} {_format_download_size(size):>10}")
+
+
+def _print_transfer_plan(
+    plan,
+    *,
+    catalog: download_catalog.DatasetCatalog,
+    action: str,
+) -> None:
+    title = "Download plan" if action == "download" else "Install plan"
+    pending_label = "download" if action == "download" else "install"
+    print(f"\n{title}:\n")
+    for entry in plan.entries:
+        status = "already installed" if entry.status == "installed" else pending_label
+        print(
+            f"  {entry.name:<34} {_format_download_size(entry.size_bytes):>10}  "
+            f"[{entry.dataset.usage}; {status}]"
+        )
+
+    if plan.required_noise_models:
+        assert catalog.shared is not None and catalog.shared.noise_models is not None
+        archive = catalog.shared.noise_models.archive
+        required = ", ".join(plan.required_noise_models)
+        print("\nShared dependencies:")
+        print(
+            f"  {archive.filename:<34} {_format_download_size(archive.size_bytes):>10}  "
+            f"[required: {required}]"
+        )
+
+    if action == "download":
+        summary = download_summary(catalog, plan)
+        print(f"\nTotal download: {_format_download_size(summary.total_bytes)}")
+    else:
+        install_bytes = plan.dataset_install_bytes
+        if plan.required_noise_models:
+            assert catalog.shared is not None and catalog.shared.noise_models is not None
+            install_bytes += catalog.shared.noise_models.archive.size_bytes
+        print(f"\nTotal archives to install: {_format_download_size(install_bytes)}")
+
+
+def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.all and args.names:
+        parser.error("Dataset names cannot be combined with --all.")
+    if not args.all and not args.names:
+        parser.error("Provide one or more dataset names, or use --all.")
+
+    try:
+        catalog = download_catalog.load_catalog()
+        paths = _paths()
+        selected = (
+            sorted(catalog.datasets, key=str.casefold)
+            if args.all
+            else _resolve_download_dataset_names(args.names, catalog=catalog, parser=parser)
+        )
+
+        if not args.all and not args.no_eval:
+            related = missing_evaluation_dependencies(catalog, selected, paths=paths)
+            if related:
+                if args.with_eval:
+                    selected.extend(name for name in related if name not in selected)
+                else:
+                    print("")
+                    _print_evaluation_dependencies(related, catalog=catalog)
+                    include = prompt_yes_no(
+                        "Include these evaluation datasets? [y/N]: ",
+                        input_fn=input,
+                    )
+                    if include:
+                        selected.extend(name for name in related if name not in selected)
+                    else:
+                        print("Continuing without related evaluation datasets.")
+
+        plan = resolve_dataset_plan(catalog, selected, paths=paths)
+    except (
+        download_catalog.DatasetCatalogUnavailableError,
+        DatasetDownloadError,
+        DatasetInstallError,
+        DatasetInstallConflictError,
+        ValueError,
+    ) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    _print_transfer_plan(plan, catalog=catalog, action="download")
+    summary = download_summary(catalog, plan)
+    if summary.total_bytes == 0:
+        print("\nEverything selected is already installed.")
+        return 0
+
+    confirmed = prompt_yes_no("\nStart download? [y/N]: ", input_fn=input)
+    if not confirmed:
+        print("Download cancelled.")
+        return 0
+
+    try:
+        result = download_and_install_dataset_plan(
+            catalog,
+            plan,
+            record_id=download_catalog.DEFAULT_DATASET_RECORD_ID,
+            paths=paths,
+        )
+    except (
+        DatasetDownloadError,
+        DatasetInstallError,
+        DatasetInstallConflictError,
+        ValueError,
+    ) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    print("\nDataset download and installation complete.")
+    if result.installed:
+        print("Installed: " + ", ".join(result.installed))
+    if result.already_installed:
+        print("Already installed: " + ", ".join(result.already_installed))
+    if result.noise_models_installed:
+        print("Noise models installed: " + ", ".join(result.noise_models_installed))
+    return 0
+
+
+def _catalog_for_install_source(source_path: Path) -> download_catalog.DatasetCatalog:
+    local_catalog = (source_path if source_path.is_dir() else source_path.parent) / (
+        download_catalog.DEFAULT_DATASET_CATALOG_FILENAME
+    )
+    if local_catalog.is_file():
+        return download_catalog.load_catalog_file(local_catalog)
+    # Installing a single ZIP should still be convenient when the user downloaded
+    # only that file from Zenodo. In that case retrieve just the small catalog; no
+    # dataset archive is downloaded by the install command.
+    return download_catalog.load_catalog()
+
+
+def run_install_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    source_path = Path(args.path).expanduser()
+    try:
+        catalog = _catalog_for_install_source(source_path)
+        paths = _paths()
+        selected, source = discover_install_source(catalog, source_path)
+        plan = resolve_dataset_plan(catalog, selected, paths=paths)
+        validate_install_source(catalog, plan, source)
+        related = missing_evaluation_dependencies(catalog, selected, paths=paths)
+    except (
+        download_catalog.DatasetCatalogUnavailableError,
+        DatasetInstallError,
+        DatasetInstallConflictError,
+        ValueError,
+    ) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    _print_transfer_plan(plan, catalog=catalog, action="install")
+    if related:
+        print("\nOptional related evaluation datasets not installed:")
+        for name in related:
+            dataset = catalog.datasets[name]
+            size = sum(archive.size_bytes for archive in dataset.archives)
+            print(f"  {name:<34} {_format_download_size(size):>10}")
+
+    pending = any(entry.status == "install" for entry in plan.entries) or bool(
+        plan.required_noise_models
+    )
+    if not pending:
+        print("\nEverything selected is already installed.")
+        return 0
+
+    confirmed = prompt_yes_no("\nStart installation? [y/N]: ", input_fn=input)
+    if not confirmed:
+        print("Installation cancelled.")
+        return 0
+
+
+    try:
+        result = install_dataset_plan(
+            catalog,
+            plan,
+            source=source,
+            paths=paths,
+        )
+    except (DatasetInstallError, DatasetInstallConflictError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+
+    print("\nDataset installation complete.")
+    if result.installed:
+        print("Installed: " + ", ".join(result.installed))
+    if result.already_installed:
+        print("Already installed: " + ", ".join(result.already_installed))
+    if result.noise_models_installed:
+        print("Noise models installed: " + ", ".join(result.noise_models_installed))
+    return 0
+
+
+def _add_dataset_download_parsers(subparsers) -> None:
+    catalog_parser = subparsers.add_parser(
+        "catalog",
+        help="List datasets available from the LISAI download catalog.",
+        description="List downloadable LISAI datasets and their archive sizes.",
+    )
+    catalog_parser.set_defaults(
+        handler=lambda args, p=catalog_parser: run_catalog_from_args(args, p)
+    )
+
+    download_parser = subparsers.add_parser(
+        "download",
+        help="Download and install datasets from the LISAI dataset catalog.",
+        description=(
+            "Download one or more datasets into the configured LISAI data root. "
+            "Related evaluation datasets are optional; required noise models are "
+            "installed automatically."
+        ),
+    )
+    download_parser.add_argument(
+        "names",
+        nargs="*",
+        help="Dataset name(s) or unique partial name(s) from 'lisai datasets catalog'.",
+    )
+    download_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Download all datasets in the catalog.",
+    )
+    eval_group = download_parser.add_mutually_exclusive_group()
+    eval_group.add_argument(
+        "--with-eval",
+        action="store_true",
+        help="Include related evaluation datasets without a separate dependency prompt.",
+    )
+    eval_group.add_argument(
+        "--no-eval",
+        action="store_true",
+        help="Do not include related evaluation datasets.",
+    )
+    download_parser.set_defaults(
+        handler=lambda args, p=download_parser: run_download_from_args(args, p)
+    )
+
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Install already-downloaded dataset archive(s) into the LISAI data root.",
+        description=(
+            "Install a single dataset ZIP, or all catalogued dataset ZIPs found in a "
+            "directory. Required noise models can be taken from noise_models.zip in "
+            "the same directory or from the existing LISAI data root."
+        ),
+    )
+    install_parser.add_argument(
+        "path",
+        help="Path to one dataset ZIP or a directory containing downloaded release files.",
+    )
+    install_parser.set_defaults(
+        handler=lambda args, p=install_parser: run_install_from_args(args, p)
+    )
+
 def _add_dataset_rename_parser(subparsers):
     rename_parser = subparsers.add_parser(
         "rename",
@@ -545,6 +879,7 @@ def add_datasets_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
         handler=lambda args, p=readme_parser: run_open_readme_from_args(args, p)
     )
 
+    _add_dataset_download_parsers(dataset_subparsers)
     _add_dataset_rename_parser(dataset_subparsers)
     return parser
 
@@ -588,6 +923,7 @@ def build_parser(*, prog: str = "lisai datasets") -> argparse.ArgumentParser:
         handler=lambda args, p=readme_parser: run_open_readme_from_args(args, p)
     )
 
+    _add_dataset_download_parsers(subparsers)
     _add_dataset_rename_parser(subparsers)
     return parser
 

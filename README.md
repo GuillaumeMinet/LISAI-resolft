@@ -4,11 +4,11 @@
 
 This repository contains the code associated with our preprint:
 
-> **RESOLFT time-lapse imaging empowered by deep learning**
+> **Time-lapse RESOLFT nanoscopy empowered by deep learning**
 
 This project implements a deep learning framework to enhance RESOLFT (Reversible Saturable Optical Fluorescence Transitions) time-lapse nanoscopy.  More specifically, we use the parallelized RESOLFT implementation **MoNaLISA** together with both denoising and up-sampling approaches to enable **prolonged imaging**, or a **4-fold speed improvement**, pushing the boundaries of **live-cell nanoscopy**.
 
-> Example datasets and trained models used in the manuscript, are available from the [accompanying Zenodo repository](https://doi.org/10.5281/zenodo.22877255).
+> Example datasets and trained models used in the manuscript, are available from the [accompanying Zenodo repository](https://doi.org/10.5281/zenodo.22877255), and can be directly downloaded via lisai command line (see **Download paper datasets and models** section below).
 
 ## Package overview
 
@@ -78,6 +78,31 @@ With the default project config, the main data locations are:
 - training runs: `<data_root>/datasets/training/<dataset>/runs/<models_subfolder>/<exp_name>`
 - inference outputs: `<data_root>/inference/<source_name>/<model_name>`
 
+
+### Download paper datasets and models
+
+To start with concrete examples, you can directly use datasets available from the paper Zenodo repository.
+LISAI can browse, download and install the published datasets directly into the configured `data_root`:
+
+```bash
+lisai datasets catalog
+lisai datasets download <dataset-name>
+lisai datasets download --all
+```
+If dataset archives have already been downloaded manually from Zenodo, they can
+instead be installed from a file or folder:
+
+```bash
+lisai datasets install <path-to-archive-or-folder>
+```
+
+Published promoted models can similarly be downloaded and installed with:
+
+```bash
+lisai models catalog
+lisai models download <model-name> --install
+lisai models download --all --install
+```
 
 ## Typical workflow
 
@@ -288,6 +313,8 @@ LISAI also supports a downloadable model catalog:
 lisai models catalog
 lisai models download <model-name> --install
 ```
+
+For now, models catalog only includes models linked to the original publication and its Zenodo repository. Future version might include a shared workflow to upload models, if needs be.
 
 
 ## Concepts and configuration reference

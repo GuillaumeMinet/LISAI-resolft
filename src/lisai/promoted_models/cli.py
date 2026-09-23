@@ -107,9 +107,15 @@ def _print_download_summary(result) -> None:
     print("SHA256: verified")
 
 
-def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def _download_one_from_catalog(
+    name: str,
+    *,
+    overwrite: bool,
+    install: bool,
+    parser: argparse.ArgumentParser,
+) -> int:
     try:
-        result = download_model(args.name, overwrite=args.overwrite)
+        result = download_model(name, overwrite=overwrite)
     except DownloadConflictError as exc:
         confirmed = prompt_yes_no(
             "An existing downloaded archive does not match the catalog checksum. "
@@ -117,10 +123,10 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
             input_fn=input,
         )
         if not confirmed:
-            print("Download cancelled.")
+            print(f"Skipped model: {name}")
             return 0
         try:
-            result = download_model(args.name, overwrite=True)
+            result = download_model(name, overwrite=True)
         except (
             catalog.CatalogUnavailableError,
             DownloadIntegrityError,
@@ -142,7 +148,7 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
 
     _print_download_summary(result)
 
-    if args.install:
+    if install:
         try:
             installed = install_model_archive(result.archive_path)
         except (FileExistsError, FileNotFoundError, ValueError) as exc:
@@ -154,6 +160,44 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
         print()
         print("To install:")
         print(f"  lisai models install {result.archive_path.name}")
+    return 0
+
+
+def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.all and args.name is not None:
+        parser.error("A model name cannot be combined with --all.")
+    if not args.all and args.name is None:
+        parser.error("Provide a model name, or use --all.")
+
+    if not args.all:
+        return _download_one_from_catalog(
+            args.name,
+            overwrite=args.overwrite,
+            install=args.install,
+            parser=parser,
+        )
+
+    try:
+        models = catalog.list_models()
+    except (catalog.CatalogUnavailableError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+    if not models:
+        print("No downloadable models found.")
+        return 0
+
+    installed_names = set(load_promoted_model_registry().models) if args.install else set()
+    for index, model in enumerate(models):
+        if index:
+            print("\n" + "-" * 60 + "\n")
+        if args.install and model.name in installed_names:
+            print(f"Model already installed: {model.name}")
+            continue
+        _download_one_from_catalog(
+            model.name,
+            overwrite=args.overwrite,
+            install=args.install,
+            parser=parser,
+        )
     return 0
 
 
@@ -315,7 +359,16 @@ def _add_model_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
             "promoted-model downloads directory."
         ),
     )
-    download_parser.add_argument("name", help="Exact model name from 'lisai models catalog'.")
+    download_parser.add_argument(
+        "name",
+        nargs="?",
+        help="Exact model name from 'lisai models catalog'.",
+    )
+    download_parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Download every model in the remote catalog.",
+    )
     download_parser.add_argument(
         "--overwrite",
         action="store_true",

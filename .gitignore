@@ -23,6 +23,10 @@ graphs/*
 !graphs/utils/
 !graphs/utils/**
 
+# zenodo upload helpers scripts with private access token
+src/scripts/release/find_bucket_url.py
+src/scripts/release/zenodo_upload.py
+
 # internal lisai cache
 .lisai/
 

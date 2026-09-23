@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 from lisai.promoted_models.cli import build_parser as build_models_parser
 from lisai.runs.cli import build_parser as build_runs_parser
@@ -334,3 +335,93 @@ def test_models_download_cli_prompts_before_replacing_checksum_conflict(
     assert result == 0
     assert calls == [False, True]
     assert "Replaced the existing archive after checksum mismatch." in capsys.readouterr().out
+
+
+def test_models_download_cli_supports_all_install(monkeypatch, capsys, tmp_path):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    models = [
+        SimpleNamespace(name="model-a"),
+        SimpleNamespace(name="model-b"),
+    ]
+    monkeypatch.setattr(models_cli.catalog, "list_models", lambda: models)
+    monkeypatch.setattr(
+        models_cli,
+        "load_promoted_model_registry",
+        lambda: SimpleNamespace(models={}),
+    )
+    downloaded = []
+
+    def fake_download(name, overwrite=False):
+        downloaded.append(name)
+        archive = tmp_path / f"{name}.lisai.zip"
+        return SimpleNamespace(
+            name=name,
+            archive_path=archive,
+            archive_sha256="a" * 64,
+            status="downloaded",
+        )
+
+    monkeypatch.setattr(models_cli, "download_model", fake_download)
+    installed = []
+    monkeypatch.setattr(
+        models_cli,
+        "install_model_archive",
+        lambda path: installed.append(path.name)
+        or SimpleNamespace(
+            model=SimpleNamespace(
+                manifest=SimpleNamespace(name=path.name.removesuffix(".lisai.zip")),
+                model_dir=tmp_path / "models" / path.stem,
+            )
+        ),
+    )
+
+    assert models_cli.main(["download", "--all", "--install"]) == 0
+    assert downloaded == ["model-a", "model-b"]
+    assert installed == ["model-a.lisai.zip", "model-b.lisai.zip"]
+    output = capsys.readouterr().out
+    assert "Installed model: model-a" in output
+    assert "Installed model: model-b" in output
+
+
+def test_models_download_cli_all_install_skips_already_installed(monkeypatch, capsys):
+    from types import SimpleNamespace
+    import lisai.promoted_models.cli as models_cli
+
+    monkeypatch.setattr(
+        models_cli.catalog,
+        "list_models",
+        lambda: [SimpleNamespace(name="model-a"), SimpleNamespace(name="model-b")],
+    )
+    monkeypatch.setattr(
+        models_cli,
+        "load_promoted_model_registry",
+        lambda: SimpleNamespace(models={"model-a": object()}),
+    )
+    downloaded = []
+    monkeypatch.setattr(
+        models_cli,
+        "download_model",
+        lambda name, overwrite=False: downloaded.append(name)
+        or SimpleNamespace(
+            name=name,
+            archive_path=Path(f"{name}.lisai.zip"),
+            archive_sha256="a" * 64,
+            status="downloaded",
+        ),
+    )
+    monkeypatch.setattr(
+        models_cli,
+        "install_model_archive",
+        lambda path: SimpleNamespace(
+            model=SimpleNamespace(
+                manifest=SimpleNamespace(name="model-b"),
+                model_dir=Path("models/model-b"),
+            )
+        ),
+    )
+
+    assert models_cli.main(["download", "--all", "--install"]) == 0
+    assert downloaded == ["model-b"]
+    assert "Model already installed: model-a" in capsys.readouterr().out

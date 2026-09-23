@@ -173,15 +173,12 @@ def render_model_card(
             "## Citation & Authorship",
             "",
             "Minet, G., Ray, A., Pennacchietti, F., Coceano, G., Jug, F. & Testa, I."
-            "*RESOLFT time lapse imaging empowered by deep learning*.",
+            "*Time-lapse RESOLFT nanoscopy empowered by deep learning*.",
             "",
             "Training datasets and trained models: "
-            "Zenodo, DOI: 10.5281/zenodo.17132698",
+            "Zenodo, DOI: 10.5281/zenodo.22877255",
             "",
             "Please cite the associated publication once the final journal citation and DOI become available.",
-            "## Authors and license",
-            "",
-            "TODO: Add authorship and license information.",
             "",
         ]
     )
