@@ -7,6 +7,8 @@ import pytest
 
 import lisai.training.run_training as run_training_mod
 from lisai.config.models.inference import EvaluateDefaults
+from lisai.config import settings
+from lisai.infra.paths import Paths
 from lisai.training.orchestration import post_training as post_training_mod
 from lisai.training.orchestration import run_monitor as run_monitor_mod
 from lisai.runs.io import read_run_metadata
@@ -105,7 +107,7 @@ def _make_runtime(*, writer, logger, run_dir: Path):
         console_filter="console_filter",
         file_filter="file_filter",
         logger=logger,
-        paths="paths",
+        paths=Paths(settings),
     )
 
 
@@ -143,7 +145,7 @@ def test_run_training_happy_path_builds_and_trains(monkeypatch: pytest.MonkeyPat
         return trainer
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", fake_get_trainer)
 
@@ -152,7 +154,7 @@ def test_run_training_happy_path_builds_and_trains(monkeypatch: pytest.MonkeyPat
     assert out is trainer
     assert trainer.train_calls == 1
     assert writer.close_calls == 1
-    assert captured["build_model_args"] == (cfg, "cpu", "paths", {"data_mean": 0.0})
+    assert captured["build_model_args"] == (cfg, "cpu", runtime.paths, {"data_mean": 0.0})
     assert captured["trainer_kwargs"]["architecture"] == "unet"
     assert captured["trainer_kwargs"]["model"] == "model_obj"
     assert captured["trainer_kwargs"]["train_loader"] == "train_loader"
@@ -196,7 +198,7 @@ def test_run_training_does_not_remap_unexpected_trainer_exceptions(
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
 
@@ -224,7 +226,7 @@ def test_run_training_logs_traceback_for_outer_orchestration_failure(
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: DummyTrainer())
 
@@ -255,7 +257,7 @@ def test_run_training_auto_saves_loss_plot_on_completion(monkeypatch: pytest.Mon
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(
@@ -292,7 +294,7 @@ def test_run_training_auto_saves_loss_plot_on_interrupted_outcome(
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(
@@ -326,7 +328,7 @@ def test_run_training_skips_auto_loss_plot_on_outer_keyboard_interrupt_exception
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: DummyTrainer())
     monkeypatch.setattr(
@@ -369,7 +371,7 @@ def test_run_training_auto_saves_loss_plot_on_failure_and_reraises(
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(
@@ -403,7 +405,7 @@ def test_run_training_auto_save_failure_does_not_break_training(
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(
@@ -433,7 +435,7 @@ def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatc
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     eval_cfg = EvaluateDefaults()
@@ -472,7 +474,7 @@ def test_run_training_prompts_before_post_training_evaluation_on_interrupt(monke
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(post_training_mod, "_prompt_yes_no", lambda prompt: True)
@@ -507,7 +509,7 @@ def test_run_training_skips_post_training_evaluation_when_interrupt_prompt_decli
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
     monkeypatch.setattr(post_training_mod, "_prompt_yes_no", lambda prompt: False)
@@ -539,7 +541,7 @@ def test_run_training_writes_and_finalizes_run_metadata_on_completion(monkeypatc
         )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", fake_get_trainer)
 
@@ -590,7 +592,7 @@ def test_run_training_finalizes_run_metadata_as_stopped(monkeypatch: pytest.Monk
         )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", fake_get_trainer)
 
@@ -627,7 +629,7 @@ def test_run_training_finalizes_run_metadata_as_failed(monkeypatch: pytest.Monke
         )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", fake_get_trainer)
 
@@ -682,7 +684,7 @@ def test_run_training_persists_peak_gpu_memory_stats_when_cuda_available(
             return 10 * 1024 * 1024
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", fake_get_trainer)
     monkeypatch.setattr(run_monitor_mod.torch, "cuda", FakeCuda)
@@ -721,7 +723,7 @@ def test_run_training_does_not_retry_retryable_hdn_divergence(
     )
 
     monkeypatch.setattr(run_training_mod, "resolve_config", lambda path, *, stg: cfg)
-    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c: runtime)
+    monkeypatch.setattr(run_training_mod, "initialize_runtime", lambda c, *, paths: runtime)
     monkeypatch.setattr(run_training_mod, "setup", fake_setup)
     monkeypatch.setattr(run_training_mod, "get_trainer", lambda **kwargs: trainer)
 

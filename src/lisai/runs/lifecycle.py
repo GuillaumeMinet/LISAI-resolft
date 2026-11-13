@@ -29,9 +29,9 @@ from .schema import (
 _PATHS = Paths(settings)
 
 
-def stored_run_path(run_dir: str | Path) -> str:
+def stored_run_path(run_dir: str | Path, *, paths: Paths | None = None) -> str:
     path = Path(run_dir).resolve()
-    data_root = _PATHS.data_root()
+    data_root = (_PATHS if paths is None else paths).data_root()
 
     try:
         return path.relative_to(data_root).as_posix()
@@ -43,6 +43,7 @@ def create_run_metadata(
     run_dir: str | Path,
     *,
     dataset: str,
+    paths: Paths | None = None,
     model_subfolder: str | None = None,
     max_epoch: int | None = None,
     group_path: str | None = None,
@@ -54,7 +55,7 @@ def create_run_metadata(
     if normalized_model_subfolder is None:
         normalized_model_subfolder = run_dir.parent.name.strip() or "unknown_model_subfolder"
     group_path = group_path if group_path is not None else group_path_from_model_subfolder(normalized_model_subfolder)
-    path_text = stored_run_path(run_dir)
+    path_text = stored_run_path(run_dir, paths=paths)
     now = utc_now()
     existing = _read_existing_metadata(run_dir) if preserve_existing else None
 

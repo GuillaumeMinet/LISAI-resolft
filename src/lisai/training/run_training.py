@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from lisai.config import resolve_config, resolve_config_dict
 from lisai.config.progress import resolve_progress_bar
 from lisai.config.settings import Settings, load_default_settings
+from lisai.infra.paths import Paths
 from lisai.runs import count_trainable_parameters
 
 from . import setup
@@ -72,6 +73,7 @@ def _setup_training(cfg, runtime, monitor: RunMonitor):
 
         trainer = get_trainer(
             architecture=cfg.model.architecture,
+            paths=runtime.paths,
             model=model,
             train_loader=prepared_data.train_loader,
             val_loader=prepared_data.val_loader,
@@ -157,7 +159,7 @@ def run_training(
     return run_training_from_resolved_config(
         resolve_config(config_path, stg=stg),
         progress_bar=progress_bar,
-        settings=stg,
+        paths=Paths(stg),
     )
 
 
@@ -169,20 +171,19 @@ def run_training_from_config_dict(
     return run_training_from_resolved_config(
         resolve_config_dict(config, stg=stg),
         progress_bar=progress_bar,
-        settings=stg,
+        paths=Paths(stg),
     )
 
 
 def run_training_from_resolved_config(
     cfg: "ResolvedExperiment",
     *,
+    paths: Paths,
     progress_bar: bool | None = None,
-    settings: Settings | None = None,
 ):
-    """Run training from a resolved experiment config and return the trainer instance."""
-    stg = load_default_settings() if settings is None else settings
-    _apply_progress_bar_preference(cfg, progress_bar, stg=stg)
-    runtime = initialize_runtime(cfg)
+    """Train a resolved experiment with the explicit operation-scoped paths."""
+    _apply_progress_bar_preference(cfg, progress_bar, stg=paths.settings)
+    runtime = initialize_runtime(cfg, paths=paths)
     monitor = RunMonitor(cfg, runtime)
     monitor.install()
 

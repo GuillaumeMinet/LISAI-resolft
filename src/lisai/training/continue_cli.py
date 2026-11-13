@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Sequence
 
-from lisai.config import settings
+from lisai.config.settings import Settings, load_default_settings
+from lisai.infra.paths import Paths
 from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.runs.cli import add_run_filter_arguments
 from lisai.runs.listing import (
     is_run_likely_active,
     is_run_likely_stale,
 )
-from lisai.runs.scanner import DiscoveredRun
+from lisai.runs.scanner import DiscoveredRun, scan_runs
 from lisai.runs.selection import resolve_discovered_run_selector
 
 from .run_training import run_training_from_config_dict
@@ -31,13 +32,19 @@ def continue_run(
     stderr=None,
     now: datetime | None = None,
     progress_bar: bool | None = None,
+    settings: Settings | None = None,
 ) -> int:
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
     in_stream = sys.stdin if stdin is None else stdin
+    stg = load_default_settings() if settings is None else settings
+    paths = Paths(stg)
+    heartbeat_minutes = stg.project_cfg.run_tracking.active_heartbeat_timeout_minutes
+    fallback_timeout = timedelta(minutes=heartbeat_minutes)
 
     selected_run = resolve_discovered_run_selector(
         selector=selector,
+        scan_result=scan_runs(paths=paths),
         run_id=run_id,
         dataset=dataset,
         model_subfolder=model_subfolder,
@@ -48,8 +55,8 @@ def continue_run(
     if selected_run is None:
         return 1
 
-    if is_run_likely_active(selected_run, now=now):
-        timeout_minutes = settings.project_cfg.run_tracking.active_heartbeat_timeout_minutes
+    if is_run_likely_active(selected_run, now=now, fallback_timeout=fallback_timeout):
+        timeout_minutes = heartbeat_minutes
         if not force:
             print(
                 "Selected run still appears active based on a recent heartbeat. "
@@ -63,7 +70,7 @@ def continue_run(
             f"(heartbeat timeout: {timeout_minutes} minutes).",
             file=err,
         )
-    elif is_run_likely_stale(selected_run, now=now):
+    elif is_run_likely_stale(selected_run, now=now, fallback_timeout=fallback_timeout):
         print(
             "warning: selected run appears stale (running + not closed cleanly + old heartbeat). "
             "Continuing will reuse the same run directory.",
@@ -130,9 +137,9 @@ def continue_run(
 
     config = _build_continue_training_config(selected_run)
     if progress_bar is None:
-        run_training_from_config_dict(config)
+        run_training_from_config_dict(config, settings=stg)
     else:
-        run_training_from_config_dict(config, progress_bar=progress_bar)
+        run_training_from_config_dict(config, settings=stg, progress_bar=progress_bar)
     return 0
 
 
@@ -157,6 +164,7 @@ def run_from_args(args: argparse.Namespace) -> int:
         assume_yes=args.yes,
         force=args.force,
         progress_bar=getattr(args, "progress_bar", None),
+        settings=load_default_settings(),
     )
 
 

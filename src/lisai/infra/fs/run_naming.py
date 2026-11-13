@@ -1,15 +1,13 @@
 import re
 from pathlib import Path
 
-from lisai.config.settings import settings
 
-
-def run_dir_index_width() -> int:
+def run_dir_index_width(naming) -> int:
     """
     Return the number of digits (aka the "width") used for run directory indexes,
     so width=2 if we use "00, 01, 02, ...", but width=3 if we use "000, 001, 002,..."
     """
-    return int(getattr(settings.NAMING, "run_dir_index_width", 2))
+    return int(getattr(naming, "run_dir_index_width", 2))
 
 
 def format_run_dir_name(run_name: str, run_index: int, *, width: int | None = None) -> str:
@@ -21,7 +19,7 @@ def format_run_dir_name(run_name: str, run_index: int, *, width: int | None = No
     if run_index < 0:
         raise ValueError("run_index must be >= 0.")
 
-    digits = run_dir_index_width() if width is None else int(width)
+    digits = 2 if width is None else int(width)
     if digits < 1:
         raise ValueError("run_dir index width must be >= 1.")
     return f"{base_name}_{run_index:0{digits}d}"
@@ -74,7 +72,7 @@ def allocate_run_dir_name(save_dir: Path, run_name: str, *, width: int | None = 
     return format_run_dir_name(run_name, run_index, width=width), run_index
 
 
-def get_unique_exp_name(save_dir: Path, exp_name: str) -> str:
+def get_unique_exp_name(save_dir: Path, exp_name: str, *, name_format: str) -> str:
     """Return a unique non-run experiment name by scanning ``save_dir``."""
     save_dir = Path(save_dir)
 
@@ -85,7 +83,7 @@ def get_unique_exp_name(save_dir: Path, exp_name: str) -> str:
     if not base_exp_path.exists():
         return exp_name
 
-    fmt = settings.NAMING.exp_name_format
+    fmt = name_format
 
     existing_names = [p.name for p in save_dir.iterdir() if p.is_dir()]
     max_id = 0

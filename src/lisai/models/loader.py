@@ -8,7 +8,6 @@ from typing import Protocol
 import torch
 
 from lisai.infra.paths import Paths
-from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 from lisai.infra.paths.checkpoint_resolution import (
     resolve_checkpoint_path as resolve_existing_checkpoint_path,
 )
@@ -83,12 +82,11 @@ def _compute_img_shape(patch_size: int | None, downsamp_factor: int | None) -> i
 
 
 
-def _origin_checkpoint_path(spec: TrainingModelLoadSpec) -> Path:
+def _origin_checkpoint_path(spec: TrainingModelLoadSpec, *, paths: Paths) -> Path:
     if spec.origin_run_dir is None:
         raise ValueError("origin_run_dir is required to load a checkpoint.")
 
     origin_dir = Path(spec.origin_run_dir)
-    paths = Paths(_legacy_settings)
 
     if spec.checkpoint_filename:
         return paths.checkpoint_path(
@@ -131,6 +129,7 @@ def _origin_checkpoint_path(spec: TrainingModelLoadSpec) -> Path:
 def prepare_model_for_training(
     *,
     spec: TrainingModelLoadSpec,
+    paths: Paths,
     device: torch.device,
     model_norm_prm: dict | None = None,
     noise_model=None,
@@ -153,7 +152,7 @@ def prepare_model_for_training(
 
     if should_load:
         ckpt_method = spec.checkpoint_method or "state_dict"
-        origin_ckpt = _origin_checkpoint_path(spec)
+        origin_ckpt = _origin_checkpoint_path(spec, paths=paths)
         logger.info(f"Loading checkpoint from: {origin_ckpt}")
 
         if not origin_ckpt.exists():
@@ -178,7 +177,7 @@ def prepare_model_for_training(
 
     state = None
     if should_load:
-        origin_ckpt = _origin_checkpoint_path(spec)
+        origin_ckpt = _origin_checkpoint_path(spec, paths=paths)
         loaded = torch.load(origin_ckpt, map_location=device, weights_only=True)
 
         if isinstance(loaded, dict) and "model_state_dict" in loaded:

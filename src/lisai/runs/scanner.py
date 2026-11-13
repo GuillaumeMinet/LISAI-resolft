@@ -54,16 +54,17 @@ class ScanResults:
 _PATHS = Paths(settings)
 
 
-def default_datasets_root() -> Path:
+def default_datasets_root(*, paths: Paths | None = None) -> Path:
     """Return the canonical root scanned for training runs."""
-    return _PATHS.training_datasets_root()
+    return (_PATHS if paths is None else paths).training_datasets_root()
 
 
-def scan_runs(datasets_root: str | Path | None = None) -> ScanResults:
+def scan_runs(datasets_root: str | Path | None = None, *, paths: Paths | None = None) -> ScanResults:
+    chosen_paths = _PATHS if paths is None else paths
     use_canonical_root = datasets_root is None
-    root = default_datasets_root() if use_canonical_root else Path(datasets_root)
+    root = default_datasets_root(paths=chosen_paths) if use_canonical_root else Path(datasets_root)
     root = root.resolve()
-    stored_path_root = _PATHS.data_root() if use_canonical_root else root.parent
+    stored_path_root = chosen_paths.data_root() if use_canonical_root else root.parent
     if not root.exists():
         return ScanResults(runs=(), invalid=())
 
@@ -74,13 +75,14 @@ def scan_runs(datasets_root: str | Path | None = None) -> ScanResults:
     for meta_path in iter_run_metadata_paths(
         root,
         metadata_filename=RUN_METADATA_FILENAME,
-        paths=_PATHS,
+        paths=chosen_paths,
     ):
         try:
             inferred = infer_run_location(
                 meta_path,
                 root,
                 stored_path_root=stored_path_root,
+                paths=chosen_paths,
             )
             metadata = read_run_metadata(meta_path)
             mismatches = metadata_path_mismatches(metadata, inferred)
@@ -132,12 +134,13 @@ def infer_run_location(
     datasets_root: str | Path,
     *,
     stored_path_root: str | Path | None = None,
+    paths: Paths | None = None,
 ) -> InferredRunLocation:
     return infer_run_location_from_paths(
         metadata_path,
         datasets_root,
         metadata_filename=RUN_METADATA_FILENAME,
-        run_container_dirname=_PATHS.run_container_dirname(),
+        run_container_dirname=(_PATHS if paths is None else paths).run_container_dirname(),
         stored_path_root=stored_path_root,
     )
 

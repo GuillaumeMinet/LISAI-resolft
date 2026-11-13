@@ -12,6 +12,7 @@ import torch
 
 from lisai.training.errors import HDNDivergenceError
 from lisai.config.models import ResolvedExperiment
+from lisai.infra.paths import Paths
 from lisai.training.checkpointing import CheckpointManager
 from lisai.runs.lifecycle import update_run_recovery_info
 from lisai.runs.io import read_run_metadata
@@ -62,6 +63,7 @@ class BaseTrainer(ABC):
         val_loader,
         device,
         cfg: ResolvedExperiment,
+        paths: Paths,
         run_dir,
         volumetric=False,
         writer=None,
@@ -77,6 +79,7 @@ class BaseTrainer(ABC):
         self.device = device
 
         self.cfg = cfg
+        self.paths = paths
         self.mode = cfg.experiment.mode
         self.volumetric = volumetric
 
@@ -169,6 +172,7 @@ class BaseTrainer(ABC):
             self.run_dir,
             self.saving_prm,
             is_lvae=self.is_lvae,
+            paths=self.paths,
         )
 
         self._apply_recovery_overrides()

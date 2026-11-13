@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import torch
 
-from lisai.config import settings
 from lisai.infra.fs import create_tb_folder
 from lisai.infra.logging import setup_logger
 from lisai.infra.paths import Paths
@@ -49,7 +48,7 @@ class TrainingRuntime:
 
 
 
-def initialize_runtime(cfg: ResolvedExperiment) -> TrainingRuntime:
+def initialize_runtime(cfg: ResolvedExperiment, *, paths: Paths) -> TrainingRuntime:
     """Build the live runtime infrastructure needed by the training process.
 
     From the input ``cfg``, we derive:
@@ -63,7 +62,6 @@ def initialize_runtime(cfg: ResolvedExperiment) -> TrainingRuntime:
     """
     from lisai.training.setup.run_dir import prepare_run_dir
 
-    paths = Paths(settings)
     is_volumetric = cfg.model.architecture == "unet3d" # used for shape of val images callbacks
 
     # initialize runtime object
@@ -133,7 +131,10 @@ def initialize_runtime(cfg: ResolvedExperiment) -> TrainingRuntime:
                 dataset_name=cfg.data.dataset_name,
                 tensorboard_subfolder=cfg.routing.tensorboard_subfolder or cfg.routing.models_subfolder,
             )
-            tb_folder, _ = create_tb_folder(tb_root, run_name, exist_ok=(run_dir is not None))
+            tb_folder, _ = create_tb_folder(
+                tb_root, run_name, exist_ok=(run_dir is not None),
+                name_format=paths.settings.NAMING.exp_name_format,
+            )
             writer = SummaryWriter(log_dir=str(tb_folder))
 
     runtime.writer = writer

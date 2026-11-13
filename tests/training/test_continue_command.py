@@ -82,8 +82,8 @@ def test_root_cli_continue_dispatches_unique_match_and_builds_continue_config(mo
     )
 
     captured = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"cfg": cfg}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"cfg": cfg}))
 
     exit_code = root_cli.main([
         "continue",
@@ -117,7 +117,7 @@ def test_root_cli_continue_passes_progress_bar_override(monkeypatch, tmp_path):
     )
 
     captured = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
     monkeypatch.setattr(
         continue_cli,
         "run_training_from_config_dict",
@@ -135,7 +135,8 @@ def test_root_cli_continue_passes_progress_bar_override(monkeypatch, tmp_path):
 
     assert exit_code == 0
     assert captured["cfg"]["load_model"]["model_full_path"] == str(run_dir.resolve())
-    assert captured["kwargs"] == {"progress_bar": False}
+    assert captured["kwargs"]["progress_bar"] is False
+    assert captured["kwargs"]["settings"] is not None
 
 
 def test_continue_reports_multiple_matches_and_requests_disambiguation(monkeypatch, tmp_path):
@@ -158,7 +159,7 @@ def test_continue_reports_multiple_matches_and_requests_disambiguation(monkeypat
 
     stdout = io.StringIO()
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
 
     exit_code = continue_cli.continue_run(
         selector=selector,
@@ -198,8 +199,8 @@ def test_continue_ambiguous_matches_allow_interactive_line_selection(monkeypatch
     captured = {}
     stdout = io.StringIO()
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"cfg": cfg}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"cfg": cfg}))
 
     exit_code = continue_cli.continue_run(
         selector=selector,
@@ -228,8 +229,8 @@ def test_continue_allows_run_id_override(monkeypatch, tmp_path):
     )
 
     captured = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"cfg": cfg}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"cfg": cfg}))
 
     exit_code = continue_cli.continue_run(
         run_id=run_id,
@@ -257,8 +258,8 @@ def test_continue_requires_yes_when_confirmation_is_non_interactive(monkeypatch,
     captured = {"called": False}
     stdout = io.StringIO()
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"called": True}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"called": True}))
 
     exit_code = continue_cli.continue_run(
         selector=selector,
@@ -289,8 +290,8 @@ def test_continue_blocks_recently_active_runs_without_force(monkeypatch, tmp_pat
 
     captured = {"called": False}
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"called": True}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"called": True}))
     monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
 
     exit_code = continue_cli.continue_run(
@@ -326,8 +327,8 @@ def test_continue_force_allows_recently_active_runs(monkeypatch, tmp_path):
 
     captured = {}
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"cfg": cfg}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"cfg": cfg}))
     monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
 
     exit_code = continue_cli.continue_run(
@@ -364,8 +365,8 @@ def test_continue_requires_force_for_non_interactive_path_inconsistency(monkeypa
 
     captured = {"called": False}
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"called": True}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"called": True}))
 
     exit_code = continue_cli.continue_run(
         selector=selector,
@@ -399,8 +400,8 @@ def test_continue_allows_non_interactive_path_inconsistency_with_yes_and_force(m
 
     captured = {"called": False}
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"called": True}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"called": True}))
 
     exit_code = continue_cli.continue_run(
         selector=selector,
@@ -434,8 +435,8 @@ def test_continue_allows_stale_running_runs_after_confirmation(monkeypatch, tmp_
 
     captured = {}
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"cfg": cfg}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"cfg": cfg}))
     monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
 
     exit_code = continue_cli.continue_run(
@@ -465,8 +466,8 @@ def test_continue_failed_run_uses_generic_confirmation_prompt(monkeypatch, tmp_p
 
     captured = {}
     stdout = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"cfg": cfg}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"cfg": cfg}))
 
     exit_code = continue_cli.continue_run(
         selector=selector,
@@ -494,8 +495,8 @@ def test_continue_failed_run_non_interactive_requires_yes(monkeypatch, tmp_path)
 
     captured = {"called": False}
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg: captured.update({"called": True}))
+    monkeypatch.setattr(continue_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root))
+    monkeypatch.setattr(continue_cli, "run_training_from_config_dict", lambda cfg, **kwargs: captured.update({"called": True}))
 
     exit_code = continue_cli.continue_run(
         selector=selector,

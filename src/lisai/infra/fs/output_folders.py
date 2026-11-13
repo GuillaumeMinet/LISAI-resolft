@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lisai.config.settings import settings
 
 IfExistsPolicy = Literal["error", "numbered", "overwrite", "reuse"]
 OutputFolderAction = Literal["created", "numbered", "overwritten", "reused"]
@@ -51,6 +50,7 @@ def prepare_output_folder(
     *,
     if_exists_policy: IfExistsPolicy,
     parent_policy: ParentPolicy = "create",
+    numbering_format: str = "{name}_{id:02d}",
 ) -> OutputFolderResolution:
     """Prepare an output directory according to a reusable existence policy."""
     from .folders import ensure_folder
@@ -94,7 +94,7 @@ def prepare_output_folder(
             requested_existed=True,
         )
 
-    numbered = _next_numbered_path(requested.parent, requested.name)
+    numbered = _next_numbered_path(requested.parent, requested.name, name_format=numbering_format)
     resolved = ensure_folder(numbered, mode="strict")
     return OutputFolderResolution(
         requested=requested,
@@ -112,8 +112,8 @@ def _prepare_parent(parent: Path, *, parent_policy: ParentPolicy) -> None:
     ensure_folder(parent, mode="exist_ok")
 
 
-def _next_numbered_path(parent: Path, name: str) -> Path:
-    fmt = settings.NAMING.exp_name_format
+def _next_numbered_path(parent: Path, name: str, *, name_format: str) -> Path:
+    fmt = name_format
     max_id = 0
 
     for entry in parent.iterdir():

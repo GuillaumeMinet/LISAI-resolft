@@ -61,6 +61,7 @@ class RunMonitor:
             "initialization",
             create_run_metadata,
             runtime.run_dir,
+            paths=runtime.paths,
             dataset=cfg.data.dataset_name,
             model_subfolder=model_subfolder,
             max_epoch=getattr(cfg.training, "n_epochs", None),

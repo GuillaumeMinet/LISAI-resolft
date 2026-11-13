@@ -61,6 +61,8 @@ def test_initialize_runtime_falls_back_to_cpu_and_builds_validation_callback(
     file_filter = SimpleNamespace(enable=True)
 
     class FakePaths:
+        settings = SimpleNamespace(NAMING=SimpleNamespace(exp_name_format="{name}_{id:02d}"))
+
         def log_file_path(self, *, run_dir):
             return Path(run_dir) / "train.log"
 
@@ -92,7 +94,7 @@ def test_initialize_runtime_falls_back_to_cpu_and_builds_validation_callback(
         }
         return fake_logger, console_filter, file_filter
 
-    monkeypatch.setattr(runtime_mod, "Paths", lambda _settings: FakePaths())
+
     monkeypatch.setattr(run_dir_mod, "prepare_run_dir", lambda cfg, ctx: (run_dir, "exp_unique"))
     monkeypatch.setattr(runtime_mod, "setup_logger", fake_setup_logger)
     monkeypatch.setattr(runtime_mod.torch.cuda, "is_available", lambda: False)
@@ -106,7 +108,7 @@ def test_initialize_runtime_falls_back_to_cpu_and_builds_validation_callback(
         validation_freq=7,
     )
 
-    ctx = runtime_mod.initialize_runtime(cfg)
+    ctx = runtime_mod.initialize_runtime(cfg, paths=FakePaths())
 
     assert ctx.run_name == "exp_unique"
     assert ctx.run_dir == run_dir
@@ -151,6 +153,8 @@ def test_initialize_runtime_creates_tensorboard_writer_and_tensorboard_callback(
     fake_tb_module.SummaryWriter = FakeSummaryWriter
 
     class FakePaths:
+        settings = SimpleNamespace(NAMING=SimpleNamespace(exp_name_format="{name}_{id:02d}"))
+
         def log_file_path(self, *, run_dir):
             return Path(run_dir) / "train.log"
 
@@ -186,16 +190,17 @@ def test_initialize_runtime_creates_tensorboard_writer_and_tensorboard_callback(
         }
         return fake_logger, console_filter, file_filter
 
-    def fake_create_tb_folder(root, exp_name, exist_ok):
+    def fake_create_tb_folder(root, exp_name, exist_ok, *, name_format):
         captured["create_tb_folder"] = {
             "root": Path(root),
             "exp_name": exp_name,
             "exist_ok": exist_ok,
+            "name_format": name_format,
         }
         return tb_folder, "exp_unique"
 
     monkeypatch.setitem(sys.modules, "torch.utils.tensorboard", fake_tb_module)
-    monkeypatch.setattr(runtime_mod, "Paths", lambda _settings: FakePaths())
+
     monkeypatch.setattr(run_dir_mod, "prepare_run_dir", lambda cfg, ctx: (run_dir, "exp_unique"))
     monkeypatch.setattr(runtime_mod, "setup_logger", fake_setup_logger)
     monkeypatch.setattr(runtime_mod, "create_tb_folder", fake_create_tb_folder)
@@ -211,7 +216,7 @@ def test_initialize_runtime_creates_tensorboard_writer_and_tensorboard_callback(
         validation_images=True,
     )
 
-    ctx = runtime_mod.initialize_runtime(cfg)
+    ctx = runtime_mod.initialize_runtime(cfg, paths=FakePaths())
 
     assert isinstance(ctx.writer, FakeSummaryWriter)
     assert Path(ctx.writer.log_dir) == tb_folder
@@ -227,5 +232,6 @@ def test_initialize_runtime_creates_tensorboard_writer_and_tensorboard_callback(
         "root": tb_root,
         "exp_name": "exp_unique",
         "exist_ok": True,
+        "name_format": "{name}_{id:02d}",
     }
     assert captured["setup_logger"]["file_enabled"] is False

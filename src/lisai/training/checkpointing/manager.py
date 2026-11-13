@@ -5,19 +5,18 @@ from pathlib import Path
 
 import torch
 
-from lisai.config import settings
 from lisai.infra.paths import Paths, model_filename
 
 
 class CheckpointManager:
-    def __init__(self, run_dir: Path | None, saving_prm: dict, *, is_lvae: bool = False):
+    def __init__(self, run_dir: Path | None, saving_prm: dict, *, paths: Paths, is_lvae: bool = False):
         self.run_dir = Path(run_dir) if run_dir is not None else None
         self.saving_prm = saving_prm or {}
         self.is_lvae = is_lvae
 
         self.enabled = self.run_dir is not None and self.saving_prm.get("enabled", True)
 
-        self.paths = Paths(settings)
+        self.paths = paths
 
         self.checkpoints_dir = None
         self.loss_file = None

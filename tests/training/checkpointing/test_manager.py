@@ -19,7 +19,7 @@ class FakePaths:
 
 
 def test_checkpoint_manager_disabled_without_run_dir():
-    cm = manager_mod.CheckpointManager(run_dir=None, saving_prm={"enabled": True})
+    cm = manager_mod.CheckpointManager(run_dir=None, saving_prm={"enabled": True}, paths=FakePaths(None))
 
     assert cm.enabled is False
     assert cm.checkpoints_dir is None
@@ -30,7 +30,7 @@ def test_update_loss_file_standard_format(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(manager_mod, "Paths", FakePaths)
     run_dir = tmp_path / "run_standard"
 
-    cm = manager_mod.CheckpointManager(run_dir=run_dir, saving_prm={"enabled": True}, is_lvae=False)
+    cm = manager_mod.CheckpointManager(run_dir=run_dir, saving_prm={"enabled": True}, paths=FakePaths(None), is_lvae=False)
     cm.update_loss_file(epoch=0, train_metrics={"loss": 1.0}, val_metrics={"loss": 2.0})
     cm.update_loss_file(epoch=1, train_metrics={"loss": 0.8}, val_metrics={"loss": 1.5})
 
@@ -48,7 +48,7 @@ def test_update_loss_file_lvae_format(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(manager_mod, "Paths", FakePaths)
     run_dir = tmp_path / "run_lvae"
 
-    cm = manager_mod.CheckpointManager(run_dir=run_dir, saving_prm={"enabled": True}, is_lvae=True)
+    cm = manager_mod.CheckpointManager(run_dir=run_dir, saving_prm={"enabled": True}, paths=FakePaths(None), is_lvae=True)
     cm.update_loss_file(
         epoch=3,
         train_metrics={"loss": 0.5, "recons_loss": 0.3, "kl_loss": 0.2},
@@ -77,6 +77,7 @@ def test_save_state_dict_writes_best_and_last_and_cleans_best_loss(
 
     cm = manager_mod.CheckpointManager(
         run_dir=tmp_path / "run_state",
+        paths=FakePaths(None),
         saving_prm={"enabled": True, "state_dict": True, "entire_model": False, "overwrite_best": True},
     )
     state_dict = {"epoch": 5, "model_state_dict": {"w": 1}}
@@ -105,6 +106,7 @@ def test_save_entire_model_uses_epoch_name_when_not_overwriting_best(
 
     cm = manager_mod.CheckpointManager(
         run_dir=tmp_path / "run_full",
+        paths=FakePaths(None),
         saving_prm={"enabled": True, "state_dict": False, "entire_model": True, "overwrite_best": False},
     )
 

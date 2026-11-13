@@ -75,10 +75,10 @@ def create_run_dir(paths: LisaiPaths, ds_name: str, exp_name: str, subfolder: st
     ensure_folder(runs_root,mode="exist_ok")
 
     if overwrite:
-        final_name = format_run_dir_name(exp_name, 0, width=run_dir_index_width())
+        final_name = format_run_dir_name(exp_name, 0, width=run_dir_index_width(paths.settings.NAMING))
         if_exists_policy = "overwrite"
     else:
-        final_name, _ = allocate_run_dir_name(runs_root, exp_name, width=run_dir_index_width())
+        final_name, _ = allocate_run_dir_name(runs_root, exp_name, width=run_dir_index_width(paths.settings.NAMING))
         if_exists_policy = "error"
 
     final_run_dir = runs_root / final_name
@@ -86,7 +86,7 @@ def create_run_dir(paths: LisaiPaths, ds_name: str, exp_name: str, subfolder: st
     return resolution.path, final_name
 
 
-def create_tb_folder(tb_folder: Path, exp_name: str, exist_ok: bool = True):
+def create_tb_folder(tb_folder: Path, exp_name: str, exist_ok: bool = True, *, name_format: str):
     """
     Creates tensorboard folder. If exist_ok is False, we keep exp_name as given,
     otherwise we auto-increment it to have unique folder name. 
@@ -100,11 +100,12 @@ def create_tb_folder(tb_folder: Path, exp_name: str, exist_ok: bool = True):
     tb_folder = Path(tb_folder)
 
     if not exist_ok:
-        exp_name = get_unique_exp_name(tb_folder, exp_name)
+        exp_name = get_unique_exp_name(tb_folder, exp_name, name_format=name_format)
 
     path = tb_folder / exp_name
     resolution = prepare_output_folder(
         path,
         if_exists_policy="reuse" if exist_ok else "error",
+        numbering_format=name_format,
     )
     return resolution.path, exp_name

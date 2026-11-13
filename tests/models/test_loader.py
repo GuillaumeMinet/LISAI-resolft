@@ -8,6 +8,8 @@ import torch
 
 from lisai.models import loader
 from lisai.models.params import AnyModelParams, UNetParams
+from lisai.config import settings
+from lisai.infra.paths import Paths
 
 
 @dataclass(frozen=True)
@@ -60,7 +62,6 @@ def test_origin_checkpoint_path_prefers_explicit_filename(monkeypatch: pytest.Mo
             calls["kwargs"] = kwargs
             return Path(kwargs["run_dir"]) / "checkpoints" / kwargs["model_name"]
 
-    monkeypatch.setattr(loader, "Paths", FakePaths)
 
     spec = _base_spec(
         mode="continue_training",
@@ -70,7 +71,7 @@ def test_origin_checkpoint_path_prefers_explicit_filename(monkeypatch: pytest.Mo
         checkpoint_selector="last",
     )
 
-    out = loader._origin_checkpoint_path(spec)
+    out = loader._origin_checkpoint_path(spec, paths=FakePaths(None))
 
     assert out.name == "manual_checkpoint.pt"
     assert calls["init_called"] is True
@@ -99,7 +100,6 @@ def test_origin_checkpoint_path_best_falls_back_to_highest_epoch_checkpoint(
                 name = f"model_{middle}.pt"
             return run_dir / "checkpoints" / name
 
-    monkeypatch.setattr(loader, "Paths", FakePaths)
     checkpoints = tmp_path / "origin" / "checkpoints"
     checkpoints.mkdir(parents=True)
     (checkpoints / "model_epoch_3_state_dict.pt").write_bytes(b"old-best")
@@ -113,7 +113,7 @@ def test_origin_checkpoint_path_best_falls_back_to_highest_epoch_checkpoint(
         checkpoint_selector="best",
     )
 
-    assert loader._origin_checkpoint_path(spec) == expected
+    assert loader._origin_checkpoint_path(spec, paths=FakePaths(None)) == expected
 
 
 
@@ -121,7 +121,7 @@ def test_prepare_model_for_training_requires_architecture():
     spec = _base_spec(architecture="")
 
     with pytest.raises(ValueError, match="architecture"):
-        loader.prepare_model_for_training(spec=spec, device=torch.device("cpu"))
+        loader.prepare_model_for_training(spec=spec, paths=Paths(settings), device=torch.device("cpu"))
 
 
 
@@ -138,7 +138,7 @@ def test_prepare_model_for_training_full_model_load_returns_loaded_object(
         checkpoint_method="full_model",
     )
 
-    monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec: checkpoint)
+    monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec, *, paths: checkpoint)
     monkeypatch.setattr(
         loader,
         "init_model",
@@ -148,6 +148,7 @@ def test_prepare_model_for_training_full_model_load_returns_loaded_object(
 
     model, state = loader.prepare_model_for_training(
         spec=spec,
+        paths=Paths(settings),
         device=torch.device("cpu"),
         model_norm_prm={"data_mean": 0.0},
     )
@@ -171,12 +172,13 @@ def test_prepare_model_for_training_loads_model_state_dict_and_returns_checkpoin
         checkpoint_method="state_dict",
     )
 
-    monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec: checkpoint)
+    monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec, *, paths: checkpoint)
     monkeypatch.setattr(loader, "init_model", lambda **kwargs: model)
     monkeypatch.setattr(loader.torch, "load", lambda path, map_location, **kwargs: loaded_state)
 
     out_model, out_state = loader.prepare_model_for_training(
         spec=spec,
+        paths=Paths(settings),
         device=torch.device("cpu"),
         model_norm_prm={"data_mean": 0.0},
     )
@@ -201,12 +203,13 @@ def test_prepare_model_for_training_plain_state_dict_returns_none_checkpoint_sta
         checkpoint_method="state_dict",
     )
 
-    monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec: checkpoint)
+    monkeypatch.setattr(loader, "_origin_checkpoint_path", lambda _spec, *, paths: checkpoint)
     monkeypatch.setattr(loader, "init_model", lambda **kwargs: model)
     monkeypatch.setattr(loader.torch, "load", lambda path, map_location, **kwargs: plain_state_dict)
 
     out_model, out_state = loader.prepare_model_for_training(
         spec=spec,
+        paths=Paths(settings),
         device=torch.device("cpu"),
         model_norm_prm={"data_mean": 0.0},
     )

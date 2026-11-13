@@ -81,6 +81,7 @@ def build_model(cfg: ResolvedExperiment, device, lisai_paths: Paths, model_norm_
 
     model, state = prepare_model_for_training(
         spec=spec,
+        paths=lisai_paths,
         device=device,
         model_norm_prm=model_norm_prm,
         noise_model=noise_model,

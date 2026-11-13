@@ -98,7 +98,7 @@ def test_build_model_uses_training_model_spec_without_loading_noise_model_for_un
     model_obj = object()
     state = {"epoch": 3}
 
-    def fake_prepare_model_for_training(*, spec, device, model_norm_prm=None, noise_model=None):
+    def fake_prepare_model_for_training(*, spec, device, paths, model_norm_prm=None, noise_model=None):
         captured["spec"] = spec
         captured["device"] = device
         captured["model_norm_prm"] = model_norm_prm
@@ -140,7 +140,7 @@ def test_build_model_loads_noise_model_for_lvae(monkeypatch: pytest.MonkeyPatch)
         calls.append((noise_model_name, device, lisai_paths))
         return "noise_model_obj"
 
-    def fake_prepare_model_for_training(*, spec, device, model_norm_prm=None, noise_model=None):
+    def fake_prepare_model_for_training(*, spec, device, paths, model_norm_prm=None, noise_model=None):
         return model_obj, {"spec": spec, "device": device, "model_norm_prm": model_norm_prm, "noise_model": noise_model}
 
     monkeypatch.setattr(model_mod, "load_noise_model_object", fake_load_noise_model_object)

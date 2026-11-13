@@ -53,23 +53,24 @@ def _dynamic_heartbeat_timeout_seconds(run: DiscoveredRun) -> float | None:
     return max(_STALE_TIMEOUT_FLOOR_SECONDS, float(median(recent)) * _STALE_TIMEOUT_MULTIPLIER)
 
 
-def _heartbeat_timeout_seconds(run: DiscoveredRun) -> float:
+def _heartbeat_timeout_seconds(run: DiscoveredRun, *, fallback_timeout: timedelta | None = None) -> float:
     dynamic_seconds = _dynamic_heartbeat_timeout_seconds(run)
     if dynamic_seconds is not None:
         return dynamic_seconds
-    return active_heartbeat_timeout().total_seconds()
+    return (active_heartbeat_timeout() if fallback_timeout is None else fallback_timeout).total_seconds()
 
 
 def _classify_running_heartbeat(
     run: DiscoveredRun,
     *,
     now: datetime | None = None,
+    fallback_timeout: timedelta | None = None,
 ) -> _RunHeartbeatClassification:
     if run.metadata.status != "running" or run.metadata.closed_cleanly:
         return _RunHeartbeatClassification(kind="not_running")
 
     reference = _normalized_reference_time(now)
-    threshold_s = _heartbeat_timeout_seconds(run)
+    threshold_s = _heartbeat_timeout_seconds(run, fallback_timeout=fallback_timeout)
     if run.metadata.last_heartbeat_at >= reference:
         return _RunHeartbeatClassification(
             kind="active",
@@ -142,12 +143,16 @@ def is_run_heartbeat_fresh(run: DiscoveredRun, *, now: datetime | None = None) -
     return (reference - run.metadata.last_heartbeat_at).total_seconds() < _heartbeat_timeout_seconds(run)
 
 
-def is_run_likely_active(run: DiscoveredRun, *, now: datetime | None = None) -> bool:
-    return _classify_running_heartbeat(run, now=now).kind == "active"
+def is_run_likely_active(
+    run: DiscoveredRun, *, now: datetime | None = None, fallback_timeout: timedelta | None = None,
+) -> bool:
+    return _classify_running_heartbeat(run, now=now, fallback_timeout=fallback_timeout).kind == "active"
 
 
-def is_run_likely_stale(run: DiscoveredRun, *, now: datetime | None = None) -> bool:
-    return _classify_running_heartbeat(run, now=now).kind in {"stale", "crash"}
+def is_run_likely_stale(
+    run: DiscoveredRun, *, now: datetime | None = None, fallback_timeout: timedelta | None = None,
+) -> bool:
+    return _classify_running_heartbeat(run, now=now, fallback_timeout=fallback_timeout).kind in {"stale", "crash"}
 
 
 def display_run_status(run: DiscoveredRun, *, now: datetime | None = None) -> str:
