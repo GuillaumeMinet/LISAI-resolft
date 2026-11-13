@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from lisai.config import resolve_config, resolve_config_dict
 from lisai.config.progress import resolve_progress_bar
+from lisai.config.settings import Settings, load_default_settings
 from lisai.runs import count_trainable_parameters
 
 from . import setup
@@ -41,9 +42,11 @@ def _is_failed_outcome(outcome: "TrainingOutcome") -> bool:
     }
 
 
-def _apply_progress_bar_preference(cfg: "ResolvedExperiment", progress_bar: bool | None) -> None:
+def _apply_progress_bar_preference(
+    cfg: "ResolvedExperiment", progress_bar: bool | None, *, stg: Settings,
+) -> None:
     default = bool(getattr(cfg.training, "progress_bar", False))
-    cfg.training.progress_bar = resolve_progress_bar(default, progress_bar)
+    cfg.training.progress_bar = resolve_progress_bar(default, progress_bar, stg=stg)
 
 
 def _setup_training(cfg, runtime, monitor: RunMonitor):
@@ -146,19 +149,27 @@ def _finalize_training_result(
         raise
 
 
-def run_training(config_path, *, progress_bar: bool | None = None):
+def run_training(
+    config_path, *, progress_bar: bool | None = None, settings: Settings | None = None,
+):
     """Run training end to end from a config path and return the trainer instance."""
+    stg = load_default_settings() if settings is None else settings
     return run_training_from_resolved_config(
-        resolve_config(config_path),
+        resolve_config(config_path, stg=stg),
         progress_bar=progress_bar,
+        settings=stg,
     )
 
 
-def run_training_from_config_dict(config: dict, *, progress_bar: bool | None = None):
+def run_training_from_config_dict(
+    config: dict, *, progress_bar: bool | None = None, settings: Settings | None = None,
+):
     """Run training from an in-memory experiment config dictionary."""
+    stg = load_default_settings() if settings is None else settings
     return run_training_from_resolved_config(
-        resolve_config_dict(config),
+        resolve_config_dict(config, stg=stg),
         progress_bar=progress_bar,
+        settings=stg,
     )
 
 
@@ -166,9 +177,11 @@ def run_training_from_resolved_config(
     cfg: "ResolvedExperiment",
     *,
     progress_bar: bool | None = None,
+    settings: Settings | None = None,
 ):
     """Run training from a resolved experiment config and return the trainer instance."""
-    _apply_progress_bar_preference(cfg, progress_bar)
+    stg = load_default_settings() if settings is None else settings
+    _apply_progress_bar_preference(cfg, progress_bar, stg=stg)
     runtime = initialize_runtime(cfg)
     monitor = RunMonitor(cfg, runtime)
     monitor.install()

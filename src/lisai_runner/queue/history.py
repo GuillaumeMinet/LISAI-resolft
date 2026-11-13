@@ -23,7 +23,7 @@ class SchedulingContext:
 
 def load_scheduling_context(config_path: str | Path) -> SchedulingContext:
     resolved_path = Path(config_path).expanduser().resolve()
-    cfg = resolve_config(resolved_path)
+    cfg = resolve_config(resolved_path, stg=settings)
     return SchedulingContext(
         config_path=resolved_path,
         dataset=str(cfg.data.dataset_name).strip(),

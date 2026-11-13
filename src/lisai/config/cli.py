@@ -18,11 +18,15 @@ from lisai.config.catalog import (
     validate_training_template_dict,
 )
 from lisai.config.io.resolver import resolve_config_dict
+from lisai.config.settings import Settings, load_default_settings
 from lisai.config.io.yaml import load_yaml
 
 
-def run_list_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    entries = discover_training_configs(kind=args.kind, task=args.task)
+def run_list_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
+    entries = discover_training_configs(kind=args.kind, task=args.task, stg=stg)
     if not entries:
         parser.exit(status=1, message="No training configs found.\n")
 
@@ -36,9 +40,12 @@ def run_list_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
     return 0
 
 
-def run_info_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_info_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
     try:
-        body, metadata, path = load_training_config(args.config)
+        body, metadata, path = load_training_config(args.config, stg=stg)
     except Exception as exc:
         parser.exit(status=1, message=f"{exc}\n")
 
@@ -62,9 +69,12 @@ def run_info_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
     return 0
 
 
-def run_validate_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_validate_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
     try:
-        path = resolve_training_config_path(args.config)
+        path = resolve_training_config_path(args.config, stg=stg)
         cfg = load_yaml(path)
         if args.template:
             validate_training_template_dict(cfg)
@@ -78,10 +88,13 @@ def run_validate_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
     return 0
 
 
-def run_resolve_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_resolve_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
     try:
-        _, _, path = load_training_config(args.config)
-        cfg = resolve_config_dict(load_yaml(path))
+        _, _, path = load_training_config(args.config, stg=stg)
+        cfg = resolve_config_dict(load_yaml(path), stg=stg)
     except (FileNotFoundError, ValueError, ValidationError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
 
@@ -89,7 +102,10 @@ def run_resolve_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
     return 0
 
 
-def run_new_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_new_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
     if args.custom and args.preset:
         parser.error("Choose either a preset name or --custom, not both.")
     if not args.custom and not args.preset:
@@ -116,6 +132,7 @@ def run_new_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser)
                 target_name=args.target,
                 output=args.output,
                 overwrite=args.overwrite,
+                stg=stg,
             )
         else:
             output_path, warnings = create_training_config_from_preset(
@@ -131,6 +148,7 @@ def run_new_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser)
                 temporal_window=args.temporal_window,
                 output=args.output,
                 overwrite=args.overwrite,
+                stg=stg,
             )
     except (FileExistsError, FileNotFoundError, ValueError, ValidationError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
@@ -153,7 +171,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     list_parser.add_argument("--kind", choices=["preset", "template", "example", "local"])
     list_parser.add_argument("--task")
     list_parser.add_argument("--verbose", action="store_true")
-    list_parser.set_defaults(handler=lambda args, p=list_parser: run_list_from_args(args, p))
+    list_parser.set_defaults(handler=lambda args, p=list_parser, settings=None: run_list_from_args(args, p, settings=settings))
 
     info_parser = config_subparsers.add_parser(
         "info",
@@ -161,7 +179,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         description="Show metadata and inferred task information for a training config.",
     )
     info_parser.add_argument("config", help="Explicit path or configs/training-relative subpath.")
-    info_parser.set_defaults(handler=lambda args, p=info_parser: run_info_from_args(args, p))
+    info_parser.set_defaults(handler=lambda args, p=info_parser, settings=None: run_info_from_args(args, p, settings=settings))
 
     validate_parser = config_subparsers.add_parser(
         "validate",
@@ -170,7 +188,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     )
     validate_parser.add_argument("config", help="Explicit path or configs/training-relative subpath.")
     validate_parser.add_argument("--template", action="store_true", help="Use relaxed template validation.")
-    validate_parser.set_defaults(handler=lambda args, p=validate_parser: run_validate_from_args(args, p))
+    validate_parser.set_defaults(handler=lambda args, p=validate_parser, settings=None: run_validate_from_args(args, p, settings=settings))
 
     resolve_parser = config_subparsers.add_parser(
         "resolve",
@@ -178,7 +196,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         description="Print the fully resolved training config.",
     )
     resolve_parser.add_argument("config", help="Explicit path or configs/training-relative subpath.")
-    resolve_parser.set_defaults(handler=lambda args, p=resolve_parser: run_resolve_from_args(args, p))
+    resolve_parser.set_defaults(handler=lambda args, p=resolve_parser, settings=None: run_resolve_from_args(args, p, settings=settings))
 
     new_parser = config_subparsers.add_parser(
         "new",
@@ -215,7 +233,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     new_parser.add_argument("--temporal-window", type=int)
     new_parser.add_argument("--output", help="Output path. Defaults to configs/training/local/<name>.yml.")
     new_parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing output config.")
-    new_parser.set_defaults(handler=lambda args, p=new_parser: run_new_from_args(args, p))
+    new_parser.set_defaults(handler=lambda args, p=new_parser, settings=None: run_new_from_args(args, p, settings=settings))
     return parser
 
 
@@ -234,10 +252,10 @@ def build_parser(*, prog: str = "lisai configs") -> argparse.ArgumentParser:
     return _add_config_commands(parser)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, settings: Settings | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    return args.handler(args)
+    return args.handler(args, settings=settings)
 
 
 __all__ = [

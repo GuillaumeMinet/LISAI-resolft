@@ -5,21 +5,19 @@ from pathlib import Path
 from typing import Sequence
 
 from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.config.settings import Settings, load_default_settings
 
 from .run_training import run_training
 
-training_config_paths = ConfigPathResolver("training")
-
-
-def resolve_config_path(config_arg: str) -> Path:
-    resolved = training_config_paths.resolve(config_arg)
+def resolve_config_path(config_arg: str, *, resolver: ConfigPathResolver) -> Path:
+    resolved = resolver.resolve(config_arg)
     assert resolved is not None
-    _ensure_trainable_config_path(resolved)
+    _ensure_trainable_config_path(resolved, resolver=resolver)
     return resolved
 
 
-def _ensure_trainable_config_path(path: Path) -> None:
-    root = training_config_paths.root.resolve()
+def _ensure_trainable_config_path(path: Path, *, resolver: ConfigPathResolver) -> None:
+    root = resolver.root.resolve()
     try:
         relative = path.resolve().relative_to(root)
     except ValueError:
@@ -46,17 +44,21 @@ def _get_config_arg(args: argparse.Namespace, parser: argparse.ArgumentParser) -
     raise AssertionError("argparse.error should raise SystemExit")
 
 
-def run_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
     config_arg = _get_config_arg(args, parser)
+    stg = load_default_settings() if settings is None else settings
+    resolver = ConfigPathResolver("training", stg=stg)
     try:
-        config_path = resolve_config_path(config_arg)
+        config_path = resolve_config_path(config_arg, resolver=resolver)
     except (FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     progress_bar = getattr(args, "progress_bar", None)
     if progress_bar is None:
-        run_training(config_path)
+        run_training(config_path, settings=stg)
     else:
-        run_training(config_path, progress_bar=progress_bar)
+        run_training(config_path, settings=stg, progress_bar=progress_bar)
     return 0
 
 
@@ -64,13 +66,13 @@ def add_train_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     parser.add_argument(
         "config",
         nargs="?",
-        help=f"Path to a YAML config file, or a config name from {training_config_paths.root} with or without .yml/.yaml.",
+        help="Training YAML file path or configuration name (with or without .yml/.yaml).",
     )
     parser.add_argument(
         "-c",
         "--config",
         dest="config_option",
-        help=f"Path to a YAML config file, or a config name from {training_config_paths.root} with or without .yml/.yaml.",
+        help="Training YAML file path or configuration name (with or without .yml/.yaml).",
     )
     parser.add_argument(
         "--progress-bar",

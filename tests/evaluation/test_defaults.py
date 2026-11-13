@@ -37,12 +37,10 @@ def inference_config_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Pat
         INFERENCE_CONFIG_DIR=config_dir,
         INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
+        INFERENCE_OUTPUT_MODE="default",
+        INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
-    monkeypatch.setattr(
-        defaults_mod,
-        "inference_config_paths",
-        ConfigPathResolver("inference", stg=fake_settings),
-    )
+    monkeypatch.setattr(defaults_mod, "load_default_settings", lambda: fake_settings)
     return config_dir
 
 
@@ -292,6 +290,9 @@ def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Pa
 def test_resolve_apply_config_fills_local_config_saving_fallbacks(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="folder_outside",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
@@ -324,6 +325,9 @@ def test_named_saving_override_overrides_local_config_policy(inference_config_di
         "apply:\n  saving:\n    save_input_mode: never\n",
     )
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="default",
         INFERENCE_SAVE_INPUT_MODE="always",
     )
@@ -338,6 +342,9 @@ def test_named_saving_override_overrides_local_config_policy(inference_config_di
 def test_typed_save_input_override_has_priority(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="in_place",
         INFERENCE_SAVE_INPUT_MODE="never",
     )
@@ -357,6 +364,9 @@ def test_typed_save_input_override_has_priority(inference_config_dir: Path):
 def test_apply_saving_config_overrides_local_config_route(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="folder_outside",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
@@ -372,6 +382,9 @@ def test_named_local_saving_override_has_priority_over_local_defaults(inference_
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
     _write(inference_config_dir / "local" / "special.yml", "apply:\n  saving:\n    mode: in_place\n")
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="folder_outside",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
@@ -391,6 +404,9 @@ def test_named_nonlocal_saving_override_has_priority_over_local_defaults(
         "apply:\n  saving:\n    mode: folder_outside\n",
     )
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="in_place",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
@@ -404,6 +420,9 @@ def test_named_nonlocal_saving_override_has_priority_over_local_defaults(
 def test_typed_output_override_has_highest_priority(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_outside\n")
     local = SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
+        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="in_place",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )

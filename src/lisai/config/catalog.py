@@ -18,7 +18,7 @@ from lisai.data.dataset_registry import (
     registry_value_for_data_type,
 )
 from lisai.infra.paths import Paths
-from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
+from lisai.config.settings import Settings
 
 TrainingConfigKind = Literal["preset", "template", "example", "local"]
 TrainingPresetName = str
@@ -76,15 +76,13 @@ class RegistryScaffoldDefaults:
     data_format: str | None = None
 
 
-def training_config_root() -> Path:
-    from lisai.config.settings import settings
-
-    return settings.TRAINING_CONFIG_DIR
+def training_config_root(*, stg: Settings) -> Path:
+    return stg.TRAINING_CONFIG_DIR
 
 
-def resolve_training_config_path(config_ref: str | Path) -> Path:
+def resolve_training_config_path(config_ref: str | Path, *, stg: Settings) -> Path:
     """Resolve an explicit training config path or training-root relative subpath."""
-    root = training_config_root()
+    root = training_config_root(stg=stg)
     config_path = Path(config_ref).expanduser()
 
     candidates = list(_candidate_paths(config_path))
@@ -98,20 +96,21 @@ def resolve_training_config_path(config_ref: str | Path) -> Path:
     raise FileNotFoundError(f"Training config not found: {config_ref}")
 
 
-def resolve_training_preset_path(preset_ref: str | Path) -> Path:
-    return _resolve_catalog_member_path(preset_ref, kind="preset")
+def resolve_training_preset_path(preset_ref: str | Path, *, stg: Settings) -> Path:
+    return _resolve_catalog_member_path(preset_ref, kind="preset", stg=stg)
 
 
-def resolve_training_template_path(template_ref: str | Path) -> Path:
-    return _resolve_catalog_member_path(template_ref, kind="template")
+def resolve_training_template_path(template_ref: str | Path, *, stg: Settings) -> Path:
+    return _resolve_catalog_member_path(template_ref, kind="template", stg=stg)
 
 
 def discover_training_configs(
     *,
     kind: TrainingConfigKind | None = None,
     task: str | None = None,
+    stg: Settings,
 ) -> list[TrainingConfigEntry]:
-    root = training_config_root()
+    root = training_config_root(stg=stg)
     kinds = [kind] if kind is not None else list(KIND_TO_FOLDER)
     entries: list[TrainingConfigEntry] = []
 
@@ -128,8 +127,8 @@ def discover_training_configs(
     return entries
 
 
-def load_training_config(config_ref: str | Path) -> tuple[dict[str, Any], dict[str, Any] | None, Path]:
-    path = resolve_training_config_path(config_ref)
+def load_training_config(config_ref: str | Path, *, stg: Settings) -> tuple[dict[str, Any], dict[str, Any] | None, Path]:
+    path = resolve_training_config_path(config_ref, stg=stg)
     cfg = load_yaml(path)
     body, metadata = split_config_metadata(cfg)
     return body, metadata, path
@@ -176,8 +175,9 @@ def create_training_config_from_preset(
     temporal_window: int | None = None,
     output: str | Path | None = None,
     overwrite: bool = False,
+    stg: Settings,
 ) -> tuple[Path, list[str]]:
-    preset_path = resolve_training_preset_path(preset)
+    preset_path = resolve_training_preset_path(preset, stg=stg)
     preset_cfg = load_yaml(preset_path)
     cfg = strip_config_metadata(preset_cfg)
     warnings: list[str] = []
@@ -189,6 +189,7 @@ def create_training_config_from_preset(
         dataset_name = "CHANGEME"
         warnings.append("data.dataset_name was left as CHANGEME.")
     registry_defaults = _registry_scaffold_defaults(
+        paths=Paths(stg),
         dataset_name=dataset_name,
         cfg=cfg,
         input_name=input_name,
@@ -262,7 +263,7 @@ def create_training_config_from_preset(
         _dset(cfg, "data.target", None)
 
     _validate_scaffold_config(cfg)
-    output_path = _resolve_output_path(output=output, exp_name=exp_name)
+    output_path = _resolve_output_path(output=output, exp_name=exp_name, stg=stg)
     if output_path.exists() and not overwrite:
         raise FileExistsError(f"Config already exists: {output_path}")
 
@@ -280,8 +281,9 @@ def create_training_config_from_template(
     target_name: str | None = None,
     output: str | Path | None = None,
     overwrite: bool = False,
+    stg: Settings,
 ) -> tuple[Path, list[str]]:
-    template_path = resolve_training_template_path(template)
+    template_path = resolve_training_template_path(template, stg=stg)
     template_cfg = load_yaml(template_path)
     validate_training_template_dict(template_cfg)
     cfg = _replace_template_placeholders(strip_config_metadata(template_cfg))
@@ -294,6 +296,7 @@ def create_training_config_from_template(
         dataset_name = "CHANGEME"
         warnings.append("data.dataset_name was left as CHANGEME.")
     registry_defaults = _registry_scaffold_defaults(
+        paths=Paths(stg),
         dataset_name=dataset_name,
         cfg=cfg,
         input_name=input_name,
@@ -319,7 +322,7 @@ def create_training_config_from_template(
         warnings.append("Template placeholders were left as CHANGEME; edit them before validation or training.")
 
     _validate_scaffold_config(cfg)
-    output_path = _resolve_output_path(output=output, exp_name=exp_name)
+    output_path = _resolve_output_path(output=output, exp_name=exp_name, stg=stg)
     if output_path.exists() and not overwrite:
         raise FileExistsError(f"Config already exists: {output_path}")
 
@@ -344,7 +347,7 @@ def _candidate_paths(path: Path) -> tuple[Path, ...]:
     return (path,) + tuple(path.with_suffix(suffix) for suffix in TRAINING_SUFFIXES)
 
 
-def _resolve_catalog_member_path(config_ref: str | Path, *, kind: TrainingConfigKind) -> Path:
+def _resolve_catalog_member_path(config_ref: str | Path, *, kind: TrainingConfigKind, stg: Settings) -> Path:
     folder_name = KIND_TO_FOLDER[kind]
     ref_path = Path(config_ref).expanduser()
     refs: list[Path]
@@ -355,10 +358,10 @@ def _resolve_catalog_member_path(config_ref: str | Path, *, kind: TrainingConfig
 
     for ref in refs:
         try:
-            path = resolve_training_config_path(ref)
+            path = resolve_training_config_path(ref, stg=stg)
         except FileNotFoundError:
             continue
-        expected_root = (training_config_root() / folder_name).resolve()
+        expected_root = (training_config_root(stg=stg) / folder_name).resolve()
         try:
             path.relative_to(expected_root)
         except ValueError as exc:
@@ -444,12 +447,13 @@ def _registry_scaffold_defaults(
     *,
     dataset_name: str | None,
     cfg: dict[str, Any],
+    paths: Paths,
     input_name: str | None = None,
 ) -> RegistryScaffoldDefaults:
     if not dataset_name or dataset_name == "CHANGEME":
         return RegistryScaffoldDefaults()
 
-    registry = load_dataset_registry(Paths(_legacy_settings).dataset_registry_path())
+    registry = load_dataset_registry(paths.dataset_registry_path())
     dataset_info = registry.get(str(dataset_name))
     if not isinstance(dataset_info, Mapping):
         return RegistryScaffoldDefaults()
@@ -660,8 +664,8 @@ def _dset(d: dict[str, Any], path: str, value: Any) -> None:
     cur[keys[-1]] = value
 
 
-def _resolve_output_path(*, output: str | Path | None, exp_name: str) -> Path:
-    root = training_config_root()
+def _resolve_output_path(*, output: str | Path | None, exp_name: str, stg: Settings) -> Path:
+    root = training_config_root(stg=stg)
     if output is None:
         path = root / "local" / exp_name
     else:

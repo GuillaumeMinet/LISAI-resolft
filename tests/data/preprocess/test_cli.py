@@ -9,6 +9,7 @@ import tifffile
 import lisai.cli as root_cli
 import lisai.preprocess.cli as preprocess_cli
 from lisai.config import save_yaml, settings
+from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.preprocess.reporting import NoOpPreprocessReporter
 
 
@@ -68,25 +69,25 @@ def _write_config(path: Path, dataset_name: str) -> None:
 
 def test_resolve_config_path_supports_preprocess_short_name():
     repo_root = Path(__file__).resolve().parents[3]
-    expected = (repo_root / "configs" / "preprocess" / "preprocess.yml").resolve()
+    expected = (repo_root / "configs" / "preprocess" / "single.yml").resolve()
 
-    assert preprocess_cli.resolve_config_path("preprocess.yml") == expected
+    assert preprocess_cli.resolve_config_path("single.yml", resolver=ConfigPathResolver("preprocess", stg=settings)) == expected
 
 
 def test_resolve_config_path_supports_preprocess_short_name_without_extension():
     repo_root = Path(__file__).resolve().parents[3]
-    expected = (repo_root / "configs" / "preprocess" / "preprocess.yml").resolve()
+    expected = (repo_root / "configs" / "preprocess" / "single.yml").resolve()
 
-    assert preprocess_cli.resolve_config_path("preprocess") == expected
+    assert preprocess_cli.resolve_config_path("single", resolver=ConfigPathResolver("preprocess", stg=settings)) == expected
 
 
 def test_resolve_config_path_lists_available_configs_when_missing():
     with pytest.raises(FileNotFoundError, match="Preprocess config not found: missing_preprocess_config") as exc_info:
-        preprocess_cli.resolve_config_path("missing_preprocess_config")
+        preprocess_cli.resolve_config_path("missing_preprocess_config", resolver=ConfigPathResolver("preprocess", stg=settings))
 
     message = str(exc_info.value)
     assert "Available configs:" in message
-    assert "preprocess.yml" in message
+    assert "single.yml" in message
 
 
 def test_run_preprocess_config_overwrites_existing_output_after_confirmation(tmp_path: Path):
@@ -159,26 +160,26 @@ def test_run_preprocess_config_requires_explicit_overwrite_in_non_interactive_mo
 def test_preprocess_cli_main_accepts_extensionless_config_name(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_run_preprocess_config(config_path):
+    def fake_run_preprocess_config(config_path, *, paths=None):
         captured["config_path"] = Path(config_path)
 
     monkeypatch.setattr(preprocess_cli, "run_preprocess_config", fake_run_preprocess_config)
 
-    exit_code = preprocess_cli.main(["preprocess"])
+    exit_code = preprocess_cli.main(["single"])
 
     assert exit_code == 0
-    assert captured["config_path"].name == "preprocess.yml"
+    assert captured["config_path"].name == "single.yml"
 
 
 def test_root_cli_preprocess_dispatches_extensionless_config_to_preprocess(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_run_preprocess_config(config_path):
+    def fake_run_preprocess_config(config_path, *, paths=None):
         captured["config_path"] = Path(config_path)
 
     monkeypatch.setattr(preprocess_cli, "run_preprocess_config", fake_run_preprocess_config)
 
-    exit_code = root_cli.main(["preprocess", "preprocess"])
+    exit_code = root_cli.main(["preprocess", "single"])
 
     assert exit_code == 0
-    assert captured["config_path"].name == "preprocess.yml"
+    assert captured["config_path"].name == "single.yml"

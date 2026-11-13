@@ -4,19 +4,23 @@ from pathlib import Path
 
 from lisai.config import load_yaml
 from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.config.settings import Settings, load_default_settings
 from lisai.config.models.inference import InferenceOverrides
 
 PROMOTED_INFERENCE_CONFIG_FILENAME = "config_inference.yaml"
 
 
-def resolve_promoted_inference_config_source(config: str | Path) -> Path:
+def resolve_promoted_inference_config_source(
+    config: str | Path, *, stg: Settings | None = None,
+) -> Path:
     """Resolve and validate an inference config before attaching it to a model.
 
     Promoted-model inference configs are intentionally sparse, but they must
     define an ``apply`` section because their purpose is to provide the model's
     default settings for ``lisai apply --model``.
     """
-    config_path = ConfigPathResolver("inference").resolve(config)
+    selected = load_default_settings() if stg is None else stg
+    config_path = ConfigPathResolver("inference", stg=selected).resolve(config)
     if config_path is None:
         raise FileNotFoundError(f"Inference config not found: {config}")
 

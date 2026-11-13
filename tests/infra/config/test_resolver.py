@@ -110,7 +110,7 @@ def test_resolve_config_train_mode_forbids_load_model_section(tmp_path: Path):
     )
 
     with pytest.raises(ValidationError, match="load_model"):
-        resolve_config(experiment_cfg_path=exp_cfg)
+        resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
 
 def test_resolve_config_dict_strips_catalog_metadata():
@@ -124,7 +124,8 @@ def test_resolve_config_dict_strips_catalog_metadata():
             "experiment": {"mode": "train", "exp_name": "metadata_smoke"},
             "data": {"dataset_name": "ds_metadata"},
             "model": {"architecture": "unet", "parameters": {}},
-        }
+        },
+        stg=settings,
     )
 
     assert cfg.experiment.exp_name == "metadata_smoke"
@@ -138,7 +139,8 @@ def test_resolve_config_dict_refuses_template_metadata():
                 "metadata": {"kind": "template", "name": "base"},
                 "experiment": {"mode": "train", "exp_name": "template"},
                 "data": {"dataset_name": "ds_template"},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -149,7 +151,8 @@ def test_resolve_config_dict_refuses_changeme_placeholders():
                 "experiment": {"mode": "train", "exp_name": "exp"},
                 "data": {"dataset_name": "CHANGEME"},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -166,7 +169,8 @@ def test_resolve_config_dict_fills_single_root_registry_input(monkeypatch: pytes
             "routing": {"data_subfolder": "preprocess/recon"},
             "data": {"dataset_name": "demo"},
             "model": {"architecture": "unet", "parameters": {}},
-        }
+        },
+        stg=settings,
     )
 
     assert cfg.data.data_format == "single"
@@ -188,7 +192,8 @@ def test_resolve_config_dict_requires_explicit_non_root_registry_input(monkeypat
                 "routing": {"data_subfolder": "preprocess/recon"},
                 "data": {"dataset_name": "demo", "paired": True},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -206,7 +211,8 @@ def test_resolve_config_dict_requires_explicit_paired_registry_target(monkeypatc
                 "routing": {"data_subfolder": "preprocess/recon"},
                 "data": {"dataset_name": "demo", "paired": True, "input": "inp"},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -230,7 +236,8 @@ def test_resolve_config_dict_uses_format_from_output_override(monkeypatch: pytes
             "routing": {"data_subfolder": "preprocess/recon"},
             "data": {"dataset_name": "demo", "input": "inp_single"},
             "model": {"architecture": "unet", "parameters": {}},
-        }
+        },
+        stg=settings,
     )
 
     assert cfg.data.input == "inp_single"
@@ -257,7 +264,8 @@ def test_resolve_config_dict_allows_format_from_output_override(monkeypatch: pyt
             "routing": {"data_subfolder": "preprocess/recon"},
             "data": {"dataset_name": "demo", "data_format": "single", "input": "inp_single"},
             "model": {"architecture": "unet", "parameters": {}},
-        }
+        },
+        stg=settings,
     )
 
     assert cfg.data.data_format == "single"
@@ -287,7 +295,8 @@ def test_resolve_config_dict_rejects_single_format_without_output_override(monke
                     "input": "inp_single",
                 },
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -300,7 +309,8 @@ def test_resolve_config_dict_rejects_unregistered_prepared_dataset(monkeypatch: 
                 "experiment": {"mode": "train", "exp_name": "missing_registry"},
                 "data": {"dataset_name": "missing_ds", "prep_before": True},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -312,7 +322,8 @@ def test_resolve_config_dict_allows_unregistered_unprepared_dataset(monkeypatch:
             "experiment": {"mode": "train", "exp_name": "unprepared"},
             "data": {"dataset_name": "missing_ds", "prep_before": False},
             "model": {"architecture": "unet", "parameters": {}},
-        }
+        },
+        stg=settings,
     )
 
     assert cfg.data.dataset_info is None
@@ -333,7 +344,8 @@ def test_resolve_config_dict_rejects_registry_data_format_conflict(monkeypatch: 
                 "routing": {"data_subfolder": "preprocess/recon"},
                 "data": {"dataset_name": "demo", "data_format": "timelapse", "input": "inp"},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -351,7 +363,8 @@ def test_resolve_config_dict_rejects_evaluation_only_registry_dataset(monkeypatc
                 "routing": {"data_subfolder": "preprocess/recon"},
                 "data": {"dataset_name": "eval_ds"},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -372,7 +385,8 @@ def test_resolve_config_dict_requires_input_when_registry_default_is_ambiguous(m
                 "routing": {"data_subfolder": "preprocess/recon"},
                 "data": {"dataset_name": "ambiguous"},
                 "model": {"architecture": "unet", "parameters": {}},
-            }
+            },
+            stg=settings,
         )
 
 
@@ -433,7 +447,7 @@ def test_resolve_config_continue_training_requires_load_model_section(tmp_path: 
     )
 
     with pytest.raises(ValidationError, match="load_model"):
-        resolve_config(experiment_cfg_path=exp_cfg)
+        resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
 
 
@@ -452,7 +466,7 @@ def test_resolve_config_continue_training_forbids_exp_name_override(tmp_path: Pa
     )
 
     with pytest.raises(ValidationError, match="exp_name"):
-        resolve_config(experiment_cfg_path=exp_cfg)
+        resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
 
 
@@ -472,7 +486,7 @@ def test_resolve_config_continue_training_forbids_loss_function_override(tmp_pat
     )
 
     with pytest.raises(ValidationError, match="loss_function"):
-        resolve_config(experiment_cfg_path=exp_cfg)
+        resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
 
 
@@ -511,7 +525,7 @@ def test_resolve_config_retrain_allows_data_and_normalization_overrides(tmp_path
         exp_cfg,
     )
 
-    cfg = resolve_config(experiment_cfg_path=exp_cfg)
+    cfg = resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
     assert cfg.experiment.mode == "retrain"
     assert cfg.experiment.exp_name == "retrain_exp"
@@ -584,8 +598,8 @@ def test_resolve_config_dict_matches_file_based_resolution(tmp_path: Path):
     exp_cfg = tmp_path / "continue.yml"
     save_yaml(continue_cfg, exp_cfg)
 
-    resolved_from_dict = resolve_config_dict(continue_cfg)
-    resolved_from_file = resolve_config(experiment_cfg_path=exp_cfg)
+    resolved_from_dict = resolve_config_dict(continue_cfg, stg=settings)
+    resolved_from_file = resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
     assert resolved_from_dict.model_dump() == resolved_from_file.model_dump()
 
@@ -631,7 +645,7 @@ def test_resolve_config_continue_training_auto_selects_safe_checkpoint_and_force
         exp_cfg,
     )
 
-    cfg = resolve_config(experiment_cfg_path=exp_cfg)
+    cfg = resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
     assert cfg.load_model.checkpoint.filename == checkpoint_name
     assert cfg.load_model.checkpoint.method == "state_dict"
@@ -675,7 +689,7 @@ def test_resolve_config_continue_training_uses_project_recovery_defaults_when_or
         exp_cfg,
     )
 
-    cfg = resolve_config(experiment_cfg_path=exp_cfg)
+    cfg = resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
     safe_resume = cfg.recovery.hdn_safe_resume
     assert safe_resume.lr_scale == pytest.approx(0.37)

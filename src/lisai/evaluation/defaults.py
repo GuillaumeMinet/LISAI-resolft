@@ -9,6 +9,7 @@ from typing import Any, Literal, Mapping
 from lisai.config import load_yaml
 from lisai.config.io import deep_merge
 from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.config.settings import Settings, load_default_settings
 from lisai.config.models.inference import (
     ApplyDefaults,
     ApplyOutputMode,
@@ -20,7 +21,6 @@ from lisai.config.models.inference import (
 )
 from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
 
-inference_config_paths = ConfigPathResolver("inference")
 POST_TRAINING_CONFIG_NAME = "post_training"
 
 # Backward-compatible aliases kept while the clearer inference model names settle in.
@@ -36,14 +36,17 @@ class ApplyOutputPolicy:
     save_folder: Path | None = None
 
 
-def resolve_inference_config_path(config_arg: str | Path | None) -> Path | None:
-    return inference_config_paths.resolve(config_arg)
+def resolve_inference_config_path(
+    config_arg: str | Path | None, *, stg: Settings | None = None,
+) -> Path | None:
+    selected = load_default_settings() if stg is None else stg
+    return ConfigPathResolver("inference", stg=selected).resolve(config_arg)
 
 
 def load_inference_config(
-    config_arg: str | Path | None = None,
+    config_arg: str | Path | None = None, *, stg: Settings | None = None,
 ) -> tuple[InferenceOverrides, Path | None]:
-    cfg_path = resolve_inference_config_path(config_arg)
+    cfg_path = resolve_inference_config_path(config_arg, stg=stg)
     if cfg_path is None:
         return InferenceOverrides(), None
     return InferenceOverrides.model_validate(load_yaml(cfg_path)), cfg_path
@@ -93,18 +96,20 @@ def _validate_resolved_section(
     return EvaluateDefaults.model_validate(value)
 
 
-def _load_local_defaults_section(section: Literal["apply", "evaluate"]) -> dict[str, Any] | None:
-    cfg, cfg_path = load_inference_config(None)
+def _load_local_defaults_section(
+    section: Literal["apply", "evaluate"], *, stg: Settings,
+) -> dict[str, Any] | None:
+    cfg, cfg_path = load_inference_config(None, stg=stg)
     if cfg_path is None:
         return None
     return _section_overrides(cfg, section)
 
 
 def _load_selected_config(
-    config: str | Path,
+    config: str | Path, *, stg: Settings,
 ) -> tuple[InferenceOverrides | None, Path | None]:
     try:
-        return load_inference_config(config)
+        return load_inference_config(config, stg=stg)
     except FileNotFoundError:
         if _is_post_training_name(config):
             return None, None
@@ -113,10 +118,10 @@ def _load_selected_config(
 
 def _explicit_selected_section(
     config: str | Path,
-    section: Literal["apply", "evaluate"],
+    section: Literal["apply", "evaluate"], *, stg: Settings,
 ) -> dict[str, Any]:
     """Return only values explicitly supplied by one selected inference config."""
-    selected_cfg, cfg_path = _load_selected_config(config)
+    selected_cfg, cfg_path = _load_selected_config(config, stg=stg)
     explicit: dict[str, Any] = {}
 
     if cfg_path is None:
@@ -142,13 +147,13 @@ def _explicit_selected_section(
 
 def _explicit_model_section(
     model_config: str | Path | None,
-    section: Literal["apply", "evaluate"],
+    section: Literal["apply", "evaluate"], *, stg: Settings,
 ) -> dict[str, Any] | None:
     """Load one promoted-model config section without resolving inherited defaults."""
     if model_config is None:
         return None
 
-    promoted_cfg, promoted_cfg_path = load_inference_config(model_config)
+    promoted_cfg, promoted_cfg_path = load_inference_config(model_config, stg=stg)
     if promoted_cfg_path is None:
         raise FileNotFoundError(f"Promoted-model inference config not found: {model_config}")
 
@@ -166,6 +171,7 @@ def _resolve_section_nested(
     *,
     model_section: dict[str, Any] | None = None,
     selected_section: dict[str, Any] | None = None,
+    stg: Settings,
 ) -> ApplyDefaults | EvaluateDefaults:
     # Base config precedence is intentionally one-way:
     # canonical typed defaults < local/defaults.yml < promoted-model config
@@ -173,7 +179,7 @@ def _resolve_section_nested(
     # section resolvers below. Every authored config may therefore stay sparse.
     resolved_section = deepcopy(ResolvedInferenceConfig().model_dump()[section])
 
-    local_defaults = _load_local_defaults_section(section)
+    local_defaults = _load_local_defaults_section(section, stg=stg)
     if local_defaults:
         resolved_section = _merge_section_config(section, resolved_section, local_defaults)
     if model_section:
@@ -238,7 +244,7 @@ def _warn_apply_model_config_overrides(
 def _finalize_apply_local_fallbacks(
     resolved: ApplyDefaults,
     *,
-    stg=None,
+    stg: Settings,
 ) -> ApplyDefaults:
     """Fill apply saving policies that intentionally fall back to local_config.
 
@@ -248,9 +254,6 @@ def _finalize_apply_local_fallbacks(
     invocation overrides have been merged, so any explicit inference choice
     keeps priority over the local fallback.
     """
-    if stg is None:
-        from lisai.config.settings import settings as stg
-
     values = resolved.model_dump()
     saving = values["saving"]
     if all(saving[key] is None for key in ("mode", "save_folder", "in_place")):
@@ -268,14 +271,16 @@ def resolve_apply_config(
     stg=None,
 ) -> ApplyDefaults:
     """Resolve one apply invocation to the complete typed runtime config."""
-    model_section = _explicit_model_section(model_config, "apply")
+    stg = load_default_settings() if stg is None else stg
+    model_section = _explicit_model_section(model_config, "apply", stg=stg)
     selected_section = (
-        _explicit_selected_section(config, "apply") if config is not None else None
+        _explicit_selected_section(config, "apply", stg=stg) if config is not None else None
     )
     resolved = _resolve_section_nested(
         "apply",
         model_section=model_section,
         selected_section=selected_section,
+        stg=stg,
     )
     if not isinstance(resolved, ApplyDefaults):
         raise TypeError("Internal error: apply resolution did not produce ApplyDefaults.")
@@ -331,12 +336,14 @@ def resolve_evaluate_config(
     *,
     config: str | Path | None = None,
     overrides: EvaluateOverrides | None = None,
+    stg: Settings | None = None,
 ) -> EvaluateDefaults:
     """Resolve one evaluate invocation to the canonical typed nested config."""
+    stg = load_default_settings() if stg is None else stg
     selected_section = (
-        _explicit_selected_section(config, "evaluate") if config is not None else None
+        _explicit_selected_section(config, "evaluate", stg=stg) if config is not None else None
     )
-    resolved = _resolve_section_nested("evaluate", selected_section=selected_section)
+    resolved = _resolve_section_nested("evaluate", selected_section=selected_section, stg=stg)
     if not isinstance(resolved, EvaluateDefaults):
         raise TypeError("Internal error: evaluate resolution did not produce EvaluateDefaults.")
 
@@ -354,10 +361,13 @@ def resolve_evaluate_config(
     return validated
 
 
-def load_inference_defaults(path: str | Path | None = None) -> ResolvedInferenceConfig:
+def load_inference_defaults(
+    path: str | Path | None = None, *, stg: Settings | None = None,
+) -> ResolvedInferenceConfig:
+    stg = load_default_settings() if stg is None else stg
     resolved = ResolvedInferenceConfig().model_dump()
     if path is None:
-        cfg, cfg_path = load_inference_config(None)
+        cfg, cfg_path = load_inference_config(None, stg=stg)
     else:
         cfg_path = Path(path)
         cfg = InferenceOverrides.model_validate(load_yaml(cfg_path))

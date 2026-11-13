@@ -79,7 +79,7 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
     def fake_run_apply_model(**kwargs):
         captured.update(kwargs)
 
-    def fake_resolve_apply_config(*, model_config, config, overrides):
+    def fake_resolve_apply_config(*, model_config, config, overrides, stg):
         captured["model_config"] = model_config
         captured["config"] = config
         captured["overrides"] = overrides
@@ -333,7 +333,7 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    def fake_resolve_evaluate_config(*, config, overrides):
+    def fake_resolve_evaluate_config(*, config, overrides, stg):
         captured["config"] = config
         captured["overrides"] = overrides
         return EvaluateDefaults()
@@ -418,7 +418,7 @@ def test_evaluate_cli_accepts_run_dir_selector(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    def fake_resolve_evaluate_config(*, config, overrides):
+    def fake_resolve_evaluate_config(*, config, overrides, stg):
         captured["config"] = config
         captured["overrides"] = overrides
         return EvaluateDefaults()

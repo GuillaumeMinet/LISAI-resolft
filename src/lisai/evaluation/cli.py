@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Sequence
 
 from lisai.config.models.inference import ApplyOverrides, EvaluateOverrides
+from lisai.config.settings import Settings, load_default_settings
 from lisai.infra.cli.selection import resolve_partial_name
 from lisai.promoted_models.package import load_promoted_model
 from lisai.promoted_models.registry import load_promoted_model_registry
@@ -356,7 +357,10 @@ def add_evaluate_arguments(parser: argparse.ArgumentParser) -> argparse.Argument
     return parser
 
 
-def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_apply_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
     overwrite = getattr(args, "overwrite", False)
     reuse_folder = getattr(args, "reuse_folder", False)
     skip_existing = getattr(args, "skip_existing", False)
@@ -406,6 +410,7 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
         model_config=promoted_model_config,
         config=args.config,
         overrides=_build_apply_overrides(args),
+        stg=stg,
     )
     run_apply_model(
         cfg=cfg,
@@ -422,7 +427,10 @@ def run_apply_from_args(args: argparse.Namespace, parser: argparse.ArgumentParse
     return 0
 
 
-def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_evaluate_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
+    stg = load_default_settings() if settings is None else settings
     if args.evaluation_dataset_name is not None and args.split is not None:
         parser.error("--on evaluates the complete evaluation dataset and cannot be combined with --split.")
 
@@ -433,6 +441,7 @@ def run_evaluate_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
     cfg = resolve_evaluate_config(
         config=args.config,
         overrides=_build_evaluate_overrides(args),
+        stg=stg,
     )
     run_evaluate(
         cfg=cfg,

@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 from typing import Callable, Sequence
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
+from lisai.config.settings import Settings, load_default_settings
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.infra.cli.prompts import is_interactive, prompt_yes_no
 from lisai.infra.paths import Paths
@@ -13,14 +14,11 @@ from lisai.infra.paths import Paths
 from .reporting import ConsolePreprocessReporter, PreprocessReporter
 from .run_preprocess import ExistingPreprocessOutput, PreprocessRun
 
-preprocess_config_paths = ConfigPathResolver("preprocess")
-
-
 class PreprocessAbortedError(RuntimeError):
     pass
 
-def resolve_config_path(config_arg: str) -> Path:
-    resolved = preprocess_config_paths.resolve(config_arg)
+def resolve_config_path(config_arg: str, *, resolver: ConfigPathResolver) -> Path:
+    resolved = resolver.resolve(config_arg)
     assert resolved is not None
     return resolved
 
@@ -60,7 +58,7 @@ def run_preprocess_config(
     interactive: bool | None = None,
 ):
     cfg = load_yaml(config_path)
-    runtime_paths = Paths(settings) if paths is None else paths
+    runtime_paths = Paths(load_default_settings()) if paths is None else paths
     active_reporter = ConsolePreprocessReporter() if reporter is None else reporter
 
     run = PreprocessRun.from_cfg(cfg, paths=runtime_paths)
@@ -78,10 +76,14 @@ def run_preprocess_config(
     return run.execute(overwrite=overwrite, reporter=active_reporter)
 
 
-def run_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+def run_from_args(
+    args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
+) -> int:
     config_arg = _get_config_arg(args, parser)
+    stg = load_default_settings() if settings is None else settings
+    resolver = ConfigPathResolver("preprocess", stg=stg)
     try:
-        run_preprocess_config(resolve_config_path(config_arg))
+        run_preprocess_config(resolve_config_path(config_arg, resolver=resolver), paths=Paths(stg))
     except (FileExistsError, PreprocessAbortedError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     return 0
@@ -91,13 +93,13 @@ def add_preprocess_arguments(parser: argparse.ArgumentParser) -> argparse.Argume
     parser.add_argument(
         "config",
         nargs="?",
-        help=f"Path to a YAML config file, or a config name from {preprocess_config_paths.root} with or without .yml/.yaml.",
+        help="Preprocess YAML file path or configuration name (with or without .yml/.yaml).",
     )
     parser.add_argument(
         "-c",
         "--config",
         dest="config_option",
-        help=f"Path to a YAML config file, or a config name from {preprocess_config_paths.root} with or without .yml/.yaml.",
+        help="Preprocess YAML file path or configuration name (with or without .yml/.yaml).",
     )
     return parser
 

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from lisai.config.settings import Settings
 
 ConfigKind = Literal["training", "preprocess", "inference"]
 
@@ -17,19 +20,11 @@ _KIND_LABELS = {
 @dataclass(frozen=True)
 class ConfigPathResolver:
     kind: ConfigKind
-    stg: object | None = None
-
-    @property
-    def settings(self):
-        if self.stg is not None:
-            return self.stg
-        from lisai.config.settings import settings
-
-        return settings
+    stg: Settings
 
     @property
     def root(self) -> Path:
-        stg = self.settings
+        stg = self.stg
         if self.kind == "training":
             return stg.TRAINING_CONFIG_DIR
         if self.kind == "preprocess":
@@ -40,7 +35,7 @@ class ConfigPathResolver:
 
     @property
     def suffixes(self) -> tuple[str, ...]:
-        return tuple(self.settings.CONFIG_SUFFIXES)
+        return tuple(self.stg.CONFIG_SUFFIXES)
 
     @property
     def label(self) -> str:
@@ -49,7 +44,7 @@ class ConfigPathResolver:
     @property
     def default_name(self) -> str | None:
         if self.kind == "inference":
-            return self.settings.INFERENCE_DEFAULT_CONFIG_NAME
+            return self.stg.INFERENCE_DEFAULT_CONFIG_NAME
         return None
 
     def candidate_paths(self, path: str | Path) -> tuple[Path, ...]:

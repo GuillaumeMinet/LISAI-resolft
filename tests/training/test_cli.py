@@ -6,25 +6,27 @@ import pytest
 
 import lisai.cli as root_cli
 import lisai.training.cli as training_cli
+from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.config.settings import load_default_settings
 
 
 def test_resolve_config_path_supports_training_subpath():
     repo_root = Path(__file__).resolve().parents[2]
     expected = (repo_root / "configs" / "training" / "examples" / "vim_denoising_unet.yml").resolve()
 
-    assert training_cli.resolve_config_path("examples/vim_denoising_unet.yml") == expected
+    assert training_cli.resolve_config_path("examples/vim_denoising_unet.yml", resolver=ConfigPathResolver("training", stg=load_default_settings())) == expected
 
 
 def test_resolve_config_path_supports_training_subpath_without_extension():
     repo_root = Path(__file__).resolve().parents[2]
     expected = (repo_root / "configs" / "training" / "examples" / "vim_denoising_unet.yml").resolve()
 
-    assert training_cli.resolve_config_path("examples/vim_denoising_unet") == expected
+    assert training_cli.resolve_config_path("examples/vim_denoising_unet", resolver=ConfigPathResolver("training", stg=load_default_settings())) == expected
 
 
 def test_resolve_config_path_lists_available_configs_when_missing():
     with pytest.raises(FileNotFoundError, match="Training config not found: missing_training_config") as exc_info:
-        training_cli.resolve_config_path("missing_training_config")
+        training_cli.resolve_config_path("missing_training_config", resolver=ConfigPathResolver("training", stg=load_default_settings()))
 
     message = str(exc_info.value)
     assert "Available configs:" in message
@@ -34,16 +36,16 @@ def test_resolve_config_path_lists_available_configs_when_missing():
 
 def test_resolve_config_path_refuses_presets_and_templates():
     with pytest.raises(ValueError, match="must be instantiated"):
-        training_cli.resolve_config_path("presets/denoising_hdn_unsup")
+        training_cli.resolve_config_path("presets/denoising_hdn_unsup", resolver=ConfigPathResolver("training", stg=load_default_settings()))
 
     with pytest.raises(ValueError, match="must be instantiated"):
-        training_cli.resolve_config_path("templates/base_training")
+        training_cli.resolve_config_path("templates/base_training", resolver=ConfigPathResolver("training", stg=load_default_settings()))
 
 
 def test_training_cli_main_accepts_config_flag(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_run_training(config_path):
+    def fake_run_training(config_path, *, settings=None):
         captured["config_path"] = config_path
 
     monkeypatch.setattr(training_cli, "run_training", fake_run_training)
@@ -57,7 +59,7 @@ def test_training_cli_main_accepts_config_flag(monkeypatch: pytest.MonkeyPatch):
 def test_training_cli_main_accepts_extensionless_config_name(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_run_training(config_path):
+    def fake_run_training(config_path, *, settings=None):
         captured["config_path"] = config_path
 
     monkeypatch.setattr(training_cli, "run_training", fake_run_training)
@@ -71,7 +73,7 @@ def test_training_cli_main_accepts_extensionless_config_name(monkeypatch: pytest
 def test_training_cli_passes_progress_bar_override(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_run_training(config_path, *, progress_bar=None):
+    def fake_run_training(config_path, *, progress_bar=None, settings=None):
         captured["config_path"] = config_path
         captured["progress_bar"] = progress_bar
 
@@ -87,7 +89,7 @@ def test_training_cli_passes_progress_bar_override(monkeypatch: pytest.MonkeyPat
 def test_root_cli_train_dispatches_extensionless_config_to_training(monkeypatch: pytest.MonkeyPatch):
     captured = {}
 
-    def fake_run_training(config_path):
+    def fake_run_training(config_path, *, settings=None):
         captured["config_path"] = config_path
 
     monkeypatch.setattr(training_cli, "run_training", fake_run_training)

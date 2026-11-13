@@ -19,6 +19,7 @@ from .yaml import load_yaml
 
 if TYPE_CHECKING:
     from lisai.infra.paths import Paths
+    from lisai.config.settings import Settings
 
 
 def _dget(d: dict, path: str, default=None):
@@ -371,12 +372,8 @@ def _apply_safe_resume_resolution(mode: str, cfg: dict, paths: Paths) -> None:
 def _resolve_loaded_config(
     exp_cfg: dict,
     *,
-    stg = None,
+    stg: Settings,
 ) -> ResolvedExperiment:
-    
-    # init settings and lisai Paths, and get project and data config from settings
-    if stg is None:
-        from ..settings import settings as stg
     from lisai.infra.paths import Paths
 
     project_cfg = stg.project_cfg.model_dump(mode="python")
@@ -443,7 +440,7 @@ def _resolve_loaded_config(
 def resolve_config(
     experiment_cfg_path: str | Path,
     *,
-    stg=None,
+    stg: Settings,
 ) -> ResolvedExperiment:
     exp_cfg = load_yaml(Path(experiment_cfg_path))
     return _resolve_loaded_config(exp_cfg, stg=stg)
@@ -452,7 +449,7 @@ def resolve_config(
 def resolve_config_dict(
     experiment_cfg: dict,
     *,
-    stg=None,
+    stg: Settings,
 ) -> ResolvedExperiment:
     if not isinstance(experiment_cfg, dict):
         raise TypeError("experiment_cfg must be a dictionary")

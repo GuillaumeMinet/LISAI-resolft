@@ -13,7 +13,7 @@ from lisai.data.dataset_registry import (
     registry_value_for_data_type,
 )
 from lisai.infra.paths import Paths
-from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
+from lisai.config.settings import Settings, load_default_settings
 
 from ..models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
 
@@ -48,15 +48,17 @@ class _RegistryDatasetSchema:
     data_formats: set[str] = field(default_factory=set)
 
 
-def experiment_json_schema() -> dict:
+def experiment_json_schema(*, stg: Settings | None = None) -> dict:
+    selected = load_default_settings() if stg is None else stg
     return _with_registry_awareness(
-        _with_catalog_metadata(ExperimentConfig.model_json_schema()),
+        _with_catalog_metadata(ExperimentConfig.model_json_schema()), stg=selected,
     )
 
 
-def experiment_template_json_schema() -> dict:
+def experiment_template_json_schema(*, stg: Settings | None = None) -> dict:
+    selected = load_default_settings() if stg is None else stg
     schema = _relax_placeholders(_with_catalog_metadata(ExperimentConfig.model_json_schema()))
-    schema = _with_registry_awareness(schema, allow_placeholders=True)
+    schema = _with_registry_awareness(schema, allow_placeholders=True, stg=selected)
     schema["title"] = "ExperimentTemplateConfig"
     schema["description"] = (
         "Relaxed training config schema for editable templates. Placeholder strings such as "
@@ -69,24 +71,29 @@ def continue_training_json_schema() -> dict:
     return _with_catalog_metadata(ContinueTrainingConfig.model_json_schema())
 
 
-def retrain_json_schema() -> dict:
+def retrain_json_schema(*, stg: Settings | None = None) -> dict:
+    selected = load_default_settings() if stg is None else stg
     return _with_registry_awareness(
-        _with_catalog_metadata(RetrainConfig.model_json_schema()),
+        _with_catalog_metadata(RetrainConfig.model_json_schema()), stg=selected,
     )
 
 
-def write_experiment_json_schema(output_path: str | Path) -> Path:
+def write_experiment_json_schema(
+    output_path: str | Path, *, stg: Settings | None = None,
+) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    schema = experiment_json_schema()
+    schema = experiment_json_schema(stg=stg)
     path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
     return path
 
 
-def write_experiment_template_json_schema(output_path: str | Path) -> Path:
+def write_experiment_template_json_schema(
+    output_path: str | Path, *, stg: Settings | None = None,
+) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    schema = experiment_template_json_schema()
+    schema = experiment_template_json_schema(stg=stg)
     path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -99,10 +106,12 @@ def write_continue_training_json_schema(output_path: str | Path) -> Path:
     return path
 
 
-def write_retrain_json_schema(output_path: str | Path) -> Path:
+def write_retrain_json_schema(
+    output_path: str | Path, *, stg: Settings | None = None,
+) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    schema = retrain_json_schema()
+    schema = retrain_json_schema(stg=stg)
     path.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
     return path
 
@@ -113,13 +122,15 @@ def _with_catalog_metadata(schema: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _with_registry_awareness(schema: dict[str, Any], *, allow_placeholders: bool = False) -> dict[str, Any]:
+def _with_registry_awareness(
+    schema: dict[str, Any], *, allow_placeholders: bool = False, stg: Settings,
+) -> dict[str, Any]:
     out = deepcopy(schema)
     data_schema = _data_definition_schema(out)
     if data_schema is None:
         return out
 
-    registry = _load_dataset_registry_for_schema()
+    registry = _load_dataset_registry_for_schema(stg=stg)
     summaries = _registry_schema_summaries(registry)
     if not summaries:
         return out
@@ -137,9 +148,9 @@ def _with_registry_awareness(schema: dict[str, Any], *, allow_placeholders: bool
     return out
 
 
-def _load_dataset_registry_for_schema() -> dict[str, dict[str, Any]]:
+def _load_dataset_registry_for_schema(*, stg: Settings) -> dict[str, dict[str, Any]]:
     try:
-        return load_dataset_registry(Paths(_legacy_settings).dataset_registry_path())
+        return load_dataset_registry(Paths(stg).dataset_registry_path())
     except Exception:
         return {}
 

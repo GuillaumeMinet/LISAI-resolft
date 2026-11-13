@@ -281,7 +281,7 @@ def run_apply_model(
     save_input = resolve_apply_save_input(cfg, output_policy=output_policy)
     color_code_cfg = cfg.postprocess.color_code
     progress = InferenceProgress(
-        enabled=resolve_progress_bar(True, progress_bar)
+        enabled=resolve_progress_bar(True, progress_bar, stg=_legacy_settings)
     )
 
     data_path = Path(data_path)

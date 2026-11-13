@@ -14,6 +14,7 @@ from typing import Any
 from lisai.config import save_yaml
 from lisai.config.models.inference import EvaluateDefaults
 from lisai.config.progress import resolve_progress_bar
+from lisai.config.settings import settings as _legacy_settings  # Transition until inference Patch E
 from lisai.evaluation.data import (
     EvaluationDatasetSpec,
     build_eval_source,
@@ -348,7 +349,7 @@ def run_evaluate(
     progress_bar: bool | None = None,
 ) -> None:
     """Evaluate a saved run using a fully resolved typed evaluate config."""
-    resolved_progress_bar = resolve_progress_bar(True, progress_bar)
+    resolved_progress_bar = resolve_progress_bar(True, progress_bar, stg=_legacy_settings)
 
     run_dir = resolve_run_dir(
         dataset_name=dataset_name,

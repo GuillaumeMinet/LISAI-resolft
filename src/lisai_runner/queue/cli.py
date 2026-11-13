@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Sequence
 
 from lisai.config import load_yaml, resolve_config, save_yaml
+from lisai.config.settings import load_default_settings
+from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.evaluation import run_evaluate
 from lisai.evaluation.defaults import resolve_evaluate_config
 from lisai.runs.schema import format_timestamp_local, utc_now
@@ -60,6 +62,12 @@ POST_TRAINING_INFERENCE_CONFIG = "post_training"
 QUEUE_MANAGED_SNAPSHOTS_DIRNAME = "submitted_configs"
 
 
+def _resolve_training_reference(ref: str) -> Path:
+    # Transitional runner boundary; Patch F will pass the submitting settings to the worker.
+    resolver = ConfigPathResolver("training", stg=load_default_settings())
+    return resolve_config_path(ref, resolver=resolver)
+
+
 def submit_job(
     *,
     config: str,
@@ -69,7 +77,7 @@ def submit_job(
     stdout=None,
 ) -> int:
     out = sys.stdout if stdout is None else stdout
-    resolved_config = resolve_config_path(config)
+    resolved_config = _resolve_training_reference(config)
     snapshot_config = _copy_config_snapshot(resolved_config)
     context = load_scheduling_context(snapshot_config)
 
@@ -108,7 +116,7 @@ def submit_sweep(
     err = sys.stderr if stderr is None else stderr
 
     try:
-        sweep_path = resolve_config_path(file)
+        sweep_path = _resolve_training_reference(file)
         payload = load_yaml(sweep_path)
     except Exception as exc:
         print(
@@ -772,8 +780,8 @@ def _resolve_sweep_base_config(base_config: str, *, sweep_path: Path) -> Path:
     if not candidate.is_absolute():
         candidate_from_sweep = (sweep_path.parent / candidate).resolve()
         if candidate_from_sweep.exists():
-            return resolve_config_path(str(candidate_from_sweep))
-    return resolve_config_path(base_config)
+            return _resolve_training_reference(str(candidate_from_sweep))
+    return _resolve_training_reference(base_config)
 
 
 def _next_sweep_config_path(*, generated_root: Path, run_name: str, index: int) -> Path:
@@ -1517,7 +1525,7 @@ def _should_evaluate_after_cancel(
         return bool(eval_override)
 
     try:
-        cfg = resolve_config(job.config)
+        cfg = resolve_config(job.config, stg=load_default_settings())
     except Exception as exc:
         print(
             f"warning: could not resolve config for {_job_selector_text(job)} "

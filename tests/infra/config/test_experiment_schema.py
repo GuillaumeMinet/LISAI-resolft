@@ -170,7 +170,7 @@ def test_experiment_schema_adds_registry_dataset_suggestions_and_conditions(
     monkeypatch.setattr(
         experiment_schema_mod,
         "_load_dataset_registry_for_schema",
-        lambda: {
+        lambda *, stg: {
             "demo": _registry_entry(
                 inputs=["inp_single", "inp_mltpl_snr"],
                 targets=["gt_avg"],
@@ -213,7 +213,7 @@ def test_experiment_schema_requires_unprepared_training_for_unknown_registry_dat
     monkeypatch.setattr(
         experiment_schema_mod,
         "_load_dataset_registry_for_schema",
-        lambda: {"demo": _registry_entry(inputs=["inp"])},
+        lambda *, stg: {"demo": _registry_entry(inputs=["inp"])},
     )
 
     schema = experiment_json_schema()
@@ -231,7 +231,7 @@ def test_experiment_template_schema_does_not_apply_unknown_dataset_rule_to_place
     monkeypatch.setattr(
         experiment_schema_mod,
         "_load_dataset_registry_for_schema",
-        lambda: {"demo": _registry_entry(inputs=["inp"])},
+        lambda *, stg: {"demo": _registry_entry(inputs=["inp"])},
     )
 
     schema = experiment_template_json_schema()
