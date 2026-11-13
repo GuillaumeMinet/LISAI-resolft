@@ -48,131 +48,142 @@ def _to_attr(x: Any) -> Any:
     return x
 
 
+def _legacy_checkout_configs_root() -> Path:
+    """Find the existing checkout configuration only at a default-loading boundary.
+
+    A later workspace milestone will replace this legacy location selector.
+    """
+    return Path(__file__).resolve().parents[3] / "configs"
+
+
+def load_default_settings() -> Settings:
+    """Load the legacy checkout configuration afresh for a CLI/API operation.
+
+    This function never initializes missing files. Library calls must not prompt
+    for paths or modify an installation implicitly.
+    """
+    return Settings.from_config_dir(_legacy_checkout_configs_root())
+
+
+def _migrate_local_inference_output(raw: dict) -> bool:
+    """Migrate the deprecated flat output_mode during *explicit* setup only."""
+    inference = raw.get("inference")
+    if not isinstance(inference, dict) or "output_mode" not in inference:
+        return False
+    if "output" in inference:
+        raise ValueError(
+            "local inference config cannot define both output_mode and output."
+        )
+
+    mode = inference.pop("output_mode")
+    inference["output"] = {
+        "mode": mode,
+        "save_input_mode": "if_not_in_place",
+    }
+    return True
+
+
+def _ensure_schema_hint(path: Path, hint: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if hint not in text.splitlines():
+        path.write_text(f"{hint}\n{text}", encoding="utf-8")
+
+
+def _ensure_local_inference_configs(configs_root: Path) -> None:
+    """Install missing legacy inference defaults during explicit setup only."""
+    local_dir = configs_root / "inference" / "local"
+    local_dir.mkdir(parents=True, exist_ok=True)
+
+    defaults_path = local_dir / "defaults.yml"
+    if not defaults_path.exists():
+        save_yaml(ResolvedInferenceConfig().model_dump(mode="json"), defaults_path)
+    _ensure_schema_hint(defaults_path, _INFERENCE_DEFAULTS_SCHEMA_HINT)
+
+    post_training_path = local_dir / "post_training.yml"
+    if not post_training_path.exists():
+        save_yaml(POST_TRAINING_OVERRIDES, post_training_path)
+    _ensure_schema_hint(post_training_path, _INFERENCE_OVERRIDES_SCHEMA_HINT)
+
+
+def prepare_legacy_config_dir(
+    configs_root: str | Path,
+    *,
+    data_root: str | Path | None = None,
+    interactive: bool = False,
+) -> dict:
+    """Explicitly initialize/migrate legacy files, never called by ``Settings``.
+
+    Intended for a CLI setup/preflight command. An absent local config requires
+    an explicit data root or ``interactive=True``; library imports never prompt.
+    """
+    configs_root = Path(configs_root).expanduser().resolve()
+    local_path = configs_root / "local_config.yml"
+
+    if local_path.is_file():
+        raw = load_yaml(local_path)
+        if _migrate_local_inference_output(raw):
+            save_yaml(raw, local_path)
+    else:
+        if data_root is None:
+            if not interactive:
+                raise FileNotFoundError(
+                    f"Missing LISAI local config: {local_path}. "
+                    "Run explicit setup or supply a data_root."
+                )
+            default_root = "E:/dl_monalisa" if os.name == "nt" else "/data/dl_monalisa"
+            entered = input(f"Enter absolute path to Data Root [default: {default_root}]: ").strip()
+            data_root = entered or default_root
+        raw = {
+            "infrastructure": {"data_root": str(Path(data_root).expanduser().resolve())},
+            "inference": {
+                "output": {"mode": "default", "save_input_mode": "if_not_in_place"},
+                "inference_dir": "default",
+            },
+            "console": {"progress_bar": None},
+        }
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        save_yaml(raw, local_path)
+
+    _ensure_schema_hint(local_path, _LOCAL_CONFIG_SCHEMA_HINT)
+    _ensure_local_inference_configs(configs_root)
+    return raw
+
+
 class Settings:
-    """
-    Single source of truth for project configuration.
+    """Validated, read-only view of one explicitly selected legacy config tree.
 
-    It loads and validates project/data YAML files via Pydantic models,
-    builds the template formatting context, and exposes resolved
-    configuration needed by infrastructure components such as Paths.
+    Construction never creates or modifies files and never prompts. Low-level
+    template expansion remains owned here; ``Paths`` builds domain paths from it.
     """
-    def __init__(self):
-        self.PROJECT_ROOT = self._find_project_root(anchor="configs")
-        self.CONFIGS_ROOT = self.PROJECT_ROOT / "configs"
 
-        # project config
+    def __init__(self, configs_root: str | Path):
+        self.CONFIGS_ROOT = Path(configs_root).expanduser().resolve()
+        self.PROJECT_ROOT = self.CONFIGS_ROOT.parent
         self._local_yaml_path = self.CONFIGS_ROOT / "local_config.yml"
         self._project_yaml_path = self.CONFIGS_ROOT / "project_config.yml"
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
 
         self.local_cfg: LocalConfig = LocalConfig.model_validate(
-            self._load_or_setup_infrastructure()
+            self._load_required(self._local_yaml_path)
         )
-        self._ensure_local_inference_configs()
-
-        project_raw = self._load_required(self._project_yaml_path)
-        data_raw = self._load_required(self._data_yaml_path)
-
-        self.project_cfg: ProjectConfig = ProjectConfig.model_validate(project_raw)
-        self.data_cfg: DataConfig = DataConfig.model_validate(data_raw)
-
+        self.project_cfg: ProjectConfig = ProjectConfig.model_validate(
+            self._load_required(self._project_yaml_path)
+        )
+        self.data_cfg: DataConfig = DataConfig.model_validate(
+            self._load_required(self._data_yaml_path)
+        )
         self._ctx = self._build_context()
 
-    def _find_project_root(self, anchor: str = "configs") -> Path:
-        current_path = Path(__file__).resolve()
-        for parent in [current_path] + list(current_path.parents):
-            if (parent / anchor).exists():
-                return parent
-        raise FileNotFoundError(f"Could not find project root from {current_path} (missing '{anchor}' folder).")
+    @classmethod
+    def from_config_dir(cls, configs_root: str | Path) -> Settings:
+        """Load the three existing YAML files from an explicit config directory."""
+        return cls(configs_root)
 
-    def _load_required(self, path: Path) -> dict:
-        if not path.exists():
-            raise FileNotFoundError(f"Critical config missing: {path}")
+    @staticmethod
+    def _load_required(path: Path) -> dict:
+        if not path.is_file():
+            raise FileNotFoundError(f"Critical LISAI config missing: {path}")
         return load_yaml(path)
-
-    def _load_or_setup_infrastructure(self) -> dict:
-        if self._local_yaml_path.exists():
-            raw = load_yaml(self._local_yaml_path)
-            if self._migrate_local_inference_output(raw):
-                save_yaml(raw, self._local_yaml_path)
-            self._ensure_local_config_schema_hint()
-            return raw
-
-        print("\n" + "=" * 60)
-        print(" LISAI - FIRST TIME SETUP")
-        print("=" * 60)
-        default_root = "E:/dl_monalisa" if os.name == "nt" else "/data/dl_monalisa"
-        user_input = input(f"Enter absolute path to Data Root [default: {default_root}]: ").strip()
-        data_root = user_input if user_input else default_root
-
-        new_config = {
-            "infrastructure": {"data_root": str(Path(data_root).resolve())},
-            "inference": {
-                "output": {
-                    "mode": "default",
-                    "save_input_mode": "if_not_in_place",
-                },
-                "inference_dir": "default",
-            },
-            "console": {"progress_bar": None},
-        }
-        self._local_yaml_path.parent.mkdir(parents=True, exist_ok=True)
-        save_yaml(new_config, self._local_yaml_path)
-        self._ensure_local_config_schema_hint()
-        print(f"Saved to {self._local_yaml_path}\n")
-        return new_config
-
-    @staticmethod
-    def _migrate_local_inference_output(raw: dict) -> bool:
-        """Migrate the recent flat local output_mode setting to inference.output."""
-        inference = raw.get("inference")
-        if not isinstance(inference, dict) or "output_mode" not in inference:
-            return False
-        if "output" in inference:
-            raise ValueError(
-                "local inference config cannot define both output_mode and output."
-            )
-
-        mode = inference.pop("output_mode")
-        inference["output"] = {
-            "mode": mode,
-            "save_input_mode": "if_not_in_place",
-        }
-        return True
-
-    def _ensure_local_config_schema_hint(self) -> None:
-        text = self._local_yaml_path.read_text(encoding="utf-8")
-        if _LOCAL_CONFIG_SCHEMA_HINT in text.splitlines():
-            return
-        self._local_yaml_path.write_text(
-            f"{_LOCAL_CONFIG_SCHEMA_HINT}\n{text}",
-            encoding="utf-8",
-        )
-
-
-    @staticmethod
-    def _ensure_schema_hint(path: Path, hint: str) -> None:
-        text = path.read_text(encoding="utf-8")
-        if hint in text.splitlines():
-            return
-        path.write_text(f"{hint}\n{text}", encoding="utf-8")
-
-    def _ensure_local_inference_configs(self) -> None:
-        local_dir = self.CONFIGS_ROOT / "inference" / "local"
-        local_dir.mkdir(parents=True, exist_ok=True)
-
-        defaults_path = local_dir / "defaults.yml"
-        if not defaults_path.exists():
-            save_yaml(
-                ResolvedInferenceConfig().model_dump(mode="json"),
-                defaults_path,
-            )
-        self._ensure_schema_hint(defaults_path, _INFERENCE_DEFAULTS_SCHEMA_HINT)
-
-        post_training_path = local_dir / "post_training.yml"
-        if not post_training_path.exists():
-            save_yaml(POST_TRAINING_OVERRIDES, post_training_path)
-        self._ensure_schema_hint(post_training_path, _INFERENCE_OVERRIDES_SCHEMA_HINT)
 
     def _build_context(self) -> AttrDict:
         data_root = Path(self.local_cfg.infrastructure.data_root).resolve()
@@ -295,4 +306,6 @@ class Settings:
         return filename
 
 
-settings = Settings()
+# Transitional only (Patch A of M1). Existing modules still import this name.
+# Patch G deletes the singleton once all internal callers receive Settings/Paths.
+settings = load_default_settings()

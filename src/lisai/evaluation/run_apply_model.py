@@ -29,6 +29,7 @@ from lisai.evaluation.visualization.z_projection import (
 )
 from lisai.infra.fs import prepare_output_folder
 from lisai.infra.paths import Paths
+from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 from lisai.lib.upsamp.inp_generators import (
     _deterministic_mltpl_sampling,
     generate_downsamp_inp,
@@ -390,7 +391,7 @@ def run_apply_model(
         )
     else:
         save_folder = _create_apply_save_folder(
-            Paths().inference_output_dir(
+            Paths(_legacy_settings).inference_output_dir(
                 source_name=source_name,
                 model_name=model_name,
             ),

@@ -8,6 +8,7 @@ from typing import Protocol
 import torch
 
 from lisai.infra.paths import Paths
+from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 from lisai.infra.paths.checkpoint_resolution import (
     resolve_checkpoint_path as resolve_existing_checkpoint_path,
 )
@@ -87,7 +88,7 @@ def _origin_checkpoint_path(spec: TrainingModelLoadSpec) -> Path:
         raise ValueError("origin_run_dir is required to load a checkpoint.")
 
     origin_dir = Path(spec.origin_run_dir)
-    paths = Paths()
+    paths = Paths(_legacy_settings)
 
     if spec.checkpoint_filename:
         return paths.checkpoint_path(

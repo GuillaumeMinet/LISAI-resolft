@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from lisai.infra.paths import Paths
 
 
@@ -17,8 +19,8 @@ def test_paths_exposes_data_root(tmp_path):
     assert Paths(settings).data_root() == (tmp_path / "data").resolve()
 
 
-def test_dataset_usage_subfolders_control_dataset_location(monkeypatch):
-    from lisai.config import settings
+def test_dataset_usage_subfolders_control_dataset_location(monkeypatch, settings_factory):
+    settings = settings_factory("usage")
 
     monkeypatch.setitem(
         settings.project_cfg.paths.dataset_usage_subfolders,
@@ -45,8 +47,8 @@ def test_dataset_usage_subfolders_control_dataset_location(monkeypatch):
     )
 
 
-def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_path):
-    from lisai.config import settings
+def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_path, settings_factory):
+    settings = settings_factory("inference")
 
     monkeypatch.setitem(
         settings._ctx.paths.roots,
@@ -63,8 +65,8 @@ def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_pat
     ) == tmp_path / "predictions" / "paper_mito" / "mito_model"
 
 
-def test_promoted_model_downloads_dir_uses_project_template(monkeypatch, tmp_path):
-    from lisai.config import settings
+def test_promoted_model_downloads_dir_uses_project_template(monkeypatch, tmp_path, settings_factory):
+    settings = settings_factory("promoted")
 
     monkeypatch.setitem(
         settings._ctx.paths.templates,
@@ -73,3 +75,8 @@ def test_promoted_model_downloads_dir_uses_project_template(monkeypatch, tmp_pat
     )
 
     assert Paths(settings).promoted_model_downloads_dir() == tmp_path / "custom_downloads"
+
+
+def test_paths_requires_settings():
+    with pytest.raises(TypeError):
+        Paths()

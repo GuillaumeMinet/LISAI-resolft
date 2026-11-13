@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lisai.config.settings import Settings
 
 from .checkpoint_naming import model_filename
 
@@ -28,11 +32,7 @@ class Paths:
     runtime context (dataset, run, etc.) and centralizes all filesystem
     structure logic to avoid hardcoded paths across the codebase.
     """
-    def __init__(self, stg=None, keys: TemplateKeys | None = None):
-        if stg is None:
-            from lisai.config.settings import settings as default_settings
-
-            stg = default_settings
+    def __init__(self, stg: Settings, keys: TemplateKeys | None = None):
         self.settings = stg
         self.keys = keys or TemplateKeys()
 

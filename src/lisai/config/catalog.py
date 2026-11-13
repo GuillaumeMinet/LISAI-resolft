@@ -18,6 +18,7 @@ from lisai.data.dataset_registry import (
     registry_value_for_data_type,
 )
 from lisai.infra.paths import Paths
+from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 
 TrainingConfigKind = Literal["preset", "template", "example", "local"]
 TrainingPresetName = str
@@ -448,7 +449,7 @@ def _registry_scaffold_defaults(
     if not dataset_name or dataset_name == "CHANGEME":
         return RegistryScaffoldDefaults()
 
-    registry = load_dataset_registry(Paths().dataset_registry_path())
+    registry = load_dataset_registry(Paths(_legacy_settings).dataset_registry_path())
     dataset_info = registry.get(str(dataset_name))
     if not isinstance(dataset_info, Mapping):
         return RegistryScaffoldDefaults()

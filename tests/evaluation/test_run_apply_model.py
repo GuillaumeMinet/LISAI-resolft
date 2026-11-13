@@ -555,6 +555,9 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
     captured = {}
 
     class _FakePaths:
+        def __init__(self, _settings):
+            pass
+
         def inference_output_dir(self, *, source_name, model_name):
             captured["source_name"] = source_name
             captured["model_name"] = model_name
@@ -613,6 +616,9 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
     captured = {}
 
     class _FakePaths:
+        def __init__(self, _settings):
+            pass
+
         def inference_output_dir(self, *, source_name, model_name):
             captured["source_name"] = source_name
             return tmp_path / "inference" / source_name / model_name

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from lisai.config.io.yaml import load_yaml, save_yaml
 from lisai.config.models.local_config import LocalConfig
-from lisai.config.settings import Settings
+from lisai.config.settings import Settings, prepare_legacy_config_dir
 
 
 def test_existing_local_config_without_inference_section_uses_defaults():
@@ -41,12 +44,11 @@ def test_local_inference_output_mode_accepts_source_relative_modes():
 
 
 def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path):
-    settings = Settings.__new__(Settings)
-    settings._local_yaml_path = tmp_path / "configs" / "local_config.yml"
+    local_path = tmp_path / "configs" / "local_config.yml"
     data_root = tmp_path / "data"
     monkeypatch.setattr("builtins.input", lambda _prompt: str(data_root))
 
-    raw = settings._load_or_setup_infrastructure()
+    raw = prepare_legacy_config_dir(local_path.parent, interactive=True)
 
     assert raw["inference"] == {
         "output": {
@@ -56,18 +58,17 @@ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path)
         "inference_dir": "default",
     }
     assert raw["console"] == {"progress_bar": None}
-    written = load_yaml(settings._local_yaml_path)
+    written = load_yaml(local_path)
     assert written["inference"] == raw["inference"]
     assert written["console"] == raw["console"]
-    assert settings._local_yaml_path.read_text(encoding="utf-8").startswith(
+    assert local_path.read_text(encoding="utf-8").startswith(
         "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
     )
 
 
 def test_existing_flat_output_mode_is_migrated_to_nested_output(tmp_path: Path):
-    settings = Settings.__new__(Settings)
-    settings._local_yaml_path = tmp_path / "configs" / "local_config.yml"
-    settings._local_yaml_path.parent.mkdir(parents=True)
+    local_path = tmp_path / "configs" / "local_config.yml"
+    local_path.parent.mkdir(parents=True)
     save_yaml(
         {
             "infrastructure": {"data_root": "/tmp/lisai"},
@@ -76,10 +77,10 @@ def test_existing_flat_output_mode_is_migrated_to_nested_output(tmp_path: Path):
                 "inference_dir": "default",
             },
         },
-        settings._local_yaml_path,
+        local_path,
     )
 
-    loaded = settings._load_or_setup_infrastructure()
+    loaded = prepare_legacy_config_dir(local_path.parent)
 
     assert loaded["inference"] == {
         "output": {
@@ -88,13 +89,12 @@ def test_existing_flat_output_mode_is_migrated_to_nested_output(tmp_path: Path):
         },
         "inference_dir": "default",
     }
-    assert load_yaml(settings._local_yaml_path)["inference"] == loaded["inference"]
+    assert load_yaml(local_path)["inference"] == loaded["inference"]
 
 
 def test_existing_local_config_gets_schema_hint_without_rewriting_values(tmp_path: Path):
-    settings = Settings.__new__(Settings)
-    settings._local_yaml_path = tmp_path / "configs" / "local_config.yml"
-    settings._local_yaml_path.parent.mkdir(parents=True)
+    local_path = tmp_path / "configs" / "local_config.yml"
+    local_path.parent.mkdir(parents=True)
     expected = {
         "infrastructure": {"data_root": "/tmp/lisai"},
         "inference": {
@@ -102,12 +102,12 @@ def test_existing_local_config_gets_schema_hint_without_rewriting_values(tmp_pat
             "inference_dir": "default",
         },
     }
-    save_yaml(expected, settings._local_yaml_path)
+    save_yaml(expected, local_path)
 
-    loaded = settings._load_or_setup_infrastructure()
+    loaded = prepare_legacy_config_dir(local_path.parent)
 
     assert loaded == expected
-    assert settings._local_yaml_path.read_text(encoding="utf-8").startswith(
+    assert local_path.read_text(encoding="utf-8").startswith(
         "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
     )
 
@@ -155,13 +155,11 @@ def test_default_local_inference_dir_uses_project_inference_root(tmp_path: Path)
 
 
 def test_local_inference_configs_are_created_from_builtin_defaults(tmp_path: Path):
-    settings = Settings.__new__(Settings)
-    settings.CONFIGS_ROOT = tmp_path / "configs"
+    config_dir = tmp_path / "configs"
+    prepare_legacy_config_dir(config_dir, data_root=tmp_path / "data")
 
-    settings._ensure_local_inference_configs()
-
-    defaults_path = settings.CONFIGS_ROOT / "inference" / "local" / "defaults.yml"
-    post_training_path = settings.CONFIGS_ROOT / "inference" / "local" / "post_training.yml"
+    defaults_path = config_dir / "inference" / "local" / "defaults.yml"
+    post_training_path = config_dir / "inference" / "local" / "post_training.yml"
     defaults = load_yaml(defaults_path)
     post_training = load_yaml(post_training_path)
 
@@ -174,16 +172,48 @@ def test_local_inference_configs_are_created_from_builtin_defaults(tmp_path: Pat
 
 
 def test_local_inference_configs_are_never_overwritten(tmp_path: Path):
-    settings = Settings.__new__(Settings)
-    settings.CONFIGS_ROOT = tmp_path / "configs"
-    local_dir = settings.CONFIGS_ROOT / "inference" / "local"
+    config_dir = tmp_path / "configs"
+    local_dir = config_dir / "inference" / "local"
     local_dir.mkdir(parents=True)
     defaults_path = local_dir / "defaults.yml"
     post_training_path = local_dir / "post_training.yml"
     save_yaml({"apply": {"inference": {"tiling_size": 777}}}, defaults_path)
     save_yaml({"evaluate": {"metrics": ["custom"]}}, post_training_path)
 
-    settings._ensure_local_inference_configs()
+    prepare_legacy_config_dir(config_dir, data_root=tmp_path / "data")
 
     assert load_yaml(defaults_path)["apply"]["inference"]["tiling_size"] == 777
     assert load_yaml(post_training_path)["evaluate"]["metrics"] == ["custom"]
+
+
+def test_explicit_loader_does_not_run_legacy_migration(tmp_path: Path):
+    from shutil import copyfile
+
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    repo_configs = Path(__file__).resolve().parents[2] / "configs"
+    for name in ("project_config.yml", "data_config.yml"):
+        copyfile(repo_configs / name, config_dir / name)
+    local_path = config_dir / "local_config.yml"
+    save_yaml(
+        {"infrastructure": {"data_root": str(tmp_path / "data")},
+         "inference": {"output_mode": "folder_inside"}},
+        local_path,
+    )
+    original = local_path.read_bytes()
+    with pytest.raises(ValidationError, match="output_mode"):
+        Settings.from_config_dir(config_dir)
+    assert local_path.read_bytes() == original
+    prepare_legacy_config_dir(config_dir)
+    assert Settings.from_config_dir(config_dir).INFERENCE_OUTPUT_MODE == "folder_inside"
+
+
+def test_missing_local_config_requires_explicit_setup(tmp_path: Path, monkeypatch):
+    def forbid_prompt(*_args):
+        raise AssertionError("unexpected input prompt")
+
+    monkeypatch.setattr("builtins.input", forbid_prompt)
+    config_dir = tmp_path / "configs"
+    with pytest.raises(FileNotFoundError, match="local_config.yml"):
+        prepare_legacy_config_dir(config_dir)
+    assert not config_dir.exists()

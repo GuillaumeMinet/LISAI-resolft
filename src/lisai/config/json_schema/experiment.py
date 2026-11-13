@@ -13,6 +13,7 @@ from lisai.data.dataset_registry import (
     registry_value_for_data_type,
 )
 from lisai.infra.paths import Paths
+from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 
 from ..models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
 
@@ -138,7 +139,7 @@ def _with_registry_awareness(schema: dict[str, Any], *, allow_placeholders: bool
 
 def _load_dataset_registry_for_schema() -> dict[str, dict[str, Any]]:
     try:
-        return load_dataset_registry(Paths().dataset_registry_path())
+        return load_dataset_registry(Paths(_legacy_settings).dataset_registry_path())
     except Exception:
         return {}
 

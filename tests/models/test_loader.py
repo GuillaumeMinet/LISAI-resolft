@@ -53,7 +53,7 @@ def test_origin_checkpoint_path_prefers_explicit_filename(monkeypatch: pytest.Mo
     calls = {}
 
     class FakePaths:
-        def __init__(self):
+        def __init__(self, _settings):
             calls["init_called"] = True
 
         def checkpoint_path(self, **kwargs):
@@ -83,6 +83,9 @@ def test_origin_checkpoint_path_best_falls_back_to_highest_epoch_checkpoint(
     tmp_path: Path,
 ):
     class FakePaths:
+        def __init__(self, _settings):
+            pass
+
         def checkpoint_path(self, **kwargs):
             run_dir = Path(kwargs["run_dir"])
             load_method = kwargs["load_method"]
