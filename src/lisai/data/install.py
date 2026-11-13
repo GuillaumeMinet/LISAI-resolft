@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterable, Literal, Mapping, TextIO
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 from .catalog import DatasetArchive, DatasetCatalog, DownloadableDataset
@@ -170,10 +169,10 @@ def missing_evaluation_dependencies(
     catalog: DatasetCatalog,
     selected_names: Iterable[str],
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> list[str]:
     """Return optional evaluation dependencies not selected and not already installed."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     selected = set(selected_names)
     missing: set[str] = set()
     for name in selected:
@@ -196,10 +195,10 @@ def resolve_dataset_plan(
     catalog: DatasetCatalog,
     selected_names: Iterable[str],
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> DatasetInstallPlan:
     """Resolve installed state and hard dependencies for either download or local install."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     names = sorted(set(selected_names), key=str.casefold)
     entries: list[DatasetPlanEntry] = []
     required_noise_models: set[str] = set()
@@ -323,11 +322,11 @@ def install_dataset_plan(
     plan: DatasetInstallPlan,
     *,
     source: DatasetInstallSource,
-    paths: Paths | None = None,
+    paths: Paths,
     stream: TextIO | None = None,
 ) -> DatasetInstallResult:
     """Install a resolved plan exclusively from local, catalogued archives."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     output = sys.stdout if stream is None else stream
     validate_install_source(catalog, plan, source)
 

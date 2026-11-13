@@ -11,7 +11,6 @@ import torch
 from tifffile import imread
 
 from lisai.data.utils import crop_center
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.lib.hdn import histNoiseModel
 from lisai.lib.hdn.gaussianMixtureNoiseModel import GaussianMixtureNoiseModel
@@ -297,14 +296,12 @@ def _build_info_text(
 def build_noise_model(
     cfg: NoiseModelBuildConfig,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
     device: torch.device | None = None,
 ) -> NoiseModelBuildResult:
     """
     Build and save histogram + GMM noise models from paired signal/observation data.
     """
-    if paths is None:
-        paths = Paths(settings)
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

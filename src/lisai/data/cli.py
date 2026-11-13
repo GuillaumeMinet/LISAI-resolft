@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from lisai.config import settings
+from lisai.config.settings import load_default_settings
 from lisai.infra.cli.open_path import try_open_path as _try_open_path
 from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.infra.cli.selection import resolve_partial_name
@@ -36,7 +36,7 @@ _DATASET_CATALOG_HINT = "Use 'lisai datasets catalog' to inspect downloadable da
 
 
 def _paths() -> Paths:
-    return Paths(settings)
+    return Paths(load_default_settings())
 
 
 def _as_mapping(value: Any) -> Mapping[str, Any]:
@@ -194,12 +194,11 @@ def _usage_sort_key(item: tuple[str, Mapping[str, Any]]) -> tuple[int, str]:
 
 def list_datasets(
     *,
-    paths: Paths | None = None,
+    paths: Paths,
     usage: str | None = None,
     full_description: bool = False,
     include_description: bool = False,
 ) -> None:
-    paths = paths or _paths()
     registry = _registry_from_paths(paths)
     if usage is not None:
         registry = {
@@ -267,8 +266,7 @@ def _require_dataset(
     return resolved_name, info, paths.dataset_dir(dataset_name=resolved_name, usage=usage)
 
 
-def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.ArgumentParser) -> None:
-    paths = paths or _paths()
+def show_dataset(name: str, *, paths: Paths, parser: argparse.ArgumentParser) -> None:
     resolved_name, info, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
 
     print(f"Dataset: {resolved_name}")
@@ -336,8 +334,7 @@ def show_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
             print(content.rstrip("\n"))
 
 
-def open_dataset(name: str, *, paths: Paths | None = None, parser: argparse.ArgumentParser) -> int:
-    paths = paths or _paths()
+def open_dataset(name: str, *, paths: Paths, parser: argparse.ArgumentParser) -> int:
     _, _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
     resolved = dataset_dir.resolve()
     if _try_open_path(resolved):
@@ -349,10 +346,9 @@ def open_dataset(name: str, *, paths: Paths | None = None, parser: argparse.Argu
 def open_dataset_readme(
     name: str,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
     parser: argparse.ArgumentParser,
 ) -> int:
-    paths = paths or _paths()
     _, _, dataset_dir = _require_dataset(name, paths=paths, parser=parser)
     if not dataset_dir.exists():
         parser.exit(
@@ -400,9 +396,8 @@ def rename_dataset(
     old_name: str,
     new_name: str,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> int:
-    paths = paths or _paths()
     registry = _registry_from_paths(paths)
     resolved_old_name = resolve_partial_name(
         old_name,
@@ -451,9 +446,12 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         usage = "training"
     elif args.evaluation:
         usage = "evaluation"
-    list_datasets(usage=usage, 
-                  full_description=args.full,
-                  include_description=not args.short)
+    list_datasets(
+        paths=_paths(),
+        usage=usage,
+        full_description=args.full,
+        include_description=not args.short,
+    )
     return 0
 
 
@@ -486,20 +484,20 @@ def _add_dataset_list_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    show_dataset(args.name, parser=parser)
+    show_dataset(args.name, paths=_paths(), parser=parser)
     return 0
 
 
 def run_open_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    return open_dataset(args.name, parser=parser)
+    return open_dataset(args.name, paths=_paths(), parser=parser)
 
 
 def run_open_readme_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    return open_dataset_readme(args.name, parser=parser)
+    return open_dataset_readme(args.name, paths=_paths(), parser=parser)
 
 
 def run_rename_from_args(args: argparse.Namespace) -> int:
-    return rename_dataset(args.old_name, args.new_name)
+    return rename_dataset(args.old_name, args.new_name, paths=_paths())
 
 
 

@@ -11,7 +11,6 @@ from typing import Callable, TextIO
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.promoted_models.sources.zenodo import (
     DEFAULT_ZENODO_TIMEOUT_SECONDS,
@@ -244,14 +243,14 @@ def download_and_install_dataset_plan(
     plan: DatasetInstallPlan,
     *,
     record_id: str,
-    paths: Paths | None = None,
+    paths: Paths,
     timeout: float = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
     retries: int = DEFAULT_DOWNLOAD_RETRIES,
     stream: TextIO | None = None,
     url_resolver: Callable[[str], str] | None = None,
 ) -> DatasetInstallResult:
     """Fetch all missing release archives, then pass them to the local installer."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     output = sys.stdout if stream is None else stream
     downloads_dir = resolved_paths.datasets_root() / "_downloads"
     local_archives: dict[str, Path] = {}

@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from lisai.config import settings
 from lisai.data.readme import ensure_dataset_readme
 
 from .core import DatasetRegistry, FolderSource, PreprocessConfig, PreprocessSaver
@@ -86,13 +85,9 @@ class PreprocessRun:
     split_cfg: PreprocessSplitConfig
 
     @classmethod
-    def from_cfg(cls, cfg: dict, *, paths: Paths | None = None) -> "PreprocessRun":
+    def from_cfg(cls, cfg: dict, *, paths: Paths) -> "PreprocessRun":
         pcfg = PreprocessConfig.model_validate(cfg)
 
-        if paths is None:
-            from lisai.infra.paths import Paths
-
-            paths = Paths(settings)
         logger = logging.getLogger(f"lisai.preprocess.{pcfg.dataset_name}")
         registry = DatasetRegistry(paths.dataset_registry_path())
         return cls(
@@ -284,6 +279,7 @@ class PreprocessRun:
         try:
             saver = PreprocessSaver(
                 paths=self.paths,
+                sample_id_format=self.paths.settings.NAMING.sample_id,
                 dataset_name=self.dataset_name,
                 data_type=self.data_type,
                 fmt=self.fmt,

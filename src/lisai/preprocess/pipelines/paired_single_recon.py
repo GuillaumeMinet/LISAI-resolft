@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable
 import numpy as np
 import tifffile
 
-from lisai.config import settings
 
 from ..core import (
     AuxiliaryFolderMatcher,
@@ -219,7 +218,7 @@ class PairedSingleReconPipeline(BasePipeline[PairedSingleReconConfig]):
         )
         dump_root = common_dump_root / base_subfolder if base_subfolder else common_dump_root
 
-        exts = tuple(settings.data_cfg.data_types[run.data_type])
+        exts = tuple(run.paths.settings.data_cfg.data_types[run.data_type])
 
         source: Source = PairedFolderSource(
             root=dump_root,

@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict
 import numpy as np
 import tifffile
 
-from lisai.config import settings
 
 from ..core import MAIN_OUTPUT_KEY, FolderSource, Item, OutputDecl, OutputSpec, Source
 from ..transformations import bleach_correct_simple_ratio, crop_center_stack, remove_first_frame
@@ -121,7 +120,7 @@ class ReconTimelapseSimplePipeline(BasePipeline[ReconTimelapseSimpleConfig]):
         )
         role_root = common_dump_root / base_subfolder if base_subfolder else common_dump_root
         input_root = role_root / input_subfolder if input_subfolder else role_root
-        exts = tuple(settings.data_cfg.data_types[run.data_type])
+        exts = tuple(run.paths.settings.data_cfg.data_types[run.data_type])
         return FolderSource(root=input_root, exts=exts, combine_subfolders=self.cfg.combine_subfolders)
 
     def process_item(self, *, item: Item) -> Dict[str, np.ndarray]:

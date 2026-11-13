@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict
 import numpy as np
 import tifffile
 
-from lisai.config import settings
 
 from ..core import (
     MAIN_OUTPUT_KEY,
@@ -174,7 +173,7 @@ class SingleReconPipeline(BasePipeline[SingleReconConfig]):
         )
         role_root = common_dump_root / base_subfolder if base_subfolder else common_dump_root
         primary_root = role_root / input_subfolder if input_subfolder else role_root
-        exts = tuple(settings.data_cfg.data_types[run.data_type])
+        exts = tuple(run.paths.settings.data_cfg.data_types[run.data_type])
 
         aux_cfg = self._auxiliary_cfg()
         if aux_cfg and self.cfg.combine_subfolders:

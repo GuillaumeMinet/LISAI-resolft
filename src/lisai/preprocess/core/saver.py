@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import tifffile
 
-from lisai.config import settings
 from lisai.infra.fs.folders import ensure_folder
 
 from .output_spec import OutputSpec
@@ -30,6 +29,7 @@ class PreprocessSaver:
         self,
         *,
         paths: Paths,
+        sample_id_format: str,
         dataset_name: str,
         data_type: str,
         fmt: str,
@@ -38,6 +38,7 @@ class PreprocessSaver:
         overwrite_mode: str = "exist_ok",
     ):
         self.paths = paths
+        self.sample_id_format = sample_id_format
         self.spec = output_spec
 
         self.dataset_name = dataset_name
@@ -58,8 +59,7 @@ class PreprocessSaver:
             ensure_folder(out_dir, mode=self.overwrite_mode)
 
     def sample_id(self, idx: int) -> str:
-        fmt = settings.NAMING.sample_id
-        return fmt.format(id=idx)
+        return self.sample_id_format.format(id=idx)
 
     def save(
         self,

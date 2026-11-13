@@ -8,7 +8,6 @@ import numpy as np
 import torch
 
 from lisai.data.utils import crop_center
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.lib.hdn import histNoiseModel
 from lisai.lib.hdn.gaussianMixtureNoiseModel import GaussianMixtureNoiseModel
@@ -86,15 +85,13 @@ def _resolve_noise_model_path(cfg: NoiseModelCheckConfig, paths: Paths) -> Path:
 def check_noise_model(
     cfg: NoiseModelCheckConfig,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
     device: torch.device | None = None,
 ) -> NoiseModelCheckResult:
     """
     Compare a trained GMM noise model against a histogram estimated from
     selected signal/observation data.
     """
-    if paths is None:
-        paths = Paths(settings)
     if device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

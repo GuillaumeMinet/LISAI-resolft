@@ -16,6 +16,7 @@ from lisai.preprocess.reporting import NoOpPreprocessReporter
 class DummyPaths:
     def __init__(self, root: Path):
         self.root = root
+        self.settings = settings
 
     def dataset_registry_path(self) -> Path:
         return self.root / "dataset_registry.yml"

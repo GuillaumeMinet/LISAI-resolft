@@ -4,6 +4,8 @@ Edit values in USER PARAMETERS, then run:
     python src/scripts/noise_model/check_noise_model.py
 """
 
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
 from lisai.data.noise_model import NoiseModelCheckConfig, check_noise_model
 
 
@@ -68,7 +70,7 @@ def main():
         plot_basename=plot_basename,
     )
 
-    result = check_noise_model(cfg)
+    result = check_noise_model(cfg, paths=Paths(load_default_settings()))
     print("\nNoise model check completed.")
     print(f"Noise model: {result.noise_model_path}")
     print(f"Files used: {result.n_files_used}")

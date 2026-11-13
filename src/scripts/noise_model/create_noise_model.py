@@ -4,6 +4,8 @@ Edit values in USER PARAMETERS, then run:
     python src/scripts/noise_model/create_noise_model.py
 """
 
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
 from lisai.data.noise_model import NoiseModelBuildConfig, build_noise_model
 
 
@@ -74,7 +76,7 @@ def main():
         save_gmm_plot=save_gmm_plot,
     )
 
-    result = build_noise_model(cfg)
+    result = build_noise_model(cfg, paths=Paths(load_default_settings()))
     print("\nNoise model build completed.")
     print(f"Save dir: {result.save_dir}")
     print(f"Histogram: {result.histogram_path}")
