@@ -9,6 +9,8 @@ from pathlib import Path
 
 from lisai.evaluation import EvalSource
 from lisai.runs.external import import_external_run
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
 
 
 # -----------------------------------------------------------------------------
@@ -72,6 +74,7 @@ if __name__ == "__main__":
         uses_current_split=uses_current_split,
         overwrite=overwrite,
         notes=notes,
+        paths=Paths(load_default_settings()),
     )
     print(f"Imported external run: {result.run_dir}")
     print(f"Imported evaluation: {result.evaluation_dir}")

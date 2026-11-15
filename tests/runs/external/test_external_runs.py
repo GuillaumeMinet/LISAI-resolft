@@ -68,7 +68,6 @@ def _write_registry(path: Path) -> None:
 def test_import_external_run_copies_artifacts_and_pairs_predictions_by_order(monkeypatch, tmp_path: Path):
     paths = FakePaths(tmp_path)
     _write_registry(paths.dataset_registry_path())
-    monkeypatch.setattr(importer_mod, "Paths", lambda _settings: paths)
 
     eval_root = paths.dataset_preprocess_dir(dataset_name="eval_ds", data_type="recon", usage="evaluation")
     for subfolder in ("low", "high", "conf"):
@@ -97,6 +96,7 @@ def test_import_external_run_copies_artifacts_and_pairs_predictions_by_order(mon
         evaluation_data_path=pred_root,
         evaluated_on=EvalSource.dataset("eval_ds"),
         prediction_format="stack_inp_pred",
+        paths=paths,
     )
 
     assert (result.run_dir / "checkpoints" / "weights.h5").read_bytes() == b"weights"
@@ -137,7 +137,6 @@ def test_import_external_run_requires_explicit_snr_for_multi_snr(monkeypatch, tm
         },
         paths.dataset_registry_path(),
     )
-    monkeypatch.setattr(importer_mod, "Paths", lambda _settings: paths)
 
     pred_root = tmp_path / "predictions"
     pred_root.mkdir()
@@ -148,6 +147,7 @@ def test_import_external_run_requires_explicit_snr_for_multi_snr(monkeypatch, tm
             checkpoint_path=None,
             evaluation_data_path=pred_root,
             evaluated_on=EvalSource.dataset("eval_ds"),
+            paths=paths,
         )
     except ValueError as exc:
         assert "Specify snr_idx" in str(exc)
@@ -170,9 +170,8 @@ def test_external_run_discovery(monkeypatch, tmp_path: Path):
         },
         run_dir / "external_run.yaml",
     )
-    monkeypatch.setattr(discovery_mod, "Paths", lambda _settings: paths)
 
-    scan = discovery_mod.scan_external_runs()
+    scan = discovery_mod.scan_external_runs(paths=paths)
     assert scan.invalid == ()
     assert len(scan.runs) == 1
     assert scan.runs[0].dataset == "train_ds"

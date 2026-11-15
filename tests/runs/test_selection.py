@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from lisai.infra.paths import Paths
+from lisai.config import settings
+
 import io
 from datetime import timedelta
 from pathlib import Path
@@ -62,7 +65,7 @@ def test_resolve_discovered_run_selector_accepts_run_id(tmp_path):
 
     selected = resolve_discovered_run_selector(
         run_id=run_id,
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
@@ -83,7 +86,7 @@ def test_resolve_discovered_run_selector_accepts_dataset_subfolder_run_dir(tmp_p
 
     selected = resolve_discovered_run_selector(
         selector="Gag/Upsamp_base/SubA/resume_me_00",
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
@@ -112,7 +115,7 @@ def test_resolve_discovered_run_selector_accepts_bare_run_dir_with_dataset_filte
     selected = resolve_discovered_run_selector(
         selector="duplicate_00",
         dataset="Gag",
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
     )
@@ -140,7 +143,7 @@ def test_resolve_discovered_run_selector_reports_bare_run_dir_ambiguity(tmp_path
 
     selected = resolve_discovered_run_selector(
         selector="duplicate_00",
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdin=NonInteractiveInput(""),
         stdout=stdout,
         stderr=stderr,
@@ -172,7 +175,7 @@ def test_resolve_discovered_run_selector_uses_partial_exp_name_fallback(tmp_path
 
     selected = resolve_discovered_run_selector(
         selector="reduced",
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdin=InteractiveInput("02\n"),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
@@ -201,7 +204,7 @@ def test_resolve_discovered_run_selector_prefers_exact_bare_run_dir_over_partial
 
     selected = resolve_discovered_run_selector(
         selector="reduced",
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdin=NonInteractiveInput(""),
         stdout=io.StringIO(),
         stderr=io.StringIO(),
@@ -225,7 +228,7 @@ def test_resolve_discovered_run_selector_rejects_selector_with_run_id(tmp_path):
     selected = resolve_discovered_run_selector(
         selector="resume_me_00",
         run_id=run_id,
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdout=io.StringIO(),
         stderr=stderr,
     )
@@ -254,7 +257,7 @@ def test_resolve_discovered_run_selector_accepts_partial_dataset_filter(tmp_path
     selected = resolve_discovered_run_selector(
         selector="duplicate_00",
         dataset="actin_fixed",
-        scan_result=scan_runs(datasets_root),
+        scan_result=scan_runs(datasets_root, paths=Paths(settings)),
         stdin=InteractiveInput("y\n"),
         stdout=io.StringIO(),
         stderr=io.StringIO(),

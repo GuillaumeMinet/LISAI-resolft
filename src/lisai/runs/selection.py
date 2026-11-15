@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Sequence
+from datetime import timedelta
 
 from lisai.infra.cli.selection import resolve_ambiguous_matches, resolve_partial_name
 
-from .listing import filter_runs, matches_exp_name, render_runs_table, write_invalid_run_warnings
+from .listing import active_heartbeat_timeout, filter_runs, matches_exp_name, render_runs_table, write_invalid_run_warnings
+from lisai.infra.paths import Paths
+
 from .scanner import DiscoveredRun, ScanResults, scan_runs
 
 _RUN_SELECTOR_HINT = (
@@ -20,10 +23,11 @@ def resolve_ambiguous_run_matches(
     stdout=None,
     stderr=None,
     rerun_hint: str = _RUN_SELECTOR_HINT,
+    fallback_timeout: timedelta | None = None,
 ) -> DiscoveredRun | None:
     return resolve_ambiguous_matches(
         matches,
-        render_matches=lambda entries: render_runs_table(entries, include_selection_index=True),
+        render_matches=lambda entries: render_runs_table(entries, include_selection_index=True, fallback_timeout=fallback_timeout),
         heading="Multiple matching runs found:",
         rerun_hint=rerun_hint,
         selection_name="run",
@@ -40,6 +44,7 @@ def resolve_discovered_run_selector(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     scan_result: ScanResults | None = None,
+    paths: Paths | None = None,
     allow_partial_exp_name: bool = True,
     emit_selected: bool = True,
     stdin=None,
@@ -72,7 +77,9 @@ def resolve_discovered_run_selector(
         return None
 
     # Scan once so invalid metadata warnings stay consistent with the selected run list.
-    resolved_scan = scan_runs() if scan_result is None else scan_result
+    if scan_result is None and paths is None:
+        raise ValueError("resolve_discovered_run_selector requires paths or scan_result")
+    resolved_scan = scan_runs(paths=paths) if scan_result is None else scan_result
 
     resolved_dataset = dataset
     if dataset is not None:
@@ -125,6 +132,7 @@ def resolve_discovered_run_selector(
             stdout=out,
             stderr=err,
             rerun_hint=rerun_hint,
+            fallback_timeout=active_heartbeat_timeout(paths=paths) if paths is not None else None,
         )
         if selected is None:
             write_invalid_run_warnings(resolved_scan.invalid, stderr=err)
@@ -132,7 +140,7 @@ def resolve_discovered_run_selector(
 
     if emit_selected:
         print("Selected run:", file=out)
-        print(render_runs_table([selected]), file=out)
+        print(render_runs_table([selected], fallback_timeout=active_heartbeat_timeout(paths=paths) if paths is not None else None), file=out)
     write_invalid_run_warnings(resolved_scan.invalid, stderr=err)
     return selected
 

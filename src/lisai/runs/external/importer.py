@@ -9,7 +9,6 @@ from typing import Any, Mapping, Sequence
 import numpy as np
 from tifffile import imread, imwrite
 
-from lisai.config import settings
 from lisai.config.io.yaml import save_yaml
 from lisai.config.models.training.data import DataSection
 from lisai.data.dataset_registry import (
@@ -117,9 +116,9 @@ def _resolve_dataset_selection(
     *,
     usage: str,
     options: Mapping[str, Any] | None,
+    paths: Paths,
 ) -> tuple[ExternalDatasetSelection, DataSection]:
     options = dict(options or {})
-    paths = Paths(settings)
     info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
     if not isinstance(info, Mapping):
         raise ValueError(f"Dataset {dataset_name!r} is not registered.")
@@ -187,11 +186,13 @@ def _expected_items(
     evaluated_on: EvalSource,
     training_data: Mapping[str, Any] | None,
     evaluation_data: Mapping[str, Any] | None,
+    paths: Paths,
 ) -> tuple[ExternalDatasetSelection, ExternalDatasetSelection, tuple[EvalItem, ...], DataSection]:
     training_selection, _ = _resolve_dataset_selection(
         trained_on,
         usage="training",
         options=training_data,
+        paths=paths,
     )
 
     if evaluated_on.usage == "evaluation":
@@ -199,6 +200,7 @@ def _expected_items(
             evaluated_on.name,
             usage="evaluation",
             options=evaluation_data,
+            paths=paths,
         )
         source = EvalSampleSource.from_config(config, use_split=False)
     else:
@@ -206,6 +208,7 @@ def _expected_items(
             trained_on,
             usage="training",
             options=evaluation_data or training_data,
+            paths=paths,
         )
         config = DataSection.model_validate(config.model_dump() | {"split": evaluated_on.name, "data_dir": config.data_dir, "dataset_info": config.dataset_info})
         source = EvalSampleSource.from_config(config, use_split=True)
@@ -283,6 +286,7 @@ def import_external_run(
     uses_current_split: bool = True,
     overwrite: bool = False,
     notes: str | None = None,
+    paths: Paths,
 ) -> ExternalImportResult:
     """Import an externally trained model and one already-computed evaluation into LISAI."""
     if not uses_current_split:
@@ -297,6 +301,7 @@ def import_external_run(
         evaluated_on=evaluated_on,
         training_data=training_data,
         evaluation_data=evaluation_data,
+        paths=paths,
     )
     prediction_files = _collect_prediction_files(Path(evaluation_data_path), patterns)
     if len(prediction_files) != len(items):
@@ -306,7 +311,6 @@ def import_external_run(
             "so the counts must match exactly."
         )
 
-    paths = Paths(settings)
     run_dir = paths.external_run_dir(dataset_name=trained_on, run_name=run_name)
     if run_dir.exists():
         if not overwrite:

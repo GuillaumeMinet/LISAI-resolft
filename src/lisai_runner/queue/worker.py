@@ -10,9 +10,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
-from lisai.runs.listing import is_run_likely_active, write_invalid_run_warnings
+from lisai.runs.listing import active_heartbeat_timeout, is_run_likely_active, write_invalid_run_warnings
 from lisai.runs.scanner import DiscoveredRun, scan_runs
 from lisai.runs.schema import utc_now
 
@@ -76,7 +75,8 @@ class QueueWorker:
     def __init__(
         self,
         *,
-        queue_root: str | Path | None = None,
+        paths: Paths,
+        queue_root: str | Path,
         poll_seconds: int | None = None,
         safety_margin_mb: int | None = None,
         fixed_margin_pct: float | None = None,
@@ -84,16 +84,17 @@ class QueueWorker:
         stdout=None,
         stderr=None,
     ):
+        self.paths = paths
         self.queue_root = ensure_queue_dirs(queue_root=queue_root)
         self.poll_seconds = int(
-            settings.project_cfg.queue.poll_seconds if poll_seconds is None else poll_seconds
+            self.paths.settings.project_cfg.queue.poll_seconds if poll_seconds is None else poll_seconds
         )
         # Kept for compatibility with previous worker constructor.
         self.safety_margin_mb = int(
-            settings.project_cfg.queue.safety_margin_mb if safety_margin_mb is None else safety_margin_mb
+            self.paths.settings.project_cfg.queue.safety_margin_mb if safety_margin_mb is None else safety_margin_mb
         )
         self.fixed_margin_pct = float(
-            settings.project_cfg.queue.fixed_margin_pct if fixed_margin_pct is None else fixed_margin_pct
+            self.paths.settings.project_cfg.queue.fixed_margin_pct if fixed_margin_pct is None else fixed_margin_pct
         )
         self.heartbeat_seconds = int(heartbeat_seconds)
         self.stdout = sys.stdout if stdout is None else stdout
@@ -114,7 +115,7 @@ class QueueWorker:
     def run_once(self) -> WorkerCycleResult:
         self._ensure_started()
 
-        scan_result = scan_runs()
+        scan_result = scan_runs(paths=self.paths)
         write_invalid_run_warnings(scan_result.invalid, stderr=self.stderr)
 
         refresh = self._refresh_finished_processes()
@@ -315,10 +316,12 @@ class QueueWorker:
                 "lisai_runner.training_entrypoint",
                 "--config",
                 job.config,
+                "--settings-config-dir",
+                job.config_root or str(self.paths.settings.CONFIGS_ROOT),
             ]
             process = subprocess.Popen(
                 command,
-                cwd=str(Paths(settings).project_root()),
+                cwd=str(self.paths.project_root()),
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log_handle,
@@ -459,7 +462,7 @@ class QueueWorker:
             if not candidates:
                 return None
 
-        active_candidates = [run for run in candidates if is_run_likely_active(run)]
+        active_candidates = [run for run in candidates if is_run_likely_active(run, fallback_timeout=active_heartbeat_timeout(paths=self.paths))]
         if len(active_candidates) == 1:
             return active_candidates[0].metadata.run_id
         if len(active_candidates) > 1:
@@ -493,14 +496,14 @@ class QueueWorker:
 
     def _load_control(self) -> QueueControl:
         try:
-            return read_queue_control(queue_root=self.queue_root)
+            return read_queue_control(queue_root=self.queue_root, paths=self.paths)
         except Exception as exc:
             self._emit(
                 f"warning: failed to read queue control file ({type(exc).__name__}: {exc}); "
                 "using defaults.",
                 stream=self.stderr,
             )
-            return default_queue_control()
+            return default_queue_control(paths=self.paths)
 
     def _report_control_change(self, control: QueueControl) -> None:
         previous = self._last_control

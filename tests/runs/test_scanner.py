@@ -5,6 +5,8 @@ import json
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.runs.io import write_run_metadata_atomic
 from lisai.runs.scanner import scan_runs
+from lisai.config import settings
+from lisai.infra.paths import Paths
 from lisai.runs.schema import RunMetadata
 
 
@@ -72,7 +74,7 @@ def test_scan_runs_discovers_nested_run_directories(tmp_path):
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
     )
 
-    results = scan_runs(datasets_root)
+    results = scan_runs(datasets_root, paths=Paths(settings))
     by_id = {run.metadata.run_id: run for run in results.runs}
 
     assert len(results.runs) == 3
@@ -105,7 +107,7 @@ def test_scan_runs_skips_invalid_metadata_files(tmp_path):
         encoding="utf-8",
     )
 
-    results = scan_runs(datasets_root)
+    results = scan_runs(datasets_root, paths=Paths(settings))
     kinds = {item.kind for item in results.invalid}
 
     assert len(results.runs) == 1
@@ -126,7 +128,7 @@ def test_scan_runs_marks_path_mismatches_in_discovered_runs(tmp_path):
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA1",
     )
 
-    results = scan_runs(datasets_root)
+    results = scan_runs(datasets_root, paths=Paths(settings))
 
     assert len(results.runs) == 1
     assert results.invalid == ()
@@ -147,7 +149,7 @@ def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA2",
     )
 
-    results = scan_runs(datasets_root)
+    results = scan_runs(datasets_root, paths=Paths(settings))
 
     assert len(results.runs) == 1
     assert results.invalid == ()
@@ -184,7 +186,7 @@ def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
     )
 
-    results = scan_runs(datasets_root)
+    results = scan_runs(datasets_root, paths=Paths(settings))
 
     assert [run.run_dir.name for run in results.runs] == ["beta_00"]
     assert results.invalid == ()
@@ -216,11 +218,11 @@ def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, m
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FA4",
     )
 
-    monkeypatch.setattr(scanner_mod._PATHS, "data_root", lambda: tmp_path)
-    monkeypatch.setattr(scanner_mod._PATHS, "datasets_root", lambda: datasets_root)
-    monkeypatch.setattr(scanner_mod._PATHS, "training_datasets_root", lambda: training_root)
+    paths = Paths(settings)
+    monkeypatch.setattr(paths, "data_root", lambda: tmp_path)
+    monkeypatch.setattr(paths, "training_datasets_root", lambda: training_root)
 
-    results = scanner_mod.scan_runs()
+    results = scanner_mod.scan_runs(paths=paths)
 
     assert [run.dataset for run in results.runs] == ["Gag"]
     assert results.runs[0].path == "datasets/train_bucket/Gag/runs/HDN/train_00"

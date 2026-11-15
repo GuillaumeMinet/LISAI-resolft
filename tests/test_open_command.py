@@ -63,7 +63,7 @@ def test_runs_open_accepts_run_dir_selector(monkeypatch, tmp_path):
     )
 
     opened = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
 
     def fake_open(path: Path) -> bool:
         opened["path"] = path
@@ -89,7 +89,7 @@ def test_runs_open_accepts_run_id_selector(monkeypatch, tmp_path):
     )
 
     opened = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
 
     def fake_open(path: Path) -> bool:
         opened["path"] = path
@@ -119,7 +119,7 @@ def test_runs_open_requires_disambiguation_when_selector_is_ambiguous(monkeypatc
     )
 
     called = {"value": False}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
 
     def fake_open(_path: Path) -> bool:
         called["value"] = True
@@ -146,7 +146,7 @@ def test_runs_open_prints_run_folder_when_explorer_launch_fails(monkeypatch, tmp
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(runs_cli, "_try_open_path", lambda _path: False)
 
     exit_code = root_cli.main(["runs", "open", "Gag/Upsamp/resume_me_00"])

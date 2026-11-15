@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from lisai.infra.paths import Paths
+
 from datetime import datetime, timezone
 from io import StringIO
 import re
@@ -84,7 +86,7 @@ def test_runs_list_uses_filters_and_warns_on_invalid_files(monkeypatch, tmp_path
     (invalid_run / ".lisai_run_meta.json").parent.mkdir(parents=True, exist_ok=True)
     (invalid_run / ".lisai_run_meta.json").write_text("{bad json", encoding="utf-8")
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--dataset", "Gag", "--status", "running"])
     captured = capsys.readouterr()
@@ -126,7 +128,7 @@ def test_runs_list_model_subfolder_filter_works(monkeypatch, tmp_path, capsys):
         status="completed",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--model-subfolder", "Upsamp"])
     captured = capsys.readouterr()
@@ -158,7 +160,7 @@ def test_runs_list_subfolder_alias_works(monkeypatch, tmp_path, capsys):
         status="completed",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--subfolder", "HDN"])
     captured = capsys.readouterr()
@@ -190,7 +192,7 @@ def test_runs_list_run_dir_filter_works(monkeypatch, tmp_path, capsys):
         status="completed",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--run_dir", "run_b_00"])
     captured = capsys.readouterr()
@@ -232,7 +234,7 @@ def test_runs_list_exp_name_partial_filter_works(monkeypatch, tmp_path, capsys):
         status="running",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--exp-name", "reduced"])
     captured = capsys.readouterr()
@@ -266,7 +268,7 @@ def test_runs_list_exp_name_partial_filter_combines_with_other_filters(monkeypat
         status="completed",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--exp-name", "upsamp2", "--dataset", "Gag"])
     captured = capsys.readouterr()
@@ -291,7 +293,7 @@ def test_runs_list_uses_local_timestamp_formatter(monkeypatch, tmp_path, capsys)
         status="running",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(runs_listing, "format_timestamp_local", lambda _value: "LOCAL_TS")
 
     exit_code = root_main(["runs", "list", "--dataset", "Gag", "--full"])
@@ -314,7 +316,7 @@ def test_runs_list_marks_old_running_heartbeats_as_stale(monkeypatch, tmp_path, 
         status="running",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(runs_listing, "utc_now", lambda: datetime(2026, 3, 20, 11, 0, tzinfo=timezone.utc))
     monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
 
@@ -339,7 +341,7 @@ def test_runs_list_footer_notes_path_inconsistency_without_stderr_warning(monkey
         status="completed",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--dataset", "Gag"])
     captured = capsys.readouterr()
@@ -363,7 +365,7 @@ def test_runs_list_full_appends_extended_columns(monkeypatch, tmp_path, capsys):
         status="completed",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--dataset", "Gag", "--full"])
     captured = capsys.readouterr()
@@ -405,7 +407,7 @@ def test_runs_list_live_renders_in_place_when_interactive(monkeypatch, tmp_path)
 
     out = _InteractiveBuffer()
     err = StringIO()
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     sleep_values: list[float] = []
 
     def _interrupt_sleep(seconds):
@@ -439,7 +441,7 @@ def test_runs_list_live_falls_back_to_single_snapshot_without_tty(monkeypatch, t
         status="running",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--dataset", "Gag", "--live", "--interval", "0.25"])
     captured = capsys.readouterr()
@@ -471,7 +473,7 @@ def test_runs_list_clamps_zero_interval_to_one_second(monkeypatch, tmp_path):
     out = _InteractiveBuffer()
     err = StringIO()
     sleep_values: list[float] = []
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     def _interrupt_sleep(seconds):
         sleep_values.append(seconds)
@@ -502,7 +504,7 @@ def test_runs_list_title_without_filters(monkeypatch, tmp_path, capsys):
         status="running",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list"])
     captured = capsys.readouterr()
@@ -524,7 +526,7 @@ def test_runs_list_namespace_remains_available_with_top_level_list(monkeypatch, 
         status="running",
     )
 
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--status", "running"])
     captured = capsys.readouterr()
@@ -560,7 +562,7 @@ def test_runs_list_promoted_filters_by_source_run_id(monkeypatch, tmp_path, caps
         status="completed",
         run_id=other_id,
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(promoted_registry, "promoted_source_run_ids", lambda **kwargs: {promoted_id})
 
     exit_code = root_main(["runs", "list", "--promoted"])
@@ -596,7 +598,7 @@ def test_runs_list_kept_filter_and_marker(monkeypatch, tmp_path, capsys):
         status="completed",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAB",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(["runs", "list", "--kept"])
     captured = capsys.readouterr()
@@ -621,17 +623,17 @@ def test_runs_keep_and_unkeep_update_run_metadata(monkeypatch, tmp_path, capsys)
         path="datasets/Gag/models/HDN/beta_00",
         status="completed",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(
-        "lisai.runs.selection.scan_runs", lambda: scan_runs(datasets_root)
+        "lisai.runs.selection.scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths)
     )
 
     assert root_main(["runs", "keep", "beta_00"]) == 0
-    assert scan_runs(datasets_root).runs[0].metadata.kept is True
+    assert scan_runs(datasets_root, paths=Paths(settings)).runs[0].metadata.kept is True
     assert "Kept run: beta_00" in capsys.readouterr().out
 
     assert root_main(["runs", "unkeep", "beta_00"]) == 0
-    assert scan_runs(datasets_root).runs[0].metadata.kept is False
+    assert scan_runs(datasets_root, paths=Paths(settings)).runs[0].metadata.kept is False
     assert "Unkept run: beta_00" in capsys.readouterr().out
 
 
@@ -670,7 +672,7 @@ def test_runs_prune_archives_unkept_terminal_runs_locally(monkeypatch, tmp_path,
         status="running",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAC",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(
         [
@@ -696,7 +698,7 @@ def test_runs_prune_archives_unkept_terminal_runs_locally(monkeypatch, tmp_path,
     assert running_run.is_dir()
     archived = list((parent / "_archive").glob("beta_00_archived_*"))
     assert len(archived) == 1
-    assert {run.run_dir for run in scan_runs(datasets_root).runs} == {kept_run, running_run}
+    assert {run.run_dir for run in scan_runs(datasets_root, paths=Paths(settings)).runs} == {kept_run, running_run}
 
 
 def test_runs_prune_delete_removes_candidate_without_archive(monkeypatch, tmp_path, capsys):
@@ -710,7 +712,7 @@ def test_runs_prune_delete_removes_candidate_without_archive(monkeypatch, tmp_pa
         path="datasets/Gag/models/HDN/beta_00",
         status="completed",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     exit_code = root_main(
         ["runs", "prune", "--dataset", "Gag", "--subfolder", "HDN", "--delete", "--yes"]
@@ -735,7 +737,7 @@ def test_runs_prune_requires_confirmation_by_default(monkeypatch, tmp_path, caps
         path="datasets/Gag/models/HDN/beta_00",
         status="completed",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(runs_cli.sys, "stdin", StringIO("n\n"))
 
     exit_code = root_main(["runs", "prune", "--dataset", "Gag", "--subfolder", "HDN"])
@@ -769,7 +771,7 @@ def test_runs_list_accepts_unique_partial_dataset_name(monkeypatch, tmp_path, ca
         status="completed",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB1",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(runs_cli.sys, "stdin", InteractiveInput("y\n"))
 
     exit_code = root_main(["runs", "list", "--dataset", "actin_fixed"])
@@ -803,7 +805,7 @@ def test_runs_list_prompts_for_ambiguous_partial_dataset_name(monkeypatch, tmp_p
         status="completed",
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FB2",
     )
-    monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(runs_cli, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     stdout = StringIO()
     stderr = StringIO()
 

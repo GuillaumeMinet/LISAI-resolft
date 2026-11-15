@@ -69,11 +69,11 @@ def test_listing_fallback_uses_config_timeout_when_live_stats_missing(monkeypatc
         heartbeat=now - timedelta(minutes=10),
         live_runtime_stats=None,
     )
-    monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
 
-    assert is_run_likely_active(run, now=now) is False
-    assert is_run_likely_stale(run, now=now) is True
-    assert display_run_status(run, now=now) == "stale (x1)"
+
+    assert is_run_likely_active(run, now=now, fallback_timeout=timedelta(minutes=10)) is False
+    assert is_run_likely_stale(run, now=now, fallback_timeout=timedelta(minutes=10)) is True
+    assert display_run_status(run, now=now, fallback_timeout=timedelta(minutes=10)) == "stale (x1)"
 
 
 def test_listing_dynamic_timeout_uses_median_of_recent_window_with_floor():
@@ -117,9 +117,9 @@ def test_listing_stale_and_crash_labels_follow_multiplier_rule(monkeypatch, dela
         heartbeat=now - timedelta(seconds=delay_seconds),
         live_runtime_stats=None,
     )
-    monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
 
-    assert display_run_status(run, now=now) == expected
+
+    assert display_run_status(run, now=now, fallback_timeout=timedelta(minutes=10)) == expected
 
 
 def test_render_runs_table_displays_eta_left_from_mean_recent_epoch_durations():
@@ -148,7 +148,7 @@ def test_render_runs_table_displays_dash_eta_left_when_not_running_or_stats_miss
         heartbeat=now - timedelta(seconds=5),
         live_runtime_stats=None,
     )
-    table_running = render_runs_table([running_missing_stats], now=now)
+    table_running = render_runs_table([running_missing_stats], now=now, fallback_timeout=timedelta(minutes=10))
     assert _table_value(table_running, "eta_left") == "-"
 
     completed_payload = running_missing_stats.metadata.model_dump()
@@ -170,7 +170,7 @@ def test_render_runs_table_displays_dash_eta_left_when_not_running_or_stats_miss
         path_consistent=running_missing_stats.path_consistent,
         consistency_issues=running_missing_stats.consistency_issues,
     )
-    table_completed = render_runs_table([completed_run], now=now)
+    table_completed = render_runs_table([completed_run], now=now, fallback_timeout=timedelta(minutes=10))
     assert _table_value(table_completed, "eta_left") == "-"
 
 

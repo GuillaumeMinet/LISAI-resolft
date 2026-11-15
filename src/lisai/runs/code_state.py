@@ -4,15 +4,16 @@ import subprocess
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 from .schema import CodeState
 
 
-def collect_code_state(repo_dir: str | Path | None = None) -> CodeState:
+def collect_code_state(repo_dir: str | Path | None = None, *, paths: Paths | None = None) -> CodeState:
     """Collect a best-effort snapshot of the source state for run metadata."""
-    cwd = Path(repo_dir).resolve() if repo_dir is not None else Paths(settings).project_root()
+    if repo_dir is None and paths is None:
+        raise ValueError("collect_code_state requires paths when repo_dir is not supplied")
+    cwd = Path(repo_dir).resolve() if repo_dir is not None else paths.project_root()
     git_commit = _git_output(cwd, "rev-parse", "HEAD")
     git_branch = _git_output(cwd, "branch", "--show-current")
     git_remote = _git_output(cwd, "config", "--get", "remote.origin.url")

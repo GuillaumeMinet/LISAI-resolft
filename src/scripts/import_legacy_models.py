@@ -183,6 +183,7 @@ def build_import_plan(job: LegacyImportJob) -> ImportPlan:
         selected_checkpoints=tuple(converted),
         best_val_loss=best_val_loss,
         trainable_params=trainable_params,
+        paths=paths,
     )
 
     return ImportPlan(
@@ -685,6 +686,7 @@ def build_import_metadata(
     selected_checkpoints: tuple[ConvertedCheckpoint, ...],
     best_val_loss: float | None,
     trainable_params: int | None,
+    paths: Paths,
 ) -> RunMetadata:
     now = utc_now()
     run_name, run_index = parse_run_dir_name(target_run_dir.name)
@@ -715,7 +717,7 @@ def build_import_metadata(
         last_epoch=last_epoch,
         max_epoch=max_epoch,
         best_val_loss=best_val_loss,
-        path=stored_run_path(target_run_dir),
+        path=stored_run_path(target_run_dir, paths=paths),
         group_path=group_path_from_model_subfolder(job.target_model_subfolder),
         training_signature=TrainingSignature.model_validate(training_signature),
         provenance=RunProvenance(

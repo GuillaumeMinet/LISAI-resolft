@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Sequence
 
 from lisai.config import load_yaml, resolve_config, save_yaml
-from lisai.config.settings import load_default_settings
+from lisai.config.settings import Settings, load_default_settings
+from lisai.infra.paths import Paths
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.evaluation import run_evaluate
 from lisai.evaluation.defaults import resolve_evaluate_config
@@ -40,6 +41,7 @@ from .storage import (
     DiscoveredJob,
     discover_jobs,
     ensure_queue_dirs,
+    default_queue_root,
     find_job,
     job_log_filename,
     queue_logs_dir,
@@ -62,9 +64,13 @@ POST_TRAINING_INFERENCE_CONFIG = "post_training"
 QUEUE_MANAGED_SNAPSHOTS_DIRNAME = "submitted_configs"
 
 
-def _resolve_training_reference(ref: str) -> Path:
-    # Transitional runner boundary; Patch F will pass the submitting settings to the worker.
-    resolver = ConfigPathResolver("training", stg=load_default_settings())
+def _command_paths(paths: Paths | None) -> Paths:
+    """Select a legacy settings tree once at a runner command boundary."""
+    return Paths(load_default_settings()) if paths is None else paths
+
+
+def _resolve_training_reference(ref: str, *, paths: Paths) -> Path:
+    resolver = ConfigPathResolver("training", stg=paths.settings)
     return resolve_config_path(ref, resolver=resolver)
 
 
@@ -75,15 +81,20 @@ def submit_job(
     device: str,
     priority: JobPriority = "normal",
     stdout=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
-    resolved_config = _resolve_training_reference(config)
-    snapshot_config = _copy_config_snapshot(resolved_config)
-    context = load_scheduling_context(snapshot_config)
+    resolved_config = _resolve_training_reference(config, paths=paths)
+    snapshot_config = _copy_config_snapshot(resolved_config, queue_root=queue_root)
+    context = load_scheduling_context(snapshot_config, paths=paths)
 
     record = create_queued_job(
         config_path=snapshot_config,
         source_config=resolved_config,
+        config_root=paths.settings.CONFIGS_ROOT,
+        queue_root=queue_root,
         resource_class=resource_class,
         device=device,
         priority=priority,
@@ -111,12 +122,15 @@ def submit_sweep(
     priority: JobPriority = "normal",
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
 
     try:
-        sweep_path = _resolve_training_reference(file)
+        sweep_path = _resolve_training_reference(file, paths=paths)
         payload = load_yaml(sweep_path)
     except Exception as exc:
         print(
@@ -136,13 +150,13 @@ def submit_sweep(
         return 1
 
     try:
-        resolved_base_config = _resolve_sweep_base_config(base_config, sweep_path=sweep_path)
+        resolved_base_config = _resolve_sweep_base_config(base_config, sweep_path=sweep_path, paths=paths)
         base_cfg = load_yaml(resolved_base_config)
     except Exception as exc:
         print(f"Failed to resolve base_config {base_config!r}: {type(exc).__name__}: {exc}", file=err)
         return 1
 
-    queue_root = ensure_queue_dirs()
+    queue_root = ensure_queue_dirs(queue_root=queue_root)
     generated_root = queue_root / "generated_configs"
     generated_root.mkdir(parents=True, exist_ok=True)
 
@@ -178,8 +192,10 @@ def submit_sweep(
         )
         save_yaml(run_cfg, generated_config)
         snapshot_config = _copy_config_snapshot(generated_config, queue_root=queue_root)
-        context = load_scheduling_context(snapshot_config)
+        context = load_scheduling_context(snapshot_config, paths=paths)
         record = create_queued_job(
+            queue_root=queue_root,
+            config_root=paths.settings.CONFIGS_ROOT,
             config_path=snapshot_config,
             source_config=generated_config,
             resource_class=resource_class,
@@ -207,13 +223,16 @@ def list_jobs(
     full: bool = False,
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
 
-    jobs, invalid = discover_jobs(status=status)
+    jobs, invalid = discover_jobs(status=status, queue_root=queue_root)
     if jobs:
-        print(render_jobs_table([record.job for record in jobs], full=full), file=out)
+        print(render_jobs_table([record.job for record in jobs], full=full, queue_root=queue_root), file=out)
     else:
         print("No queue jobs found.", file=out)
 
@@ -236,7 +255,10 @@ def show_job(
     as_json: bool = False,
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
 
@@ -247,6 +269,7 @@ def show_job(
         model_subfolder=model_subfolder,
         stdout=out,
         stderr=err,
+        queue_root=queue_root,
     )
     if record is None:
         return 1
@@ -278,13 +301,13 @@ def show_job(
     )
     print(f"config        : {job.config}", file=out)
     print(f"source_config : {job.source_config or '-'}", file=out)
-    print(f"log_path      : {_resolve_log_path(job)}", file=out)
+    print(f"log_path      : {_resolve_log_path(job, queue_root=queue_root)}", file=out)
     print(f"error         : {job.error or '-'}", file=out)
 
     if lines <= 0:
         return 0
 
-    log_path = _resolve_log_path(job)
+    log_path = _resolve_log_path(job, queue_root=queue_root)
     if not log_path.exists():
         print("No log file found for this job.", file=out)
         return 0
@@ -312,7 +335,10 @@ def logs_job(
     errors: bool = False,
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
 
@@ -323,11 +349,12 @@ def logs_job(
         model_subfolder=model_subfolder,
         stdout=out,
         stderr=err,
+        queue_root=queue_root,
     )
     if record is None:
         return 1
 
-    log_path = _resolve_log_path(record.job)
+    log_path = _resolve_log_path(record.job, queue_root=queue_root)
     if not log_path.exists():
         print(f"Log file not found: {log_path}", file=err)
         return 1
@@ -360,14 +387,17 @@ def cancel_jobs(
     stdin=None,
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     in_stream = sys.stdin if stdin is None else stdin
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
 
     if cancel_all:
         records = _filter_jobs(
-            discover_jobs()[0],
+            discover_jobs(queue_root=queue_root)[0],
             status=None,
             include_statuses={"queued", "running"},
         )
@@ -399,6 +429,8 @@ def cancel_jobs(
                 stdin=in_stream,
                 stdout=out,
                 stderr=err,
+                paths=paths,
+                queue_root=queue_root,
             )
             if ok:
                 cancelled += 1
@@ -415,6 +447,7 @@ def cancel_jobs(
         model_subfolder=model_subfolder,
         stdout=out,
         stderr=err,
+        queue_root=queue_root,
     )
     if record is None:
         return 1
@@ -444,6 +477,8 @@ def cancel_jobs(
         stdin=in_stream,
         stdout=out,
         stderr=err,
+        paths=paths,
+        queue_root=queue_root,
     )
     return 0 if ok else 1
 
@@ -455,8 +490,13 @@ def start_worker(
     once: bool = False,
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     worker = QueueWorker(
+        paths=paths,
+        queue_root=queue_root,
         poll_seconds=poll_seconds,
         safety_margin_mb=safety_margin_mb,
         stdout=stdout,
@@ -469,11 +509,13 @@ def start_worker(
     return worker.run_forever()
 
 
-def pause_queue(*, stdout=None, stderr=None) -> int:
+def pause_queue(*, stdout=None, stderr=None, paths: Paths | None = None) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
     try:
-        control = update_queue_control(paused=True)
+        control = update_queue_control(paused=True, queue_root=queue_root, paths=paths)
     except Exception as exc:
         print(f"Failed to pause queue: {type(exc).__name__}: {exc}", file=err)
         return 1
@@ -485,11 +527,13 @@ def pause_queue(*, stdout=None, stderr=None) -> int:
     return 0
 
 
-def resume_queue(*, stdout=None, stderr=None) -> int:
+def resume_queue(*, stdout=None, stderr=None, paths: Paths | None = None) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
     try:
-        control = update_queue_control(paused=False)
+        control = update_queue_control(paused=False, queue_root=queue_root, paths=paths)
     except Exception as exc:
         print(f"Failed to resume queue: {type(exc).__name__}: {exc}", file=err)
         return 1
@@ -501,11 +545,13 @@ def resume_queue(*, stdout=None, stderr=None) -> int:
     return 0
 
 
-def show_queue_control(*, stdout=None, stderr=None) -> int:
+def show_queue_control(*, stdout=None, stderr=None, paths: Paths | None = None) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
     try:
-        control = read_queue_control()
+        control = read_queue_control(queue_root=queue_root, paths=paths)
     except Exception as exc:
         print(f"Failed to read queue control: {type(exc).__name__}: {exc}", file=err)
         return 1
@@ -514,11 +560,13 @@ def show_queue_control(*, stdout=None, stderr=None) -> int:
     return 0
 
 
-def set_queue_concurrency(*, max_runs_per_gpu: int, stdout=None, stderr=None) -> int:
+def set_queue_concurrency(*, max_runs_per_gpu: int, stdout=None, stderr=None, paths: Paths | None = None) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
     try:
-        control = update_queue_control(max_concurrent_runs_per_gpu=max_runs_per_gpu)
+        control = update_queue_control(max_concurrent_runs_per_gpu=max_runs_per_gpu, queue_root=queue_root, paths=paths)
     except Exception as exc:
         print(f"Failed to update queue concurrency: {type(exc).__name__}: {exc}", file=err)
         return 1
@@ -540,7 +588,10 @@ def clean_jobs(
     stdin=None,
     stdout=None,
     stderr=None,
+    paths: Paths | None = None,
 ) -> int:
+    paths = _command_paths(paths)
+    queue_root = default_queue_root(paths=paths)
     in_stream = sys.stdin if stdin is None else stdin
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
@@ -568,11 +619,11 @@ def clean_jobs(
     removed_logs = 0
     removed_snapshots = 0
     skipped_recent = 0
-    skipped_running = len(discover_jobs(status="running")[0]) if clean_all else 0
+    skipped_running = len(discover_jobs(status="running", queue_root=queue_root)[0]) if clean_all else 0
     removed_by_status = {key: 0 for key in target_statuses}
 
     for state in target_statuses:
-        records, invalid = discover_jobs(status=state)
+        records, invalid = discover_jobs(status=state, queue_root=queue_root)
         for item in invalid:
             print(
                 f"warning: skipped invalid queue job {item.path} ({item.kind}: {item.message})",
@@ -595,8 +646,8 @@ def clean_jobs(
             remove_job_file(record)
             removed_jobs += 1
             removed_by_status[state] += 1
-            removed_logs += int(_remove_log_for_job(record.job))
-            removed_snapshots += int(_remove_managed_snapshot_for_job(record.job))
+            removed_logs += int(_remove_log_for_job(record.job, queue_root=queue_root))
+            removed_snapshots += int(_remove_managed_snapshot_for_job(record.job, queue_root=queue_root))
 
     summary = [
         f"removed_jobs={removed_jobs}",
@@ -613,26 +664,26 @@ def clean_jobs(
         print(f"Removed by status: {details}", file=out)
 
     if reset_selector:
-        if _queue_is_empty():
-            reset_selector_index()
+        if _queue_is_empty(queue_root=queue_root):
+            reset_selector_index(queue_root=queue_root)
             print("Selector index reset to q0001.", file=out)
         else:
             print("Selector index not reset because the queue is not empty.", file=err)
             return 1
-    elif clean_all and _queue_is_empty() and _is_interactive(in_stream):
+    elif clean_all and _queue_is_empty(queue_root=queue_root) and _is_interactive(in_stream):
         confirmed = _prompt_yes_no(
             "Queue is empty. Reset selector index to q0001? [y/N]: ",
             stdin=in_stream,
             stdout=out,
         )
         if confirmed:
-            reset_selector_index()
+            reset_selector_index(queue_root=queue_root)
             print("Selector index reset to q0001.", file=out)
 
     return 0
 
 
-def render_jobs_table(jobs: list[QueueJob], *, full: bool = False) -> str:
+def render_jobs_table(jobs: list[QueueJob], *, full: bool = False, queue_root: Path | None = None) -> str:
     if not jobs:
         return ""
 
@@ -669,7 +720,7 @@ def render_jobs_table(jobs: list[QueueJob], *, full: bool = False) -> str:
                 format_timestamp_local(job.submitted_at),
                 "-" if job.run_id is None else job.run_id,
                 "-" if job.pid is None else str(job.pid),
-                str(_resolve_log_path(job)),
+                str(_resolve_log_path(job, queue_root=queue_root)) if job.log_path or queue_root is not None else "-",
                 "-" if job.error is None else _single_line(job.error),
             ]
             for job in jobs
@@ -775,13 +826,13 @@ def _is_path_within(path: Path, root: Path) -> bool:
     return True
 
 
-def _resolve_sweep_base_config(base_config: str, *, sweep_path: Path) -> Path:
+def _resolve_sweep_base_config(base_config: str, *, sweep_path: Path, paths: Paths) -> Path:
     candidate = Path(base_config).expanduser()
     if not candidate.is_absolute():
         candidate_from_sweep = (sweep_path.parent / candidate).resolve()
         if candidate_from_sweep.exists():
-            return _resolve_training_reference(str(candidate_from_sweep))
-    return _resolve_training_reference(base_config)
+            return _resolve_training_reference(str(candidate_from_sweep), paths=paths)
+    return _resolve_training_reference(base_config, paths=paths)
 
 
 def _next_sweep_config_path(*, generated_root: Path, run_name: str, index: int) -> Path:
@@ -1219,8 +1270,9 @@ def _resolve_single_job(
     stdout,
     stderr,
     include_statuses: set[str] | None = None,
+    queue_root: Path,
 ) -> DiscoveredJob | None:
-    records = discover_jobs()[0]
+    records = discover_jobs(queue_root=queue_root)[0]
     matches = _filter_jobs(
         records,
         target=target,
@@ -1234,7 +1286,7 @@ def _resolve_single_job(
         return None
     if len(matches) > 1:
         print("Multiple queue jobs match the selector/filters.", file=stderr)
-        print(render_jobs_table([item.job for item in matches]), file=stdout)
+        print(render_jobs_table([item.job for item in matches], queue_root=queue_root), file=stdout)
         print("Narrow the selector (prefer qNNNN) and retry.", file=stderr)
         return None
     return matches[0]
@@ -1294,6 +1346,8 @@ def _match_target(records: list[DiscoveredJob], target: str) -> list[DiscoveredJ
 def _cancel_single_record(
     record: DiscoveredJob,
     *,
+    paths: Paths,
+    queue_root: Path,
     force: bool,
     allow_force_prompt: bool,
     eval_override: bool | None,
@@ -1302,7 +1356,7 @@ def _cancel_single_record(
     stderr,
 ) -> bool:
     if record.job.status == "queued":
-        latest = find_job(record.job.job_id)
+        latest = find_job(record.job.job_id, queue_root=queue_root)
         if latest is None:
             print(f"warning: queue job {record.job.job_id} disappeared before cancellation.", file=stderr)
             return False
@@ -1310,6 +1364,7 @@ def _cancel_single_record(
             latest,
             exit_code=None,
             error="cancelled_by_user(queued)",
+            queue_root=queue_root,
         )
         print(f"Cancelled queued job {_job_selector_text(record.job)}.", file=stdout)
         return True
@@ -1323,7 +1378,7 @@ def _cancel_single_record(
 
     pid = record.job.pid
     if pid is None:
-        latest = find_job(record.job.job_id)
+        latest = find_job(record.job.job_id, queue_root=queue_root)
         if latest is None:
             print(f"warning: queue job {record.job.job_id} disappeared before cancellation.", file=stderr)
             return False
@@ -1331,13 +1386,14 @@ def _cancel_single_record(
             latest,
             exit_code=None,
             error="cancelled_by_user(running_no_pid)",
+            queue_root=queue_root,
         )
         print(f"Cancelled running job {_job_selector_text(record.job)} (missing pid metadata).", file=stdout)
-        _maybe_run_post_cancel_evaluation(latest.job, eval_override=eval_override, stdout=stdout, stderr=stderr)
+        _maybe_run_post_cancel_evaluation(latest.job, eval_override=eval_override, stdout=stdout, stderr=stderr, paths=paths)
         return True
 
     if not _pid_exists(pid):
-        latest = find_job(record.job.job_id)
+        latest = find_job(record.job.job_id, queue_root=queue_root)
         if latest is None:
             print(f"warning: queue job {record.job.job_id} disappeared before cancellation.", file=stderr)
             return False
@@ -1345,12 +1401,13 @@ def _cancel_single_record(
             latest,
             exit_code=None,
             error="cancelled_by_user(process_not_found)",
+            queue_root=queue_root,
         )
         print(
             f"Marked {_job_selector_text(record.job)} as cancelled because PID {pid} no longer exists.",
             file=stdout,
         )
-        _maybe_run_post_cancel_evaluation(latest.job, eval_override=eval_override, stdout=stdout, stderr=stderr)
+        _maybe_run_post_cancel_evaluation(latest.job, eval_override=eval_override, stdout=stdout, stderr=stderr, paths=paths)
         return True
 
     if not _send_signal(pid, signal.SIGINT, stderr=stderr):
@@ -1361,6 +1418,8 @@ def _cancel_single_record(
             record,
             reason="sigint",
             eval_override=eval_override,
+            paths=paths,
+            queue_root=queue_root,
             stdout=stdout,
             stderr=stderr,
         )
@@ -1373,6 +1432,8 @@ def _cancel_single_record(
             record,
             reason="sigterm",
             eval_override=eval_override,
+            paths=paths,
+            queue_root=queue_root,
             stdout=stdout,
             stderr=stderr,
         )
@@ -1400,6 +1461,8 @@ def _cancel_single_record(
             record,
             reason="sigkill",
             eval_override=eval_override,
+            paths=paths,
+            queue_root=queue_root,
             stdout=stdout,
             stderr=stderr,
         )
@@ -1413,10 +1476,12 @@ def _finalize_cancelled_running(
     *,
     reason: str,
     eval_override: bool | None,
+    paths: Paths,
+    queue_root: Path,
     stdout,
     stderr,
 ) -> bool:
-    latest = find_job(record.job.job_id)
+    latest = find_job(record.job.job_id, queue_root=queue_root)
     if latest is None:
         print(f"warning: queue job {record.job.job_id} disappeared before final cancellation mark.", file=stderr)
         return False
@@ -1430,9 +1495,10 @@ def _finalize_cancelled_running(
         latest,
         exit_code=None,
         error=f"cancelled_by_user({reason})",
+        queue_root=queue_root,
     )
     print(f"Cancelled running job {_job_selector_text(latest.job)}.", file=stdout)
-    _maybe_run_post_cancel_evaluation(latest.job, eval_override=eval_override, stdout=stdout, stderr=stderr)
+    _maybe_run_post_cancel_evaluation(latest.job, eval_override=eval_override, stdout=stdout, stderr=stderr, paths=paths)
     return True
 
 
@@ -1478,12 +1544,13 @@ def _maybe_run_post_cancel_evaluation(
     eval_override: bool | None,
     stdout,
     stderr,
+    paths: Paths,
 ) -> None:
-    should_eval = _should_evaluate_after_cancel(job, eval_override=eval_override, stderr=stderr)
+    should_eval = _should_evaluate_after_cancel(job, eval_override=eval_override, stderr=stderr, paths=paths)
     if not should_eval:
         return
 
-    run = _resolve_run_for_queue_job(job, stderr=stderr)
+    run = _resolve_run_for_queue_job(job, stderr=stderr, paths=paths)
     if run is None:
         return
 
@@ -1500,12 +1567,13 @@ def _maybe_run_post_cancel_evaluation(
         file=stdout,
     )
     try:
-        eval_cfg = resolve_evaluate_config(config=POST_TRAINING_INFERENCE_CONFIG)
+        eval_cfg = resolve_evaluate_config(config=POST_TRAINING_INFERENCE_CONFIG, stg=_job_paths(job, paths).settings)
         run_evaluate(
             cfg=eval_cfg,
             dataset_name=run.dataset,
             model_subfolder=run.model_subfolder,
             model_name=run.run_dir.name,
+            paths=_job_paths(job, paths),
         )
     except Exception as exc:
         print(
@@ -1520,12 +1588,13 @@ def _should_evaluate_after_cancel(
     *,
     eval_override: bool | None,
     stderr,
+    paths: Paths,
 ) -> bool:
     if eval_override is not None:
         return bool(eval_override)
 
     try:
-        cfg = resolve_config(job.config, stg=load_default_settings())
+        cfg = resolve_config(job.config, stg=_job_paths(job, paths).settings)
     except Exception as exc:
         print(
             f"warning: could not resolve config for {_job_selector_text(job)} "
@@ -1538,8 +1607,13 @@ def _should_evaluate_after_cancel(
     return bool(getattr(experiment, "post_training_inference", False))
 
 
-def _resolve_run_for_queue_job(job: QueueJob, *, stderr) -> DiscoveredRun | None:
-    scan_result = scan_runs()
+def _job_paths(job: QueueJob, paths: Paths) -> Paths:
+    """Preserve submission context when a worker evaluates a queued job."""
+    return Paths(Settings.from_config_dir(job.config_root)) if job.config_root else paths
+
+
+def _resolve_run_for_queue_job(job: QueueJob, *, stderr, paths: Paths) -> DiscoveredRun | None:
+    scan_result = scan_runs(paths=_job_paths(job, paths))
 
     candidates: list[DiscoveredRun] = []
     if job.run_id is not None:
@@ -1585,14 +1659,14 @@ def _has_selector_input(args: argparse.Namespace) -> bool:
     )
 
 
-def _resolve_log_path(job: QueueJob) -> Path:
+def _resolve_log_path(job: QueueJob, *, queue_root: Path) -> Path:
     if job.log_path:
         return Path(job.log_path).expanduser().resolve()
-    return queue_logs_dir() / job_log_filename(job.job_id, selector=job.selector)
+    return queue_logs_dir(queue_root=queue_root) / job_log_filename(job.job_id, selector=job.selector)
 
 
-def _remove_log_for_job(job: QueueJob) -> bool:
-    path = _resolve_log_path(job)
+def _remove_log_for_job(job: QueueJob, *, queue_root: Path) -> bool:
+    path = _resolve_log_path(job, queue_root=queue_root)
     if not path.exists() or not path.is_file():
         return False
     path.unlink(missing_ok=True)
@@ -1628,8 +1702,8 @@ def _looks_like_error_line(line: str) -> bool:
     return any(token in lowered for token in ERROR_LINE_HINTS)
 
 
-def _queue_is_empty() -> bool:
-    records, invalid = discover_jobs()
+def _queue_is_empty(*, queue_root: Path) -> bool:
+    records, invalid = discover_jobs(queue_root=queue_root)
     return not records and not invalid
 
 

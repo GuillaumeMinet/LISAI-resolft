@@ -7,6 +7,10 @@ import time
 from collections.abc import Iterable
 from typing import Sequence
 
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
+from .listing import active_heartbeat_timeout
+
 from lisai.infra.cli.open_path import try_open_path as _try_open_path
 from lisai.infra.cli.prompts import is_interactive, prompt_yes_no
 from lisai.infra.cli.selection import resolve_partial_name
@@ -27,6 +31,15 @@ from .selection import resolve_discovered_run_selector
 _LIVE_INTERVAL_MIN_SECONDS = 1.0
 
 
+def _cli_paths(args: argparse.Namespace) -> Paths:
+    """Load once for the current CLI action, never in scanner/lifecycle internals."""
+    paths = getattr(args, "_lisai_paths", None)
+    if paths is None:
+        paths = Paths(load_default_settings())
+        args._lisai_paths = paths
+    return paths
+
+
 def list_runs(
     *,
     run_id: str | None = None,
@@ -42,10 +55,12 @@ def list_runs(
     recent: int | None = None,
     live: bool = False,
     interval_seconds: float = 2.0,
+    paths: Paths | None = None,
     stdin=None,
     stdout=None,
     stderr=None,
 ) -> int:
+    paths = Paths(load_default_settings()) if paths is None else paths
     in_stream = sys.stdin if stdin is None else stdin
     out = sys.stdout if stdout is None else stdout
     err = sys.stderr if stderr is None else stderr
@@ -72,8 +87,8 @@ def list_runs(
     initial_external_scan = None
     resolved_dataset = dataset
     if dataset is not None:
-        initial_scan = scan_runs()
-        initial_external_scan = scan_external_runs()
+        initial_scan = scan_runs(paths=paths)
+        initial_external_scan = scan_external_runs(paths=paths)
         selected_kinds = set(kind or ("lisai", "external"))
         dataset_names = [run.dataset for run in initial_scan.runs] if "lisai" in selected_kinds else []
         if "external" in selected_kinds:
@@ -113,6 +128,7 @@ def list_runs(
                     refresh_interval_seconds=resolved_interval_seconds,
                     emitted_invalid_keys=emitted_invalid_keys,
                     top_notice=interval_warning,
+                    paths=paths,
                     scan_result=initial_scan,
                     external_scan_result=initial_external_scan,
                 )
@@ -142,6 +158,7 @@ def list_runs(
         refresh_interval_seconds=resolved_interval_seconds,
         emitted_invalid_keys=None,
         top_notice=interval_warning,
+        paths=paths,
         scan_result=initial_scan,
         external_scan_result=initial_external_scan,
     )
@@ -169,9 +186,10 @@ def _render_runs_snapshot(
     top_notice: str | None,
     scan_result: ScanResults | None = None,
     external_scan_result=None,
+    paths: Paths,
 ) -> None:
-    resolved_scan = scan_runs() if scan_result is None else scan_result
-    resolved_external_scan = scan_external_runs() if external_scan_result is None else external_scan_result
+    resolved_scan = scan_runs(paths=paths) if scan_result is None else scan_result
+    resolved_external_scan = scan_external_runs(paths=paths) if external_scan_result is None else external_scan_result
     filtered_runs = filter_runs(
         resolved_scan.runs,
         run_id=run_id,
@@ -197,12 +215,7 @@ def _render_runs_snapshot(
 
     if promoted:
         from lisai.promoted_models.registry import promoted_source_run_ids
-        from lisai.config.settings import load_default_settings
-        from lisai.infra.paths import Paths
-
-        promoted_ids = promoted_source_run_ids(
-            paths=Paths(load_default_settings())
-        )
+        promoted_ids = promoted_source_run_ids(paths=paths)
         filtered_runs = [run for run in filtered_runs if run.metadata.run_id in promoted_ids]
 
     if recent is not None:
@@ -237,7 +250,7 @@ def _render_runs_snapshot(
         body = "No runs found"
 
     if filtered_runs:
-        body = render_runs_table(filtered_runs, full=full)
+        body = render_runs_table(filtered_runs, full=full, fallback_timeout=active_heartbeat_timeout(paths=paths))
         if has_path_inconsistencies(filtered_runs):
             body = "\n".join(
                 [
@@ -375,11 +388,13 @@ def run_list_from_args(args: argparse.Namespace) -> int:
         recent=args.recent,
         live=args.live,
         interval_seconds=args.interval,
+        paths=_cli_paths(args),
     )
 
 
 def _resolve_run_from_args(args: argparse.Namespace) -> DiscoveredRun | None:
     return resolve_discovered_run_selector(
+        paths=_cli_paths(args),
         selector=args.run,
         run_id=args.run_id,
         dataset=args.dataset,
@@ -394,7 +409,7 @@ def _resolve_external_open_from_args(args: argparse.Namespace):
     if args.run_id is not None:
         return None
     selector = (args.run or "").strip().casefold()
-    scan = scan_external_runs()
+    scan = scan_external_runs(paths=_cli_paths(args))
     candidates = list(scan.runs)
     if args.dataset:
         dataset_query = args.dataset.strip().casefold()
@@ -454,6 +469,7 @@ def run_plot_from_args(args: argparse.Namespace) -> int:
         architecture=architecture,
         stderr=sys.stderr,
         open_saved_plot=_try_open_path,
+        paths=_cli_paths(args),
     )
 
 
@@ -491,7 +507,7 @@ def run_prune_from_args(args: argparse.Namespace) -> int:
     )
     from .schema import utc_now
 
-    scan_result = scan_runs()
+    scan_result = scan_runs(paths=_cli_paths(args))
     resolved_dataset = args.dataset
     if args.dataset is not None:
         resolved_dataset = resolve_partial_name(
@@ -592,9 +608,6 @@ def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
         return 1
 
     from lisai.promoted_models import promote_run
-    from lisai.infra.paths import Paths
-    from lisai.config.settings import load_default_settings
-
     try:
         promoted = promote_run(
             selected.run_dir,
@@ -602,7 +615,7 @@ def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
             checkpoint=args.checkpoint,
             inference_config=args.inference_config,
             overwrite=args.overwrite,
-            paths=Paths(load_default_settings()),
+            paths=_cli_paths(args),
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")

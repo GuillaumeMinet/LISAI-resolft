@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from lisai.config import resolve_config, settings
+from lisai.config import resolve_config
+from lisai.infra.paths import Paths
 from lisai.runs.scanner import DiscoveredRun
 from lisai.runs.schema import TrainingSignature
 from lisai.runs.signature import build_training_signature_from_resolved_config
@@ -21,9 +22,9 @@ class SchedulingContext:
     training_signature: TrainingSignature
 
 
-def load_scheduling_context(config_path: str | Path) -> SchedulingContext:
+def load_scheduling_context(config_path: str | Path, *, paths: Paths) -> SchedulingContext:
     resolved_path = Path(config_path).expanduser().resolve()
-    cfg = resolve_config(resolved_path, stg=settings)
+    cfg = resolve_config(resolved_path, stg=paths.settings)
     return SchedulingContext(
         config_path=resolved_path,
         dataset=str(cfg.data.dataset_name).strip(),
@@ -33,8 +34,8 @@ def load_scheduling_context(config_path: str | Path) -> SchedulingContext:
     )
 
 
-def resource_class_defaults_mb() -> dict[ResourceClass, int]:
-    configured = settings.project_cfg.queue.resource_class_vram_mb
+def resource_class_defaults_mb(*, paths: Paths) -> dict[ResourceClass, int]:
+    configured = paths.settings.project_cfg.queue.resource_class_vram_mb
     return {
         "light": int(configured.light),
         "medium": int(configured.medium),
@@ -163,9 +164,9 @@ def estimate_expected_vram_mb(
     signature: TrainingSignature | None,
     resource_class: ResourceClass,
     runs: list[DiscoveredRun] | tuple[DiscoveredRun, ...],
-    resource_defaults_mb: Mapping[str, int] | None = None,
+    resource_defaults_mb: Mapping[str, int],
 ) -> tuple[int, str]:
-    defaults = dict(resource_defaults_mb or resource_class_defaults_mb())
+    defaults = dict(resource_defaults_mb)
 
     if signature is not None:
         peaks = matching_peak_vram_mb(signature=signature, runs=runs)

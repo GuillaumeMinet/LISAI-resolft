@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 from .schema import JOB_STATUSES, JobStatus, QueueJob
@@ -27,11 +26,11 @@ class InvalidQueueJob:
     message: str
 
 
-def default_queue_root() -> Path:
+def default_queue_root(*, paths: Paths) -> Path:
     env_override = os.environ.get("LISAI_QUEUE_ROOT")
     if env_override:
         return Path(env_override).expanduser().resolve()
-    return (Paths(settings).project_root() / ".lisai" / "queue").resolve()
+    return (paths.project_root() / ".lisai" / "queue").resolve()
 
 
 def queue_state_dir(status: JobStatus, *, queue_root: str | Path | None = None) -> Path:
@@ -159,7 +158,9 @@ def remove_job_file(record: DiscoveredJob) -> None:
 
 
 def _queue_root_path(queue_root: str | Path | None) -> Path:
-    return default_queue_root() if queue_root is None else Path(queue_root).expanduser().resolve()
+    if queue_root is None:
+        raise ValueError("queue_root must be resolved at the runner/CLI boundary")
+    return Path(queue_root).expanduser().resolve()
 
 
 def _fsync_directory(path: Path):

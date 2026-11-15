@@ -43,6 +43,7 @@ def continue_run(
     fallback_timeout = timedelta(minutes=heartbeat_minutes)
 
     selected_run = resolve_discovered_run_selector(
+        paths=paths,
         selector=selector,
         scan_result=scan_runs(paths=paths),
         run_id=run_id,

@@ -71,9 +71,11 @@ def test_create_run_metadata_persists_code_state(monkeypatch, tmp_path):
         git_remote="git@github.com:GuillaumeMinet/LISAI.git",
         lisai_version="0.1.0",
     )
-    monkeypatch.setattr("lisai.runs.lifecycle.collect_code_state", lambda: expected)
+    monkeypatch.setattr("lisai.runs.lifecycle.collect_code_state", lambda *, paths: expected)
 
-    create_run_metadata(run_dir, dataset="Gag", model_subfolder="HDN", max_epoch=10)
+    from lisai.config import settings
+    from lisai.infra.paths import Paths
+    create_run_metadata(run_dir, dataset="Gag", model_subfolder="HDN", max_epoch=10, paths=Paths(settings))
     metadata = read_run_metadata(run_dir)
 
     assert metadata.code == expected

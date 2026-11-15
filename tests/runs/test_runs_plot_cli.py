@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from lisai.infra.paths import Paths
+from lisai.config import settings
+
 import io
 from datetime import timedelta
 from pathlib import Path
@@ -70,7 +73,7 @@ def test_runs_plot_delegates_to_shared_plotting(monkeypatch, tmp_path):
     )
 
     captured = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
 
     def _fake_show(**kwargs):
         captured.update(kwargs)
@@ -105,7 +108,7 @@ def test_runs_plot_accepts_dataset_subfolder_runref_selector(monkeypatch, tmp_pa
     )
 
     captured = {}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(
         runs_cli,
         "show_loss_plot_for_run",
@@ -129,7 +132,7 @@ def test_runs_plot_returns_nonzero_when_plotting_fails(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(runs_cli, "show_loss_plot_for_run", lambda **_kwargs: 1)
 
     exit_code = root_cli.main(["runs", "plot", "resume_me_00", "--dataset", "Gag"])
@@ -157,7 +160,7 @@ def test_runs_plot_ambiguous_selector_requires_disambiguation_when_non_interacti
     )
 
     called = {"value": False}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda *, paths: scan_runs(datasets_root, paths=paths))
     monkeypatch.setattr(runs_cli.sys, "stdin", NonInteractiveInput(""))
 
     def _fake_show(**_kwargs):

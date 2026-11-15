@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TextIO
 
 from lisai.infra.paths import Paths
-from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 
 
 def read_loss_table(loss_file: Path, *, stderr: TextIO | None = None):
@@ -67,12 +66,12 @@ def show_loss_plot_for_run(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     architecture: str | None = None,
-    paths: Paths | None = None,
+    paths: Paths,
     stderr: TextIO | None = None,
     open_saved_plot: Callable[[Path], bool] | None = None,
 ) -> int:
     resolved_run_dir = Path(run_dir).resolve()
-    resolved_paths = paths or Paths(_legacy_settings)
+    resolved_paths = paths
     loss_file = resolved_paths.loss_file_path(run_dir=resolved_run_dir)
     loaded = read_loss_table(loss_file, stderr=stderr)
     if loaded is None:
@@ -132,11 +131,11 @@ def save_loss_plot_for_run(
     dataset: str | None = None,
     model_subfolder: str | None = None,
     architecture: str | None = None,
-    paths: Paths | None = None,
+    paths: Paths,
     stderr: TextIO | None = None,
 ) -> Path | None:
     resolved_run_dir = Path(run_dir).resolve()
-    resolved_paths = paths or Paths(_legacy_settings)
+    resolved_paths = paths
     loss_file = resolved_paths.loss_file_path(run_dir=resolved_run_dir)
     loaded = read_loss_table(loss_file, stderr=stderr)
     if loaded is None:

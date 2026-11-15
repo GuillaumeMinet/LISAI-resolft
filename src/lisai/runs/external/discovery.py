@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.infra.paths import Paths
 
 from .schema import EXTERNAL_RUN_METADATA_FILENAME, ExternalRunMetadata
@@ -45,8 +45,7 @@ def read_external_run_metadata(path: str | Path) -> ExternalRunMetadata:
     return ExternalRunMetadata.model_validate(load_yaml(path))
 
 
-def scan_external_runs(*, paths: Paths | None = None) -> ExternalScanResults:
-    paths = Paths(settings) if paths is None else paths
+def scan_external_runs(*, paths: Paths) -> ExternalScanResults:
     runs: list[DiscoveredExternalRun] = []
     invalid: list[InvalidExternalRun] = []
     root = paths.training_datasets_root()

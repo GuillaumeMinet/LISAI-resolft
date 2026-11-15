@@ -196,8 +196,11 @@ def test_show_loss_plot_uses_show_with_interactive_backend(tmp_path, monkeypatch
     )
 
     stderr = io.StringIO()
+    from lisai.config import settings
+    from lisai.infra.paths import Paths
     exit_code = plotting.show_loss_plot_for_run(
         run_dir=run_dir,
+        paths=Paths(settings),
         architecture="upsamp",
         stderr=stderr,
     )

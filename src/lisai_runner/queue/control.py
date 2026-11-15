@@ -8,7 +8,7 @@ from typing import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from lisai.config import settings
+from lisai.infra.paths import Paths
 
 from .storage import ensure_queue_dirs
 
@@ -39,17 +39,17 @@ def queue_control_path(*, queue_root: str | Path | None = None) -> Path:
     return root / QUEUE_CONTROL_FILENAME
 
 
-def default_queue_control() -> QueueControl:
+def default_queue_control(*, paths: Paths) -> QueueControl:
     return QueueControl(
-        paused=bool(settings.project_cfg.queue.paused),
-        max_concurrent_runs_per_gpu=int(settings.project_cfg.queue.max_concurrent_runs_per_gpu),
+        paused=bool(paths.settings.project_cfg.queue.paused),
+        max_concurrent_runs_per_gpu=int(paths.settings.project_cfg.queue.max_concurrent_runs_per_gpu),
     )
 
 
-def read_queue_control(*, queue_root: str | Path | None = None) -> QueueControl:
+def read_queue_control(*, queue_root: str | Path, paths: Paths) -> QueueControl:
     path = queue_control_path(queue_root=queue_root)
     if not path.exists():
-        return default_queue_control()
+        return default_queue_control(paths=paths)
 
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
@@ -93,9 +93,10 @@ def update_queue_control(
     *,
     paused: bool | None = None,
     max_concurrent_runs_per_gpu: int | None = None,
-    queue_root: str | Path | None = None,
+    queue_root: str | Path,
+    paths: Paths,
 ) -> QueueControl:
-    current = read_queue_control(queue_root=queue_root)
+    current = read_queue_control(queue_root=queue_root, paths=paths)
     updates: dict[str, object] = {}
 
     if paused is not None:

@@ -401,7 +401,7 @@ def run_apply_from_args(
         model_subfolder = "promoted"
         model_name = promoted_model_name
     else:
-        selected = _resolve_run_selector(args)
+        selected = _resolve_run_selector(args, paths=paths)
         if selected is None:
             return 1
         model_dataset = selected.dataset
@@ -438,7 +438,7 @@ def run_evaluate_from_args(
     if args.evaluation_dataset_name is not None and args.split is not None:
         parser.error("--on evaluates the complete evaluation dataset and cannot be combined with --split.")
 
-    selected = _resolve_run_selector(args)
+    selected = _resolve_run_selector(args, paths=paths)
     if selected is None:
         return 1
 
@@ -460,9 +460,10 @@ def run_evaluate_from_args(
 
 
 def _resolve_run_selector(
-    args: argparse.Namespace,
+    args: argparse.Namespace, *, paths: Paths,
 ) -> DiscoveredRun | None:
     return resolve_discovered_run_selector(
+        paths=paths,
         selector=args.run,
         run_id=args.run_id,
         dataset=args.dataset,

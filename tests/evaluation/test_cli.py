@@ -85,7 +85,7 @@ def test_apply_cli_parses_run_ref_config_and_overrides(monkeypatch, tmp_path):
         captured["overrides"] = overrides
         return ApplyDefaults()
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "resolve_apply_config", fake_resolve_apply_config)
     monkeypatch.setattr(evaluation_cli, "run_apply_model", fake_run_apply_model)
 
@@ -129,7 +129,7 @@ def test_apply_cli_passes_limit_n_imgs(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -225,7 +225,7 @@ def test_apply_cli_accepts_no_tiling_alias(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -250,7 +250,7 @@ def test_apply_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     def fake_run_apply_model(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", fake_run_apply_model)
 
     parser = build_parser()
@@ -293,7 +293,7 @@ def test_apply_cli_accepts_run_id_selector_without_run_positional(monkeypatch, t
         model_subfolder="HDN",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -341,7 +341,7 @@ def test_evaluate_cli_parses_metrics_and_split(monkeypatch, tmp_path):
     def fake_run_evaluate(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "resolve_evaluate_config", fake_resolve_evaluate_config)
     monkeypatch.setattr(evaluation_cli, "run_evaluate", fake_run_evaluate)
 
@@ -389,7 +389,7 @@ def test_evaluate_cli_accepts_best_or_last_both(monkeypatch, tmp_path):
     def fake_run_evaluate(**kwargs):
         captured.update(kwargs)
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_evaluate", fake_run_evaluate)
 
     parser = build_parser()
@@ -423,7 +423,7 @@ def test_evaluate_cli_accepts_run_dir_selector(monkeypatch, tmp_path):
         captured["overrides"] = overrides
         return EvaluateDefaults()
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "resolve_evaluate_config", fake_resolve_evaluate_config)
     monkeypatch.setattr(evaluation_cli, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
@@ -459,7 +459,7 @@ def test_evaluate_cli_ambiguous_selector_allows_interactive_line_selection(monke
 
     stdout = io.StringIO()
     stderr = io.StringIO()
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_evaluate", lambda **kwargs: captured.update(kwargs))
     monkeypatch.setattr(evaluation_cli.sys, "stdin", InteractiveInput("02\n"))
     monkeypatch.setattr(evaluation_cli.sys, "stdout", stdout)
@@ -495,7 +495,7 @@ def test_evaluate_cli_ambiguous_selector_requires_extra_filters_when_non_interac
     stdout = io.StringIO()
     stderr = io.StringIO()
     called = {"value": False}
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_evaluate", lambda **kwargs: called.update({"value": True}))
     monkeypatch.setattr(evaluation_cli.sys, "stdin", NonInteractiveInput(""))
     monkeypatch.setattr(evaluation_cli.sys, "stdout", stdout)
@@ -557,7 +557,7 @@ def test_evaluate_cli_passes_independent_evaluation_dataset(monkeypatch, tmp_pat
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -594,7 +594,7 @@ def test_apply_cli_accepts_output_mode(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -634,7 +634,7 @@ def test_apply_cli_passes_save_folder_and_overwrite(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -666,7 +666,7 @@ def test_apply_cli_passes_reuse_folder_and_skip_existing(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()
@@ -747,7 +747,7 @@ def test_apply_cli_save_input_override(monkeypatch, tmp_path):
         model_subfolder="Upsamp",
     )
 
-    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root))
+    monkeypatch.setattr(selection_mod, "scan_runs", lambda **kwargs: scan_runs(datasets_root, paths=kwargs["paths"]))
     monkeypatch.setattr(evaluation_cli, "run_apply_model", lambda **kwargs: captured.update(kwargs))
 
     parser = build_parser()

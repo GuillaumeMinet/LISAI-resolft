@@ -8,7 +8,7 @@ from statistics import median
 import sys
 from typing import Literal
 
-from lisai.config import settings
+from lisai.infra.paths import Paths
 
 from .scanner import DiscoveredRun, InvalidRunMetadata
 from .external.discovery import DiscoveredExternalRun
@@ -27,8 +27,8 @@ class _RunHeartbeatClassification:
     threshold_s: float | None = None
 
 
-def active_heartbeat_timeout() -> timedelta:
-    minutes = settings.project_cfg.run_tracking.active_heartbeat_timeout_minutes
+def active_heartbeat_timeout(*, paths: Paths) -> timedelta:
+    minutes = paths.settings.project_cfg.run_tracking.active_heartbeat_timeout_minutes
     return timedelta(minutes=minutes)
 
 
@@ -57,7 +57,9 @@ def _heartbeat_timeout_seconds(run: DiscoveredRun, *, fallback_timeout: timedelt
     dynamic_seconds = _dynamic_heartbeat_timeout_seconds(run)
     if dynamic_seconds is not None:
         return dynamic_seconds
-    return (active_heartbeat_timeout() if fallback_timeout is None else fallback_timeout).total_seconds()
+    if fallback_timeout is None:
+        raise ValueError("Running heartbeat status requires an explicit fallback_timeout")
+    return fallback_timeout.total_seconds()
 
 
 def _classify_running_heartbeat(
@@ -136,11 +138,11 @@ def matches_exp_name(run: DiscoveredRun, query: str | None) -> bool:
     return normalized_query in run.metadata.run_name.casefold()
 
 
-def is_run_heartbeat_fresh(run: DiscoveredRun, *, now: datetime | None = None) -> bool:
+def is_run_heartbeat_fresh(run: DiscoveredRun, *, now: datetime | None = None, fallback_timeout: timedelta | None = None) -> bool:
     reference = _normalized_reference_time(now)
     if run.metadata.last_heartbeat_at >= reference:
         return True
-    return (reference - run.metadata.last_heartbeat_at).total_seconds() < _heartbeat_timeout_seconds(run)
+    return (reference - run.metadata.last_heartbeat_at).total_seconds() < _heartbeat_timeout_seconds(run, fallback_timeout=fallback_timeout)
 
 
 def is_run_likely_active(
@@ -155,8 +157,8 @@ def is_run_likely_stale(
     return _classify_running_heartbeat(run, now=now, fallback_timeout=fallback_timeout).kind in {"stale", "crash"}
 
 
-def display_run_status(run: DiscoveredRun, *, now: datetime | None = None) -> str:
-    classification = _classify_running_heartbeat(run, now=now)
+def display_run_status(run: DiscoveredRun, *, now: datetime | None = None, fallback_timeout: timedelta | None = None) -> str:
+    classification = _classify_running_heartbeat(run, now=now, fallback_timeout=fallback_timeout)
     if classification.kind == "stale":
         return f"stale (x{classification.stale_multiplier})"
     if classification.kind == "crash":
@@ -170,6 +172,7 @@ def render_runs_table(
     now: datetime | None = None,
     full: bool = False,
     include_selection_index: bool = False,
+    fallback_timeout: timedelta | None = None,
 ) -> str:
     if not runs:
         return ""
@@ -203,7 +206,7 @@ def render_runs_table(
             run.model_subfolder,
             run.run_dir.name,
             "*" if run.metadata.kept else "",
-            display_run_status(run, now=reference),
+            display_run_status(run, now=reference, fallback_timeout=fallback_timeout),
             _format_epoch(run),
             _format_eta_left(run),
             format_timestamp_local(run.metadata.created_at),

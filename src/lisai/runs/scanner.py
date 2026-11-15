@@ -7,7 +7,6 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.infra.paths.run_location import (
     InferredRunLocation,
@@ -51,16 +50,13 @@ class ScanResults:
     invalid: tuple[InvalidRunMetadata, ...]
 
 
-_PATHS = Paths(settings)
-
-
-def default_datasets_root(*, paths: Paths | None = None) -> Path:
+def default_datasets_root(*, paths: Paths) -> Path:
     """Return the canonical root scanned for training runs."""
-    return (_PATHS if paths is None else paths).training_datasets_root()
+    return paths.training_datasets_root()
 
 
-def scan_runs(datasets_root: str | Path | None = None, *, paths: Paths | None = None) -> ScanResults:
-    chosen_paths = _PATHS if paths is None else paths
+def scan_runs(datasets_root: str | Path | None = None, *, paths: Paths) -> ScanResults:
+    chosen_paths = paths
     use_canonical_root = datasets_root is None
     root = default_datasets_root(paths=chosen_paths) if use_canonical_root else Path(datasets_root)
     root = root.resolve()
@@ -134,13 +130,13 @@ def infer_run_location(
     datasets_root: str | Path,
     *,
     stored_path_root: str | Path | None = None,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> InferredRunLocation:
     return infer_run_location_from_paths(
         metadata_path,
         datasets_root,
         metadata_filename=RUN_METADATA_FILENAME,
-        run_container_dirname=(_PATHS if paths is None else paths).run_container_dirname(),
+        run_container_dirname=paths.run_container_dirname(),
         stored_path_root=stored_path_root,
     )
 

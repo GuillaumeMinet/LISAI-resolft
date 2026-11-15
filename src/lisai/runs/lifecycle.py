@@ -6,7 +6,6 @@ from typing import Mapping
 
 from pydantic import ValidationError
 
-from lisai.config import settings
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.infra.paths import Paths
 from lisai.infra.paths.model_subfolder import (
@@ -26,12 +25,9 @@ from .schema import (
     utc_now,
 )
 
-_PATHS = Paths(settings)
-
-
-def stored_run_path(run_dir: str | Path, *, paths: Paths | None = None) -> str:
+def stored_run_path(run_dir: str | Path, *, paths: Paths) -> str:
     path = Path(run_dir).resolve()
-    data_root = (_PATHS if paths is None else paths).data_root()
+    data_root = paths.data_root()
 
     try:
         return path.relative_to(data_root).as_posix()
@@ -43,7 +39,7 @@ def create_run_metadata(
     run_dir: str | Path,
     *,
     dataset: str,
-    paths: Paths | None = None,
+    paths: Paths,
     model_subfolder: str | None = None,
     max_epoch: int | None = None,
     group_path: str | None = None,
@@ -78,7 +74,7 @@ def create_run_metadata(
             best_val_loss=None,
             path=path_text,
             group_path=group_path,
-            code=collect_code_state(),
+            code=collect_code_state(paths=paths),
         )
     else:
         metadata = existing.model_copy(
