@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import inspect
 from pathlib import Path
+from lisai.infra.paths import Paths
+from lisai.config import settings as legacy_settings
 from types import SimpleNamespace
 
 from lisai.config.models.inference import EvaluateDefaults
@@ -119,7 +121,7 @@ def test_run_evaluate_default_tiling_policy_reaches_single_evaluation(monkeypatc
     saved_run = object()
 
     monkeypatch.setattr(run_evaluate_mod, "resolve_run_dir", lambda **_: tmp_path)
-    monkeypatch.setattr(run_evaluate_mod, "load_saved_run", lambda _run_dir: saved_run)
+    monkeypatch.setattr(run_evaluate_mod, "load_saved_run", lambda _run_dir, **kwargs: saved_run)
     monkeypatch.setattr(
         run_evaluate_mod,
         "_run_single_evaluation",
@@ -130,7 +132,7 @@ def test_run_evaluate_default_tiling_policy_reaches_single_evaluation(monkeypatc
         EvaluateDefaults(),
         dataset_name="dataset_a",
         model_name="model_a",
-    )
+     paths=Paths(legacy_settings),)
 
     assert captured["cfg"].inference.tiling_size == "auto"
 
@@ -171,7 +173,7 @@ def test_run_single_evaluation_reports_effective_auto_tiling_size(monkeypatch, t
         saved_run=saved_run,
         cfg=cfg,
         progress_bar=True,
-    )
+     paths=Paths(legacy_settings),)
 
     assert captured["tiling_size"] == "auto"
     assert "Tiling size: 300 (auto)" in capsys.readouterr().out
@@ -192,7 +194,7 @@ def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(mon
     )
 
     monkeypatch.setattr(run_evaluate_mod, 'resolve_run_dir', lambda **_: tmp_path)
-    monkeypatch.setattr(run_evaluate_mod, 'load_saved_run', lambda _run_dir: saved_run)
+    monkeypatch.setattr(run_evaluate_mod, 'load_saved_run', lambda _run_dir, **kwargs: saved_run)
     monkeypatch.setattr(
         run_evaluate_mod,
         'resolve_evaluation_dataset',
@@ -209,7 +211,7 @@ def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(mon
         dataset_name='training_dataset',
         model_name='model_a',
         evaluation_dataset_name='eval_dataset',
-    )
+     paths=Paths(legacy_settings),)
 
     assert captured['output_root'] == tmp_path / 'evaluations'
     assert captured['saved_run'] is saved_run

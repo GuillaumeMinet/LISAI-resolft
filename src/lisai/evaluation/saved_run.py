@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.config.models import ResolvedExperiment
 from lisai.data.data_loaders.split_manifest import read_split_manifest, resolve_split_manifest_path
 from lisai.infra.paths import Paths
@@ -28,9 +28,8 @@ _DEFAULT_TILING_SIZE_BY_ARCHITECTURE = {
 }
 
 
-def resolve_run_dir(*, dataset_name: str, subfolder: str, exp_name: str) -> Path:
+def resolve_run_dir(*, dataset_name: str, subfolder: str, exp_name: str, paths: Paths) -> Path:
     """Resolve the canonical training run directory from experiment routing fields."""
-    paths = Paths(settings)
     return paths.run_dir(dataset_name=dataset_name, models_subfolder=subfolder, exp_name=exp_name)
 
 
@@ -168,7 +167,10 @@ class SavedTrainingRun:
         return self.model_architecture == "lvae"
 
     @classmethod
-    def from_resolved(cls, cfg: ResolvedExperiment, *, run_dir: Path) -> "SavedTrainingRun":
+    def from_resolved(
+        cls, cfg: ResolvedExperiment, *, run_dir: Path,
+        split_manifest_path: Path | None = None,
+    ) -> "SavedTrainingRun":
         """Project a validated `ResolvedExperiment` into the evaluation config boundary."""
         if cfg.model is None:
             raise ValueError("Saved training config is missing model information.")
@@ -190,9 +192,11 @@ class SavedTrainingRun:
         if cfg.data.timelapse_prm is not None:
             context_length = cfg.data.timelapse_prm.context_length
 
-        paths = Paths(settings)
-        manifest_path = resolve_split_manifest_path(paths, run_dir)
-        split_manifest = read_split_manifest(manifest_path) if manifest_path.exists() else None
+        split_manifest = (
+            read_split_manifest(split_manifest_path)
+            if split_manifest_path is not None and split_manifest_path.exists()
+            else None
+        )
 
         return cls(
             run_dir=Path(run_dir),
@@ -216,12 +220,14 @@ class SavedTrainingRun:
 
 
 
-def load_saved_run(run_dir: Path) -> SavedTrainingRun:
+def load_saved_run(run_dir: Path, *, paths: Paths) -> SavedTrainingRun:
     """Load, validate, and project a saved training config from a run directory."""
     run_dir = Path(run_dir)
-    cfg_path = Paths(settings).cfg_train_path(run_dir=run_dir)
+    cfg_path = paths.cfg_train_path(run_dir=run_dir)
     cfg = ResolvedExperiment.model_validate(load_yaml(cfg_path))
-    return SavedTrainingRun.from_resolved(cfg, run_dir=run_dir)
+    return SavedTrainingRun.from_resolved(
+        cfg, run_dir=run_dir, split_manifest_path=resolve_split_manifest_path(paths, run_dir)
+    )
 
 
 

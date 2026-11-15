@@ -5,7 +5,6 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 from .registry import load_promoted_model_registry, save_promoted_model_registry
@@ -22,10 +21,10 @@ class RemovedPromotedModel:
 def remove_promoted_model(
     name: str,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> RemovedPromotedModel:
     """Remove one local promoted model while leaving exported archives untouched."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     registry = load_promoted_model_registry(paths=resolved_paths)
     entry = registry.models.get(name)
     if entry is None:

@@ -8,7 +8,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from lisai.config import load_yaml, save_yaml, settings
+from lisai.config import load_yaml, save_yaml
 from lisai.data.dataset_registry import load_dataset_registry
 from lisai.data.readme import dataset_readme_path
 from lisai.evaluation.saved_run import SavedTrainingRun
@@ -161,7 +161,7 @@ def load_promoted_model_from_dir(model_dir: str | Path) -> PromotedModel:
     return PromotedModel(model_dir=model_dir, manifest=manifest)
 
 
-def load_promoted_model(name: str, *, paths: Paths | None = None) -> PromotedModel:
+def load_promoted_model(name: str, *, paths: Paths) -> PromotedModel:
     model_dir = resolve_registered_model_dir(name, paths=paths)
     promoted = load_promoted_model_from_dir(model_dir)
     if promoted.manifest.name != name:
@@ -179,10 +179,10 @@ def promote_run(
     checkpoint: str = "best",
     inference_config: str | Path | None = None,
     overwrite: bool = False,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotedModel:
     """Promote a training run into the canonical local reusable model library."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     plan = build_promotion_plan(
         run_dir,
         name=name,
@@ -266,10 +266,10 @@ def set_promoted_model_config(
     name: str,
     config: str | Path | None,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotedModel:
     """Attach, replace, or clear the default apply config of a local promoted model."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     promoted = load_promoted_model(name, paths=resolved_paths)
     old_package_path = promoted.manifest.artifacts.inference_config
     checksums = dict(promoted.manifest.checksums)
@@ -302,7 +302,7 @@ def set_promoted_model_config(
                 backup_path.unlink()
         return load_promoted_model_from_dir(promoted.model_dir)
 
-    source_path = resolve_promoted_inference_config_source(config)
+    source_path = resolve_promoted_inference_config_source(config, stg=paths.settings)
     package_path = PROMOTED_INFERENCE_CONFIG_FILENAME
     destination = promoted.model_dir / package_path
     tmp_destination = destination.with_name(f".{destination.name}.set-config-tmp")
@@ -373,10 +373,10 @@ def export_promoted_model(
     *,
     output: str | Path | None = None,
     overwrite: bool = False,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotedModelExport:
     """Export one canonical promoted model as a self-contained .lisai.zip archive."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     promoted = load_promoted_model(name, paths=resolved_paths)
     default_name = f"{name}.lisai.zip"
     if output is None:
@@ -406,10 +406,10 @@ def export_promoted_model(
 def sync_promoted_model(
         name: str,
         *,
-        paths: Paths | None = None,
+        paths: Paths,
 ) -> PromotedModel:
     """ Synchronizes derived metadata from lisai_model.yaml"""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     promoted = load_promoted_model(name,paths=resolved_paths)
 
     # refresh model card (README.md)
@@ -445,11 +445,11 @@ def set_promoted_model_task(
         name: str,
         task: str,
         *,
-        paths:Paths | None = None,
+        paths: Paths,
 ) -> PromotedModel:
     """ Update the task of a promoted model and synchronize derived metadata
     so that registry.task and README multiframes are up to date."""
-    resolved_paths=paths or Paths(settings)
+    resolved_paths = paths
     promoted = load_promoted_model(name,paths=resolved_paths)
 
     updated_model = promoted.manifest.model.model_copy(

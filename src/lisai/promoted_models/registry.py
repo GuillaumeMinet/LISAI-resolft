@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lisai.config import load_yaml, save_yaml, settings
+from lisai.config import load_yaml, save_yaml
 from lisai.infra.paths import Paths
 
 from .schema import PromotedModelRegistry, PromotedModelRegistryEntry
 
 
-def load_promoted_model_registry(*, paths: Paths | None = None) -> PromotedModelRegistry:
-    resolved_paths = paths or Paths(settings)
+def load_promoted_model_registry(*, paths: Paths) -> PromotedModelRegistry:
+    resolved_paths = paths
     registry_path = resolved_paths.promoted_model_registry_path()
     if not registry_path.exists():
         return PromotedModelRegistry()
@@ -19,9 +19,9 @@ def load_promoted_model_registry(*, paths: Paths | None = None) -> PromotedModel
 def save_promoted_model_registry(
     registry: PromotedModelRegistry,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> Path:
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     registry_path = resolved_paths.promoted_model_registry_path()
     registry_path.parent.mkdir(parents=True, exist_ok=True)
     save_yaml(registry.model_dump(mode="json"), registry_path)
@@ -33,7 +33,7 @@ def register_promoted_model(
     name: str,
     entry: PromotedModelRegistryEntry,
     overwrite: bool = False,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotedModelRegistry:
     registry = load_promoted_model_registry(paths=paths)
     if name in registry.models and not overwrite:
@@ -48,13 +48,13 @@ def register_promoted_model(
     return updated
 
 
-def promoted_source_run_ids(*, paths: Paths | None = None) -> set[str]:
+def promoted_source_run_ids(*, paths: Paths) -> set[str]:
     registry = load_promoted_model_registry(paths=paths)
     return {entry.source_run_id for entry in registry.models.values()}
 
 
-def resolve_registered_model_dir(name: str, *, paths: Paths | None = None) -> Path:
-    resolved_paths = paths or Paths(settings)
+def resolve_registered_model_dir(name: str, *, paths: Paths) -> Path:
+    resolved_paths = paths
     registry = load_promoted_model_registry(paths=resolved_paths)
     entry = registry.models.get(name)
     if entry is None:

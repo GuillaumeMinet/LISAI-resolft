@@ -8,7 +8,6 @@ from typing import Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 from . import catalog
@@ -80,13 +79,13 @@ def download_model(
     name: str,
     *,
     overwrite: bool = False,
-    paths: Paths | None = None,
+    paths: Paths,
     catalog_url: str | None = None,
     timeout: float = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
 ) -> ModelDownload:
     """Download one catalog model into the configured promoted-model downloads directory."""
     model = catalog.get_model(name, catalog_url=catalog_url, timeout=timeout)
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     downloads_dir = resolved_paths.promoted_model_downloads_dir()
     try:
         downloads_dir.mkdir(parents=True, exist_ok=True)

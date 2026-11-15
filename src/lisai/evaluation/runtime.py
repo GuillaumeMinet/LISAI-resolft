@@ -15,7 +15,6 @@ from typing import Any, Literal, TypeAlias
 
 import torch
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.infra.paths.checkpoint_resolution import (
     resolve_checkpoint_path as resolve_existing_checkpoint_path,
@@ -176,6 +175,7 @@ def resolve_tiling_size(
 def initialize_runtime(
     *,
     saved_run: SavedTrainingRun,
+    paths: Paths,
     device: torch.device | str | None = None,
     best_or_last: str = "best",
     epoch_number: int | None = None,
@@ -185,7 +185,6 @@ def initialize_runtime(
     noise_model_norm_prm_path: str | Path | None = None,
 ) -> InferenceRuntime:
     """Load the requested checkpoint and build the live inference runtime."""
-    paths = Paths(settings)
     resolved_device = _default_device() if device is None else torch.device(device)
     if checkpoint_path is None:
         load_method, resolved_checkpoint_path = _resolve_checkpoint_path(

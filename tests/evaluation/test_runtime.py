@@ -86,7 +86,6 @@ def test_initialize_runtime_builds_inference_runtime(monkeypatch: pytest.MonkeyP
     fake_paths = FakePaths(checkpoint_path)
     model_obj = object()
 
-    monkeypatch.setattr(runtime_mod, 'Paths', lambda _settings: fake_paths)
     monkeypatch.setattr(
         runtime_mod,
         '_load_state_dict_model',
@@ -99,7 +98,7 @@ def test_initialize_runtime_builds_inference_runtime(monkeypatch: pytest.MonkeyP
         best_or_last='best',
         epoch_number=None,
         tiling_size=None,
-    )
+     paths=fake_paths,)
 
     assert runtime.device == torch.device('cpu')
     assert runtime.model is model_obj
@@ -132,14 +131,13 @@ def test_initialize_runtime_loads_full_model_and_applies_tiling_override(monkeyp
 
     model_obj = FakeModel()
 
-    monkeypatch.setattr(runtime_mod, 'Paths', lambda _settings: fake_paths)
     monkeypatch.setattr(runtime_mod.torch, 'load', lambda path, map_location: model_obj)
 
     runtime = runtime_mod.initialize_runtime(
         saved_run=_make_saved_run(checkpoint_methods=('full_model',), default_tiling_size=128),
         device='cpu',
         tiling_size=256,
-    )
+     paths=fake_paths,)
 
     assert runtime.model is model_obj
     assert runtime.load_method == 'full_model'
@@ -161,7 +159,6 @@ def test_initialize_runtime_best_falls_back_to_highest_epoch_checkpoint(
     )
     model_obj = object()
 
-    monkeypatch.setattr(runtime_mod, "Paths", lambda _settings: fake_paths)
     monkeypatch.setattr(
         runtime_mod,
         "_load_state_dict_model",
@@ -174,7 +171,7 @@ def test_initialize_runtime_best_falls_back_to_highest_epoch_checkpoint(
         best_or_last="best",
         epoch_number=None,
         tiling_size=None,
-    )
+     paths=fake_paths,)
 
     assert runtime.model is model_obj
     assert runtime.checkpoint_path == epoch_checkpoint
@@ -191,7 +188,6 @@ def test_initialize_runtime_with_both_selector_falls_back_to_last(
     fake_paths = SelectorAwarePaths(best_path=best_path, last_path=last_path)
     model_obj = object()
 
-    monkeypatch.setattr(runtime_mod, "Paths", lambda _settings: fake_paths)
     monkeypatch.setattr(
         runtime_mod,
         "_load_state_dict_model",
@@ -204,7 +200,7 @@ def test_initialize_runtime_with_both_selector_falls_back_to_last(
         best_or_last="both",
         epoch_number=None,
         tiling_size=None,
-    )
+     paths=fake_paths,)
 
     assert runtime.model is model_obj
     assert runtime.checkpoint_path == last_path

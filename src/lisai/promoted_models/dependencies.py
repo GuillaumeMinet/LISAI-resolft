@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from lisai.config import settings
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
 
@@ -35,7 +34,7 @@ class PromotionDependencies:
 def collect_required_dependencies(
     saved_run: SavedTrainingRun,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotionDependencies:
     """Collect external inference dependencies required by a saved run.
 
@@ -49,7 +48,7 @@ def collect_required_dependencies(
     if not saved_run.noise_model_name:
         raise ValueError("Saved LVAE/HDN run is missing noise_model.name and cannot be promoted.")
 
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     model_path = resolved_paths.noise_model_path(noiseModel_name=saved_run.noise_model_name)
     norm_path = resolved_paths.noise_model_norm_prm_path(
         noiseModel_name=saved_run.noise_model_name

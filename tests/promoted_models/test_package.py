@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import zipfile
 from pathlib import Path
+from lisai.config.settings import load_default_settings
 from types import SimpleNamespace
 
 import torch
@@ -28,6 +29,7 @@ class FakeParams(BaseModel):
 class FakePaths:
     def __init__(self, root: Path):
         self.root = root
+        self.settings = load_default_settings()
 
     def promoted_models_root(self):
         return self.root / "models"

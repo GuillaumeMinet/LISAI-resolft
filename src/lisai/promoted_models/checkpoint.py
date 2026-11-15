@@ -5,7 +5,6 @@ from typing import Literal, Mapping
 
 import torch
 
-from lisai.config import settings
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
 from lisai.infra.paths.checkpoint_resolution import (
@@ -19,7 +18,7 @@ def resolve_promotion_checkpoint(
     saved_run: SavedTrainingRun,
     *,
     selector: PromotionCheckpointSelector = "best",
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> Path:
     """Resolve the canonical state-dict checkpoint used for promotion."""
     if selector not in {"best", "last"}:
@@ -30,7 +29,7 @@ def resolve_promotion_checkpoint(
             "does not enable state_dict saving."
         )
 
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     _, checkpoint_path = resolve_existing_checkpoint_path(
         paths=resolved_paths,
         run_dir=saved_run.run_dir,

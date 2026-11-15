@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.config.models import ResolvedExperiment
 from lisai.evaluation.saved_run import SavedTrainingRun
+from lisai.data.data_loaders.split_manifest import resolve_split_manifest_path
 from lisai.infra.paths import Paths
 from lisai.runs import RunMetadata, read_run_metadata
 
@@ -69,7 +70,7 @@ def build_promotion_plan(
     name: str,
     checkpoint: PromotionCheckpointSelector = "best",
     inference_config: str | Path | None = None,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotionPlan:
     """Validate a saved run and project it into the promoted-model domain.
 
@@ -78,7 +79,7 @@ def build_promotion_plan(
     straightforward execution of this plan.
     """
     run_dir = Path(run_dir)
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     metadata = read_run_metadata(run_dir)
     _validate_promotable_status(metadata)
 
@@ -86,7 +87,11 @@ def build_promotion_plan(
     if not config_path.exists():
         raise FileNotFoundError(f"Saved training config is missing: {config_path}")
     resolved_cfg = ResolvedExperiment.model_validate(load_yaml(config_path))
-    saved_run = SavedTrainingRun.from_resolved(resolved_cfg, run_dir=run_dir)
+    saved_run = SavedTrainingRun.from_resolved(
+        resolved_cfg,
+        run_dir=run_dir,
+        split_manifest_path=resolve_split_manifest_path(resolved_paths, run_dir),
+    )
 
     if metadata.dataset != saved_run.dataset_name:
         raise ValueError(
@@ -115,7 +120,7 @@ def build_promotion_plan(
     ]
     inference_config_path: Path | None = None
     if inference_config is not None:
-        inference_config_path = resolve_promoted_inference_config_source(inference_config)
+        inference_config_path = resolve_promoted_inference_config_source(inference_config, stg=paths.settings)
         copy_files.append(
             PromotionFile(inference_config_path, PROMOTED_INFERENCE_CONFIG_FILENAME)
         )

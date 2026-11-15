@@ -197,8 +197,12 @@ def _render_runs_snapshot(
 
     if promoted:
         from lisai.promoted_models.registry import promoted_source_run_ids
+        from lisai.config.settings import load_default_settings
+        from lisai.infra.paths import Paths
 
-        promoted_ids = promoted_source_run_ids()
+        promoted_ids = promoted_source_run_ids(
+            paths=Paths(load_default_settings())
+        )
         filtered_runs = [run for run in filtered_runs if run.metadata.run_id in promoted_ids]
 
     if recent is not None:
@@ -588,6 +592,8 @@ def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
         return 1
 
     from lisai.promoted_models import promote_run
+    from lisai.infra.paths import Paths
+    from lisai.config.settings import load_default_settings
 
     try:
         promoted = promote_run(
@@ -596,6 +602,7 @@ def run_promote_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
             checkpoint=args.checkpoint,
             inference_config=args.inference_config,
             overwrite=args.overwrite,
+            paths=Paths(load_default_settings()),
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")

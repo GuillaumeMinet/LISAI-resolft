@@ -116,9 +116,9 @@ def test_models_remove_cli_requires_confirmation(monkeypatch, capsys):
             )
         }
     )
-    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda: registry)
+    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda **kwargs: registry)
     called = []
-    monkeypatch.setattr(models_cli, "remove_promoted_model", lambda name: called.append(name))
+    monkeypatch.setattr(models_cli, "remove_promoted_model", lambda name, **kwargs: called.append(name))
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
 
     result = models_cli.main(["remove", "demo-model"])
@@ -143,13 +143,13 @@ def test_models_remove_cli_yes_skips_confirmation(monkeypatch, capsys):
             )
         }
     )
-    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda: registry)
+    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda **kwargs: registry)
     monkeypatch.setattr(
         "builtins.input",
         lambda prompt: (_ for _ in ()).throw(AssertionError("input should not be called")),
     )
     removed = SimpleNamespace(name="demo-model", model_dir="/tmp/demo-model")
-    monkeypatch.setattr(models_cli, "remove_promoted_model", lambda name: removed)
+    monkeypatch.setattr(models_cli, "remove_promoted_model", lambda name, **kwargs: removed)
 
     result = models_cli.main(["remove", "demo-model", "--yes"])
 
@@ -162,7 +162,7 @@ def test_models_sync_cli_confirms_unique_partial_name(monkeypatch, capsys):
     import lisai.promoted_models.cli as models_cli
 
     registry = SimpleNamespace(models={"demo-model": object(), "other-model": object()})
-    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda: registry)
+    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda **kwargs: registry)
     monkeypatch.setattr("sys.stdin", InteractiveInput("y\n"))
     called = []
     promoted = SimpleNamespace(
@@ -174,7 +174,7 @@ def test_models_sync_cli_confirms_unique_partial_name(monkeypatch, capsys):
     monkeypatch.setattr(
         models_cli,
         "sync_promoted_model",
-        lambda name: called.append(name) or promoted,
+        lambda name, **kwargs: called.append(name) or promoted,
     )
 
     result = models_cli.main(["sync", "demo"])
@@ -191,7 +191,7 @@ def test_models_sync_cli_selects_ambiguous_partial_name(monkeypatch, capsys):
     registry = SimpleNamespace(
         models={"demo-denoising": object(), "demo-upsampling": object()}
     )
-    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda: registry)
+    monkeypatch.setattr(models_cli, "load_promoted_model_registry", lambda **kwargs: registry)
     monkeypatch.setattr("sys.stdin", InteractiveInput("02\n"))
     called = []
     promoted = SimpleNamespace(
@@ -203,7 +203,7 @@ def test_models_sync_cli_selects_ambiguous_partial_name(monkeypatch, capsys):
     monkeypatch.setattr(
         models_cli,
         "sync_promoted_model",
-        lambda name: called.append(name) or promoted,
+        lambda name, **kwargs: called.append(name) or promoted,
     )
 
     result = models_cli.main(["sync", "demo"])
@@ -223,7 +223,7 @@ def test_models_catalog_cli_renders_remote_models(monkeypatch, capsys):
     monkeypatch.setattr(
         models_cli.catalog,
         "list_models",
-        lambda: [
+        lambda **kwargs: [
             SimpleNamespace(
                 name="demo-model",
                 task="denoising_hdn",
@@ -249,7 +249,7 @@ def test_models_download_cli_prints_short_install_command(monkeypatch, capsys, t
     monkeypatch.setattr(
         models_cli,
         "download_model",
-        lambda name, overwrite=False: SimpleNamespace(
+        lambda name, overwrite=False, **kwargs: SimpleNamespace(
             name=name,
             archive_path=archive,
             archive_sha256="a" * 64,
@@ -273,7 +273,7 @@ def test_models_download_cli_install_composes_existing_installer(monkeypatch, ca
     monkeypatch.setattr(
         models_cli,
         "download_model",
-        lambda name, overwrite=False: SimpleNamespace(
+        lambda name, overwrite=False, **kwargs: SimpleNamespace(
             name=name,
             archive_path=archive,
             archive_sha256="a" * 64,
@@ -284,7 +284,7 @@ def test_models_download_cli_install_composes_existing_installer(monkeypatch, ca
     monkeypatch.setattr(
         models_cli,
         "install_model_archive",
-        lambda path: called.append(path)
+        lambda path, **kwargs: called.append(path)
         or SimpleNamespace(
             model=SimpleNamespace(
                 manifest=SimpleNamespace(name="demo-model"),
@@ -312,7 +312,7 @@ def test_models_download_cli_prompts_before_replacing_checksum_conflict(
     archive = tmp_path / "demo-model.lisai.zip"
     calls = []
 
-    def fake_download(name, overwrite=False):
+    def fake_download(name, overwrite=False, paths=None):
         calls.append(overwrite)
         if not overwrite:
             raise DownloadConflictError(
@@ -345,15 +345,15 @@ def test_models_download_cli_supports_all_install(monkeypatch, capsys, tmp_path)
         SimpleNamespace(name="model-a"),
         SimpleNamespace(name="model-b"),
     ]
-    monkeypatch.setattr(models_cli.catalog, "list_models", lambda: models)
+    monkeypatch.setattr(models_cli.catalog, "list_models", lambda **kwargs: models)
     monkeypatch.setattr(
         models_cli,
         "load_promoted_model_registry",
-        lambda: SimpleNamespace(models={}),
+        lambda **kwargs: SimpleNamespace(models={}),
     )
     downloaded = []
 
-    def fake_download(name, overwrite=False):
+    def fake_download(name, overwrite=False, paths=None):
         downloaded.append(name)
         archive = tmp_path / f"{name}.lisai.zip"
         return SimpleNamespace(
@@ -368,7 +368,7 @@ def test_models_download_cli_supports_all_install(monkeypatch, capsys, tmp_path)
     monkeypatch.setattr(
         models_cli,
         "install_model_archive",
-        lambda path: installed.append(path.name)
+        lambda path, **kwargs: installed.append(path.name)
         or SimpleNamespace(
             model=SimpleNamespace(
                 manifest=SimpleNamespace(name=path.name.removesuffix(".lisai.zip")),
@@ -392,18 +392,18 @@ def test_models_download_cli_all_install_skips_already_installed(monkeypatch, ca
     monkeypatch.setattr(
         models_cli.catalog,
         "list_models",
-        lambda: [SimpleNamespace(name="model-a"), SimpleNamespace(name="model-b")],
+        lambda **kwargs: [SimpleNamespace(name="model-a"), SimpleNamespace(name="model-b")],
     )
     monkeypatch.setattr(
         models_cli,
         "load_promoted_model_registry",
-        lambda: SimpleNamespace(models={"model-a": object()}),
+        lambda **kwargs: SimpleNamespace(models={"model-a": object()}),
     )
     downloaded = []
     monkeypatch.setattr(
         models_cli,
         "download_model",
-        lambda name, overwrite=False: downloaded.append(name)
+        lambda name, overwrite=False, **kwargs: downloaded.append(name)
         or SimpleNamespace(
             name=name,
             archive_path=Path(f"{name}.lisai.zip"),
@@ -414,7 +414,7 @@ def test_models_download_cli_all_install_skips_already_installed(monkeypatch, ca
     monkeypatch.setattr(
         models_cli,
         "install_model_archive",
-        lambda path: SimpleNamespace(
+        lambda path, **kwargs: SimpleNamespace(
             model=SimpleNamespace(
                 manifest=SimpleNamespace(name="model-b"),
                 model_dir=Path("models/model-b"),

@@ -29,7 +29,6 @@ from lisai.evaluation.visualization.z_projection import (
 )
 from lisai.infra.fs import prepare_output_folder
 from lisai.infra.paths import Paths
-from lisai.config.settings import settings as _legacy_settings  # M1: replace with injected paths
 from lisai.lib.upsamp.inp_generators import (
     _deterministic_mltpl_sampling,
     generate_downsamp_inp,
@@ -270,6 +269,7 @@ def run_apply_model(
     model_subfolder: str,
     model_name: str,
     data_path: Path,
+    paths: Paths,
     promoted_model_name: str | None = None,
     progress_bar: bool | None = None,
     overwrite: bool = False,
@@ -281,30 +281,34 @@ def run_apply_model(
     save_input = resolve_apply_save_input(cfg, output_policy=output_policy)
     color_code_cfg = cfg.postprocess.color_code
     progress = InferenceProgress(
-        enabled=resolve_progress_bar(True, progress_bar, stg=_legacy_settings)
+        enabled=resolve_progress_bar(True, progress_bar, stg=paths.settings)
     )
 
     data_path = Path(data_path)
     if promoted_model_name is not None:
         from lisai.promoted_models import load_promoted_model
 
-        promoted = load_promoted_model(promoted_model_name)
+        promoted = load_promoted_model(promoted_model_name, paths=paths)
         saved_run = promoted.saved_run
         model_dataset = saved_run.dataset_name
         model_subfolder = "promoted"
         model_name = promoted.manifest.name
         runtime = initialize_runtime(
             saved_run=saved_run,
+            paths=paths,
             tiling_size=cfg.inference.tiling_size,
             checkpoint_path=promoted.weights_path,
             noise_model_path=promoted.noise_model_path,
             noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
         )
     else:
-        run_dir = resolve_run_dir(dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name)
-        saved_run = load_saved_run(run_dir)
+        run_dir = resolve_run_dir(
+            dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name, paths=paths
+        )
+        saved_run = load_saved_run(run_dir, paths=paths)
         runtime = initialize_runtime(
             saved_run=saved_run,
+            paths=paths,
             best_or_last=cfg.checkpoint.best_or_last,
             epoch_number=cfg.checkpoint.epoch_number,
             tiling_size=cfg.inference.tiling_size,
@@ -391,7 +395,7 @@ def run_apply_model(
         )
     else:
         save_folder = _create_apply_save_folder(
-            Paths(_legacy_settings).inference_output_dir(
+            paths.inference_output_dir(
                 source_name=source_name,
                 model_name=model_name,
             ),

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from lisai.config.models.inference import ApplyDefaults
+from lisai.config import settings as legacy_settings
 from lisai.infra.fs import OutputFolderResolution
 
 apply_mod = importlib.import_module("lisai.evaluation.run_apply_model")
@@ -119,7 +120,7 @@ def _patch_common_runtime(
     monkeypatch.setattr(
         apply_mod,
         "load_saved_run",
-        lambda _: SimpleNamespace(
+        lambda _, **kwargs: SimpleNamespace(
             is_lvae=False,
             data_norm_prm=None,
             model_norm_prm=None,
@@ -295,7 +296,7 @@ def test_run_apply_model_rejects_overwrite_with_in_place_output(
             model_name="model",
             data_path=tmp_path,
             overwrite=True,
-        )
+         paths=apply_mod.Paths(legacy_settings),)
 
 
 def test_run_apply_model_rejects_reuse_folder_with_in_place_output(
@@ -318,7 +319,7 @@ def test_run_apply_model_rejects_reuse_folder_with_in_place_output(
             model_name="model",
             data_path=tmp_path,
             reuse_folder=True,
-        )
+         paths=apply_mod.Paths(legacy_settings),)
 
 
 def test_run_apply_model_skip_existing_reuses_folder_and_only_processes_remaining(
@@ -372,7 +373,7 @@ def test_run_apply_model_skip_existing_reuses_folder_and_only_processes_remainin
         model_name="model",
         data_path=source_dir,
         skip_existing=True,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert read_files == ["second.tif"]
     assert saved_names == ["second"]
@@ -409,7 +410,7 @@ def test_run_apply_model_keeps_legacy_stride_downsampling_when_fill_factor_is_no
         model_subfolder="Upsamp",
         model_name="model",
         data_path=tmp_path,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["img_shape"] == (1, 1, 4, 4)
     assert captured["ch_out"] is None
@@ -453,7 +454,7 @@ def test_run_apply_model_limits_number_of_input_files(
         model_subfolder="Upsamp",
         model_name="model",
         data_path=tmp_path,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert read_files == ["first.tif", "second.tif"]
 
@@ -487,7 +488,7 @@ def test_run_apply_model_uses_deterministic_multiple_downsampling_when_fill_fact
         model_subfolder="Upsamp",
         model_name="model",
         data_path=tmp_path,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["source_shape"] == (1, 1, 8, 8)
     assert captured["img_shape"] == (1, 2, 4, 4)
@@ -514,7 +515,7 @@ def test_run_apply_model_rejects_fill_factor_without_downsamp(
             model_subfolder="Upsamp",
             model_name="model",
             data_path=tmp_path,
-        )
+         paths=apply_mod.Paths(legacy_settings),)
 
 
 def test_run_apply_model_rejects_unsupported_deterministic_multiple_sampling(
@@ -537,7 +538,7 @@ def test_run_apply_model_rejects_unsupported_deterministic_multiple_sampling(
             model_subfolder="Upsamp",
             model_name="model",
             data_path=tmp_path,
-        )
+         paths=apply_mod.Paths(legacy_settings),)
 
 
 def test_run_apply_model_default_output_uses_source_and_model_names(
@@ -556,7 +557,7 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
 
     class _FakePaths:
         def __init__(self, _settings):
-            pass
+            self.settings = _settings
 
         def inference_output_dir(self, *, source_name, model_name):
             captured["source_name"] = source_name
@@ -584,7 +585,7 @@ def test_run_apply_model_default_output_uses_source_and_model_names(
         model_subfolder="Upsamp",
         model_name="mito_model_03",
         data_path=tmp_path,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["source_name"] == tmp_path.name
     assert captured["model_name"] == "mito_model_03"
@@ -617,7 +618,7 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
 
     class _FakePaths:
         def __init__(self, _settings):
-            pass
+            self.settings = _settings
 
         def inference_output_dir(self, *, source_name, model_name):
             captured["source_name"] = source_name
@@ -637,7 +638,7 @@ def test_run_apply_model_default_file_source_name_includes_parent_and_stem(
         model_subfolder="Upsamp",
         model_name="mito_model_03",
         data_path=source_file,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["source_name"] == "mito_fast_c01"
     assert captured["save_folder"] == (
@@ -677,7 +678,7 @@ def test_run_apply_model_folder_inside_directory_uses_model_only_folder_name(
         model_subfolder="Upsamp",
         model_name="mito_model_03",
         data_path=source_dir,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["save_folder"] == source_dir / "Predict_Upsamp_mito_model_03"
 
@@ -714,7 +715,7 @@ def test_run_apply_model_folder_outside_directory_includes_source_name(
         model_subfolder="Upsamp",
         model_name="mito_model_03",
         data_path=source_dir,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["save_folder"] == (
         tmp_path / "Predict_source_Upsamp_mito_model_03"
@@ -755,7 +756,7 @@ def test_run_apply_model_folder_inside_file_includes_parent_and_file_source_name
         model_subfolder="Upsamp",
         model_name="mito_model_03",
         data_path=source_file,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["save_folder"] == (
         source_dir / "Predict_mito_fast_c01_Upsamp_mito_model_03"
@@ -796,7 +797,7 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
         model_subfolder="Upsamp",
         model_name="mito_model_03",
         data_path=source_file,
-    )
+     paths=apply_mod.Paths(legacy_settings),)
 
     assert captured["save_folder"] == (
         tmp_path / "Predict_mito_fast_c01_Upsamp_mito_model_03"

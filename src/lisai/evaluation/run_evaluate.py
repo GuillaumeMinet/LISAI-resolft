@@ -14,7 +14,7 @@ from typing import Any
 from lisai.config import save_yaml
 from lisai.config.models.inference import EvaluateDefaults
 from lisai.config.progress import resolve_progress_bar
-from lisai.config.settings import settings as _legacy_settings  # Transition until inference Patch E
+from lisai.infra.paths import Paths
 from lisai.evaluation.data import (
     EvaluationDatasetSpec,
     build_eval_source,
@@ -169,11 +169,13 @@ def _run_single_evaluation(
     saved_run: SavedTrainingRun,
     cfg: EvaluateDefaults,
     progress_bar: bool,
+    paths: Paths,
     evaluation_dataset: EvaluationDatasetSpec | None = None,
 ) -> None:
     """Run one resolved checkpoint evaluation and save outputs/metrics."""
     runtime = initialize_runtime(
         saved_run=saved_run,
+        paths=paths,
         best_or_last=cfg.checkpoint.best_or_last,
         epoch_number=cfg.checkpoint.epoch_number,
         tiling_size=cfg.inference.tiling_size,
@@ -221,6 +223,7 @@ def _run_single_evaluation(
     data_overrides = _resolved_data_overrides(cfg)
     sample_source = build_eval_source(
         saved_run,
+        paths=paths,
         split=cfg.data.split,
         crop_size=cfg.inference.crop_size,
         eval_gt=cfg.data.eval_gt,
@@ -344,24 +347,27 @@ def run_evaluate(
     *,
     dataset_name: str,
     model_name: str,
+    paths: Paths,
     model_subfolder: str = "",
     evaluation_dataset_name: str | None = None,
     progress_bar: bool | None = None,
 ) -> None:
     """Evaluate a saved run using a fully resolved typed evaluate config."""
-    resolved_progress_bar = resolve_progress_bar(True, progress_bar, stg=_legacy_settings)
+    resolved_progress_bar = resolve_progress_bar(True, progress_bar, stg=paths.settings)
 
     run_dir = resolve_run_dir(
         dataset_name=dataset_name,
         subfolder=model_subfolder,
         exp_name=model_name,
+        paths=paths,
     )
-    saved_run = load_saved_run(run_dir)
+    saved_run = load_saved_run(run_dir, paths=paths)
     evaluation_dataset = None
     if evaluation_dataset_name is not None:
         evaluation_dataset = resolve_evaluation_dataset(
             saved_run,
             evaluation_dataset_name,
+            paths=paths,
             data_overrides=cfg.data.overrides,
         )
         print(f"Evaluation dataset: {evaluation_dataset.name} (all data)")
@@ -377,5 +383,6 @@ def run_evaluate(
             saved_run=saved_run,
             cfg=run_cfg,
             progress_bar=resolved_progress_bar,
+            paths=paths,
             evaluation_dataset=evaluation_dataset,
         )

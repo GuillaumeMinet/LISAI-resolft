@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from lisai.config.settings import load_default_settings
 
 import pytest
 
@@ -83,6 +84,7 @@ def _raw_config(dataset: str = "dataset_a") -> dict:
 class FakePaths:
     def __init__(self, run_dir: Path, noise_root: Path):
         self.run_dir = run_dir
+        self.settings = load_default_settings()
         self.noise_root = noise_root
 
     def cfg_train_path(self, *, run_dir):

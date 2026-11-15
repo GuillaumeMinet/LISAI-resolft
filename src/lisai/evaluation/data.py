@@ -15,7 +15,6 @@ from typing import Any, Iterator, Literal, Mapping, Sequence
 import numpy as np
 import torch
 from tifffile import TiffFile
-from lisai.config import settings
 from lisai.config.io import deep_merge
 from lisai.config.models.training import DataSection
 from lisai.data.data_loaders.dataset_io import load_image
@@ -348,9 +347,9 @@ def resolve_evaluation_dataset(
     dataset_name: str,
     *,
     data_overrides: Mapping[str, Any] | None = None,
+    paths: Paths,
 ) -> EvaluationDatasetSpec:
     """Resolve one registered evaluation-only dataset for whole-dataset evaluation."""
-    paths = Paths(settings)
     dataset_info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
     if not isinstance(dataset_info, Mapping):
         raise ValueError(f"Evaluation dataset {dataset_name!r} is not registered.")
@@ -395,16 +394,17 @@ def resolve_evaluation_dataset(
     )
 
 
-def resolve_dataset_info(dataset_name: str | None) -> dict[str, Any] | None:
+def resolve_dataset_info(dataset_name: str | None, *, paths: Paths) -> dict[str, Any] | None:
     """Load dataset-registry metadata for a dataset name when available."""
     if not dataset_name:
         return None
 
-    paths = Paths(settings)
     return load_dataset_info(paths.dataset_registry_path(), dataset_name)
 
 
-def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, Any]) -> Path | None:
+def resolve_eval_data_dir(
+    saved_run: SavedTrainingRun, data_cfg: Mapping[str, Any], *, paths: Paths
+) -> Path | None:
     """Resolve the dataset directory used for evaluation from saved config and overrides."""
     for key in ("data_dir", "full_data_path"):
         value = data_cfg.get(key)
@@ -422,7 +422,6 @@ def resolve_eval_data_dir(saved_run: SavedTrainingRun, data_cfg: Mapping[str, An
     if subfolder is None:
         subfolder = saved_run.data_subfolder
 
-    paths = Paths(settings)
     dataset_info = load_dataset_info(paths.dataset_registry_path(), dataset_name)
     usage = "training"
     if isinstance(dataset_info, Mapping):
@@ -759,6 +758,7 @@ def build_eval_source(
     eval_gt=None,
     data_overrides: Mapping[str, Any] | None = None,
     evaluation_dataset: EvaluationDatasetSpec | None = None,
+    paths: Paths,
 ):
     """Build the evaluation sample source for a saved model and resolved dataset source."""
 
@@ -796,7 +796,9 @@ def build_eval_source(
         if eval_gt is None and evaluation_dataset.eval_gt is not None:
             eval_gt = evaluation_dataset.eval_gt
     else:
-        dataset_info = resolve_dataset_info(data_cfg.get("dataset_name") or saved_run.dataset_name)
+        dataset_info = resolve_dataset_info(
+            data_cfg.get("dataset_name") or saved_run.dataset_name, paths=paths
+        )
 
     eval_gt_resolution = _resolve_eval_gt(
         eval_gt=eval_gt,
@@ -820,7 +822,7 @@ def build_eval_source(
     if evaluation_dataset is not None and not data_cfg.get("data_dir"):
         data_cfg["data_dir"] = str(evaluation_dataset.data_dir)
 
-    data_dir = resolve_eval_data_dir(saved_run, data_cfg)
+    data_dir = resolve_eval_data_dir(saved_run, data_cfg, paths=paths)
     if data_dir is None:
         raise ValueError(
             "Could not resolve `data_dir` for evaluation. "

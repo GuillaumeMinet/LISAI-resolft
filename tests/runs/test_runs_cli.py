@@ -561,7 +561,7 @@ def test_runs_list_promoted_filters_by_source_run_id(monkeypatch, tmp_path, caps
         run_id=other_id,
     )
     monkeypatch.setattr(runs_cli, "scan_runs", lambda: scan_runs(datasets_root))
-    monkeypatch.setattr(promoted_registry, "promoted_source_run_ids", lambda: {promoted_id})
+    monkeypatch.setattr(promoted_registry, "promoted_source_run_ids", lambda **kwargs: {promoted_id})
 
     exit_code = root_main(["runs", "list", "--promoted"])
     captured = capsys.readouterr()

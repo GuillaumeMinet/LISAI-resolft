@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 from .package import MODEL_MANIFEST_FILENAME, PromotedModel, load_promoted_model_from_dir, sha256_file
@@ -145,10 +144,10 @@ def install_model_archive(
     archive_path: str | Path,
     *,
     overwrite: bool = False,
-    paths: Paths | None = None,
+    paths: Paths,
 ) -> PromotedModelInstall:
     """Install a local .lisai.zip archive into the canonical promoted-model library."""
-    resolved_paths = paths or Paths(settings)
+    resolved_paths = paths
     archive_path = _resolve_archive_path(archive_path, paths=resolved_paths)
     if not archive_path.name.endswith(".lisai.zip"):
         raise ValueError("Promoted-model archives must use the '.lisai.zip' suffix.")

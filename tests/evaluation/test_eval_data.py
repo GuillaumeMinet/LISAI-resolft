@@ -137,7 +137,7 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
         crop_size=32,
         eval_gt='gt_folder',
         data_overrides={'subfolder': 'override_subfolder'},
-    )
+     paths=FakePaths(data_root),)
 
     assert isinstance(source, data_mod.EvalSampleSource)
     cfg = source.config
@@ -170,7 +170,7 @@ def test_build_eval_source_uses_registry_eval_gt_when_omitted(monkeypatch, tmp_p
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test')
+    source = data_mod.build_eval_source(saved_run, split='test', paths=FakePaths(data_root))
 
     assert source.config.target == 'registry_gt'
     assert source.config.paired is True
@@ -201,7 +201,7 @@ def test_build_eval_source_replaces_null_gt_norm_with_identity_for_non_lvae(
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test')
+    source = data_mod.build_eval_source(saved_run, split='test', paths=FakePaths(data_root))
 
     assert source.config.model_norm_prm['data_mean_gt'] == 0
     assert source.config.model_norm_prm['data_std_gt'] == 1
@@ -232,7 +232,7 @@ def test_build_eval_source_uses_input_norm_for_unpaired_lvae_injected_eval_gt(
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test')
+    source = data_mod.build_eval_source(saved_run, split='test', paths=FakePaths(data_root))
 
     assert source.config.paired is True
     assert source.config.model_norm_prm['data_mean_gt'] == saved_run.model_norm_prm[
@@ -268,7 +268,7 @@ def test_build_eval_source_preserves_explicit_gt_norm_when_eval_gt_is_injected(
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test')
+    source = data_mod.build_eval_source(saved_run, split='test', paths=FakePaths(data_root))
 
     assert source.config.model_norm_prm['data_mean_gt'] == 10.0
     assert source.config.model_norm_prm['data_std_gt'] == 5.0
@@ -287,7 +287,7 @@ def test_build_eval_source_registry_eval_gt_overrides_training_target(monkeypatc
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test')
+    source = data_mod.build_eval_source(saved_run, split='test', paths=FakePaths(data_root))
 
     assert source.config.target == 'registry_gt'
     assert source.items[0].gt_path == data_dir / 'registry_gt' / 'test' / 'img_a.tif'
@@ -305,7 +305,7 @@ def test_build_eval_source_explicit_eval_gt_overrides_registry_and_training_targ
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='explicit_gt')
+    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='explicit_gt', paths=FakePaths(data_root))
 
     assert source.config.target == 'explicit_gt'
     assert source.items[0].gt_path == data_dir / 'explicit_gt' / 'test' / 'img_a.tif'
@@ -323,7 +323,7 @@ def test_build_eval_source_training_eval_gt_token_uses_training_target(monkeypat
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='@training')
+    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='@training', paths=FakePaths(data_root))
 
     assert source.config.target == 'training_gt'
     assert source.items[0].gt_path == data_dir / 'training_gt' / 'test' / 'img_a.tif'
@@ -341,7 +341,7 @@ def test_build_eval_source_none_eval_gt_token_disables_gt(monkeypatch, tmp_path:
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='@none')
+    source = data_mod.build_eval_source(saved_run, split='test', eval_gt='@none', paths=FakePaths(data_root))
 
     assert source.config.paired is False
     assert source.config.target is None
@@ -353,7 +353,7 @@ def test_build_eval_source_none_eval_gt_token_disables_gt(monkeypatch, tmp_path:
 def test_resolve_eval_data_dir_returns_explicit_data_dir():
     saved_run = _make_saved_run()
 
-    out = data_mod.resolve_eval_data_dir(saved_run, {'data_dir': '/custom/data'})
+    out = data_mod.resolve_eval_data_dir(saved_run, {'data_dir': '/custom/data'}, paths=FakePaths(Path('/tmp')))
 
     assert out == Path('/custom/data')
 
@@ -376,7 +376,7 @@ def test_build_eval_source_streams_mixed_size_inputs(monkeypatch, tmp_path: Path
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     shapes = []
     for sample in source:
@@ -419,7 +419,7 @@ def test_build_eval_source_uses_split_manifest(monkeypatch, tmp_path: Path):
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     assert len(source.items) == 1
     assert source.items[0].inp_path == dump_dir / 'test_a.tif'
@@ -451,7 +451,7 @@ def test_eval_source_keeps_timelapse_item_and_time_indices(monkeypatch, tmp_path
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     assert len(source.items) == 1
     item = source.items[0]
@@ -500,7 +500,7 @@ def test_eval_source_marks_shuffled_timelapse_provenance_unknown(monkeypatch, tm
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     item = source.items[0]
     assert item.sample_count == 3
@@ -535,7 +535,7 @@ def test_eval_source_keeps_time_provenance_when_shuffle_does_not_subsample(monke
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     item = source.items[0]
     assert item.source_axis == 'time'
@@ -565,7 +565,7 @@ def test_eval_source_keeps_selected_snr_indices(monkeypatch, tmp_path: Path):
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     item = source.items[0]
     assert item.sample_count == 3
@@ -596,7 +596,7 @@ def test_eval_source_resolves_last_snr_index(monkeypatch, tmp_path: Path):
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     item = source.items[0]
     assert item.source_axis == 'snr'
@@ -625,7 +625,7 @@ def test_eval_source_marks_random_snr_provenance_unknown(monkeypatch, tmp_path: 
         saved_run,
         split='test',
         data_overrides={'data_dir': str(data_dir)},
-    )
+     paths=FakePaths(Path('/tmp')),)
 
     item = source.items[0]
     assert item.source_axis == 'snr'
@@ -686,12 +686,12 @@ def test_resolve_and_build_independent_evaluation_dataset_uses_all_root_files(
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    eval_dataset = data_mod.resolve_evaluation_dataset(saved_run, 'eval_dataset')
+    eval_dataset = data_mod.resolve_evaluation_dataset(saved_run, 'eval_dataset', paths=FakePaths(data_root))
     source = data_mod.build_eval_source(
         saved_run,
         split='test',
         evaluation_dataset=eval_dataset,
-    )
+     paths=FakePaths(data_root),)
 
     assert eval_dataset.data_type == 'recon'
     assert eval_dataset.data_dir == eval_dir
@@ -722,8 +722,8 @@ def test_independent_evaluation_dataset_without_eval_gt_does_not_fall_back_to_tr
     )
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
-    eval_dataset = data_mod.resolve_evaluation_dataset(saved_run, 'eval_dataset')
-    source = data_mod.build_eval_source(saved_run, evaluation_dataset=eval_dataset)
+    eval_dataset = data_mod.resolve_evaluation_dataset(saved_run, 'eval_dataset', paths=FakePaths(data_root))
+    source = data_mod.build_eval_source(saved_run, evaluation_dataset=eval_dataset, paths=FakePaths(data_root))
 
     assert source.config.paired is False
     assert source.config.target is None
@@ -748,7 +748,7 @@ def test_resolve_evaluation_dataset_rejects_training_dataset(monkeypatch, tmp_pa
     monkeypatch.setattr(data_mod, 'Paths', lambda _settings: FakePaths(data_root))
 
     try:
-        data_mod.resolve_evaluation_dataset(saved_run, 'training_dataset')
+        data_mod.resolve_evaluation_dataset(saved_run, 'training_dataset', paths=FakePaths(data_root))
     except ValueError as exc:
         assert 'usage: evaluation' in str(exc)
     else:

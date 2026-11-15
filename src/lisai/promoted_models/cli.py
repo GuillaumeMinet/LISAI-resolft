@@ -4,6 +4,8 @@ import argparse
 from typing import Sequence, get_args
 
 from lisai.config.models.training import TaskName
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
 from lisai.infra.cli.prompts import prompt_yes_no
 from lisai.infra.cli.selection import resolve_partial_name
 
@@ -30,12 +32,22 @@ VALID_TASK_NAMES  = ", ".join(get_args(TaskName))
 _MODEL_LIST_HINT = "Use 'lisai models list' to inspect available promoted models."
 
 
+def _paths_for_args(args: argparse.Namespace) -> Paths:
+    """Load legacy defaults once per parsed models command, not during import/help."""
+    paths = getattr(args, "_model_paths", None)
+    if paths is None:
+        paths = Paths(load_default_settings())
+        args._model_paths = paths
+    return paths
+
+
 def _resolve_model_name(
     name: str,
     *,
     parser: argparse.ArgumentParser,
+    paths: Paths,
 ) -> str:
-    registry = load_promoted_model_registry()
+    registry = load_promoted_model_registry(paths=paths)
     resolved = resolve_partial_name(
         name,
         registry.models,
@@ -47,8 +59,8 @@ def _resolve_model_name(
         parser.exit(status=1)
     return resolved
 
-def _render_models_table() -> str:
-    registry = load_promoted_model_registry()
+def _render_models_table(*, paths: Paths) -> str:
+    registry = load_promoted_model_registry(paths=paths)
     if not registry.models:
         return "No promoted models found."
 
@@ -67,7 +79,7 @@ def _render_models_table() -> str:
 
 
 def run_list_from_args(args: argparse.Namespace) -> int:
-    print(_render_models_table())
+    print(_render_models_table(paths=_paths_for_args(args)))
     return 0
 
 
@@ -113,9 +125,10 @@ def _download_one_from_catalog(
     overwrite: bool,
     install: bool,
     parser: argparse.ArgumentParser,
+    paths: Paths,
 ) -> int:
     try:
-        result = download_model(name, overwrite=overwrite)
+        result = download_model(name, overwrite=overwrite, paths=paths)
     except DownloadConflictError as exc:
         confirmed = prompt_yes_no(
             "An existing downloaded archive does not match the catalog checksum. "
@@ -126,7 +139,7 @@ def _download_one_from_catalog(
             print(f"Skipped model: {name}")
             return 0
         try:
-            result = download_model(name, overwrite=True)
+            result = download_model(name, overwrite=True, paths=paths)
         except (
             catalog.CatalogUnavailableError,
             DownloadIntegrityError,
@@ -150,7 +163,7 @@ def _download_one_from_catalog(
 
     if install:
         try:
-            installed = install_model_archive(result.archive_path)
+            installed = install_model_archive(result.archive_path, paths=paths)
         except (FileExistsError, FileNotFoundError, ValueError) as exc:
             parser.exit(status=1, message=f"{exc}\n")
         print()
@@ -164,6 +177,7 @@ def _download_one_from_catalog(
 
 
 def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    paths = _paths_for_args(args)
     if args.all and args.name is not None:
         parser.error("A model name cannot be combined with --all.")
     if not args.all and args.name is None:
@@ -175,6 +189,7 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
             overwrite=args.overwrite,
             install=args.install,
             parser=parser,
+            paths=paths,
         )
 
     try:
@@ -185,7 +200,7 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
         print("No downloadable models found.")
         return 0
 
-    installed_names = set(load_promoted_model_registry().models) if args.install else set()
+    installed_names = set(load_promoted_model_registry(paths=paths).models) if args.install else set()
     for index, model in enumerate(models):
         if index:
             print("\n" + "-" * 60 + "\n")
@@ -197,6 +212,7 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
             overwrite=args.overwrite,
             install=args.install,
             parser=parser,
+            paths=paths,
         )
     return 0
 
@@ -205,10 +221,10 @@ def run_set_task_from_args(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> int:
-    name = _resolve_model_name(args.name, parser=parser)
+    name = _resolve_model_name(args.name, parser=parser, paths=_paths_for_args(args))
     try: 
         promoted = set_promoted_model_task(
-            name, args.task
+            name, args.task, paths=_paths_for_args(args)
         )
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
@@ -226,11 +242,12 @@ def run_set_config_from_args(
     if not args.clear and args.config is None:
         parser.error("Provide CONFIG, or use --clear to remove the model inference config.")
 
-    name = _resolve_model_name(args.name, parser=parser)
+    name = _resolve_model_name(args.name, parser=parser, paths=_paths_for_args(args))
     try:
         promoted = set_promoted_model_config(
             name,
             None if args.clear else args.config,
+            paths=_paths_for_args(args),
         )
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
@@ -244,9 +261,9 @@ def run_sync_from_args(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
 ) -> int:
-    name = _resolve_model_name(args.name, parser=parser)
+    name = _resolve_model_name(args.name, parser=parser, paths=_paths_for_args(args))
     try:
-        promoted = sync_promoted_model(name)
+        promoted = sync_promoted_model(name, paths=_paths_for_args(args))
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
 
@@ -255,13 +272,13 @@ def run_sync_from_args(
     return 0
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    name = _resolve_model_name(args.name, parser=parser)
+    name = _resolve_model_name(args.name, parser=parser, paths=_paths_for_args(args))
     try:
-        promoted = load_promoted_model(name)
+        promoted = load_promoted_model(name, paths=_paths_for_args(args))
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     manifest = promoted.manifest
-    registry = load_promoted_model_registry()
+    registry = load_promoted_model_registry(paths=_paths_for_args(args))
     entry = registry.models.get(manifest.name)
     print(f"Name: {manifest.name}")
     print(f"Path: {promoted.model_dir}")
@@ -281,12 +298,13 @@ def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser
 
 
 def run_export_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    name = _resolve_model_name(args.name, parser=parser)
+    name = _resolve_model_name(args.name, parser=parser, paths=_paths_for_args(args))
     try:
         exported = export_promoted_model(
             name,
             output=args.output,
             overwrite=args.overwrite,
+            paths=_paths_for_args(args),
         )
     except (KeyError, FileExistsError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
@@ -301,6 +319,7 @@ def run_install_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
         installed = install_model_archive(
             args.archive,
             overwrite=args.overwrite,
+            paths=_paths_for_args(args),
         )
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
@@ -310,7 +329,7 @@ def run_install_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
 
 
 def run_remove_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    name = _resolve_model_name(args.name, parser=parser)
+    name = _resolve_model_name(args.name, parser=parser, paths=_paths_for_args(args))
 
     if not args.yes:
         confirmed = prompt_yes_no(
@@ -323,7 +342,7 @@ def run_remove_from_args(args: argparse.Namespace, parser: argparse.ArgumentPars
             return 0
 
     try:
-        removed = remove_promoted_model(name)
+        removed = remove_promoted_model(name, paths=_paths_for_args(args))
     except (KeyError, FileNotFoundError, ValueError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     print(f"Removed model: {removed.name}")

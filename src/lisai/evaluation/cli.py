@@ -8,6 +8,7 @@ from typing import Sequence
 from lisai.config.models.inference import ApplyOverrides, EvaluateOverrides
 from lisai.config.settings import Settings, load_default_settings
 from lisai.infra.cli.selection import resolve_partial_name
+from lisai.infra.paths import Paths
 from lisai.promoted_models.package import load_promoted_model
 from lisai.promoted_models.registry import load_promoted_model_registry
 from lisai.runs.cli import add_run_filter_arguments
@@ -361,6 +362,7 @@ def run_apply_from_args(
     args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
 ) -> int:
     stg = load_default_settings() if settings is None else settings
+    paths = Paths(stg)
     overwrite = getattr(args, "overwrite", False)
     reuse_folder = getattr(args, "reuse_folder", False)
     skip_existing = getattr(args, "skip_existing", False)
@@ -380,7 +382,7 @@ def run_apply_from_args(
             parser.error("--model cannot be combined with a run selector or run filters.")
         if args.epoch_number is not None or args.best_or_last is not None:
             parser.error("--epoch-number/--best-or-last do not apply to promoted models; promotion already fixes the checkpoint.")
-        registry = load_promoted_model_registry()
+        registry = load_promoted_model_registry(paths=paths)
         promoted_model_name = resolve_partial_name(
             promoted_model_name,
             registry.models,
@@ -393,7 +395,7 @@ def run_apply_from_args(
         )
         if promoted_model_name is None:
             return 1
-        promoted = load_promoted_model(promoted_model_name)
+        promoted = load_promoted_model(promoted_model_name, paths=paths)
         promoted_model_config = promoted.inference_config_path
         model_dataset = ""
         model_subfolder = "promoted"
@@ -423,6 +425,7 @@ def run_apply_from_args(
         skip_existing=skip_existing,
         progress_bar=getattr(args, "progress_bar", None),
         promoted_model_name=promoted_model_name,
+        paths=paths,
     )
     return 0
 
@@ -431,6 +434,7 @@ def run_evaluate_from_args(
     args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
 ) -> int:
     stg = load_default_settings() if settings is None else settings
+    paths = Paths(stg)
     if args.evaluation_dataset_name is not None and args.split is not None:
         parser.error("--on evaluates the complete evaluation dataset and cannot be combined with --split.")
 
@@ -449,6 +453,7 @@ def run_evaluate_from_args(
         model_subfolder=selected.model_subfolder,
         model_name=selected.run_dir.name,
         evaluation_dataset_name=args.evaluation_dataset_name,
+        paths=paths,
         progress_bar=getattr(args, "progress_bar", None),
     )
     return 0

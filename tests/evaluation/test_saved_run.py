@@ -42,20 +42,19 @@ def _raw_lvae_config() -> dict:
 
 
 def _load_with_raw_config(monkeypatch, raw_cfg: dict, run_dir: Path):
-    monkeypatch.setattr(saved_run_mod, 'Paths', lambda _settings: FakePaths())
     monkeypatch.setattr(saved_run_mod, 'load_yaml', lambda path: raw_cfg)
-    return saved_run_mod.load_saved_run(run_dir)
+    return saved_run_mod.load_saved_run(run_dir, paths=FakePaths())
 
 
 
 def test_load_saved_run_validates_and_extracts_fields(monkeypatch):
     raw_cfg = _raw_lvae_config()
-    monkeypatch.setattr(saved_run_mod, 'Paths', lambda _settings: FakePaths())
 
     run_dir = saved_run_mod.resolve_run_dir(
         dataset_name='dataset_a',
         subfolder='subfolder_a',
         exp_name='exp_a',
+        paths=FakePaths(),
     )
     saved_run = _load_with_raw_config(monkeypatch, raw_cfg, run_dir)
 
