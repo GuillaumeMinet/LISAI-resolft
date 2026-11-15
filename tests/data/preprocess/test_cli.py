@@ -8,13 +8,13 @@ import tifffile
 
 import lisai.cli as root_cli
 import lisai.preprocess.cli as preprocess_cli
-from lisai.config import save_yaml, settings
+from lisai.config import save_yaml
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.preprocess.reporting import NoOpPreprocessReporter
 
 
 class DummyPaths:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, settings):
         self.root = root
         self.settings = settings
 
@@ -29,7 +29,7 @@ class DummyPaths:
 
     def preprocess_log_path(self, *, dataset_name: str, data_type: str, usage: str = "training") -> Path:
         key = f"{data_type}_preprocess"
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / settings.data_cfg.logs[key]
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / self.settings.data_cfg.logs[key]
 
     def preprocessed_image_full_path(
         self,
@@ -41,7 +41,7 @@ class DummyPaths:
         usage: str = "training",
         **kwargs,
     ) -> Path:
-        filename = settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
+        filename = self.settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
         return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / additional_subfolder / filename
 
 
@@ -68,21 +68,19 @@ def _write_config(path: Path, dataset_name: str) -> None:
     )
 
 
-def test_resolve_config_path_supports_preprocess_short_name():
-    repo_root = Path(__file__).resolve().parents[3]
-    expected = (repo_root / "configs" / "preprocess" / "single.yml").resolve()
+def test_resolve_config_path_supports_preprocess_short_name(settings):
+    expected = (settings.PREPROCESS_CONFIG_DIR / "single.yml").resolve()
 
     assert preprocess_cli.resolve_config_path("single.yml", resolver=ConfigPathResolver("preprocess", stg=settings)) == expected
 
 
-def test_resolve_config_path_supports_preprocess_short_name_without_extension():
-    repo_root = Path(__file__).resolve().parents[3]
-    expected = (repo_root / "configs" / "preprocess" / "single.yml").resolve()
+def test_resolve_config_path_supports_preprocess_short_name_without_extension(settings):
+    expected = (settings.PREPROCESS_CONFIG_DIR / "single.yml").resolve()
 
     assert preprocess_cli.resolve_config_path("single", resolver=ConfigPathResolver("preprocess", stg=settings)) == expected
 
 
-def test_resolve_config_path_lists_available_configs_when_missing():
+def test_resolve_config_path_lists_available_configs_when_missing(settings):
     with pytest.raises(FileNotFoundError, match="Preprocess config not found: missing_preprocess_config") as exc_info:
         preprocess_cli.resolve_config_path("missing_preprocess_config", resolver=ConfigPathResolver("preprocess", stg=settings))
 
@@ -91,7 +89,7 @@ def test_resolve_config_path_lists_available_configs_when_missing():
     assert "single.yml" in message
 
 
-def test_run_preprocess_config_overwrites_existing_output_after_confirmation(tmp_path: Path):
+def test_run_preprocess_config_overwrites_existing_output_after_confirmation(tmp_path: Path, settings):
     dataset_name = "CliOverwriteDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
     config_path = tmp_path / "overwrite.yml"
@@ -104,7 +102,7 @@ def test_run_preprocess_config_overwrites_existing_output_after_confirmation(tmp
 
     result = preprocess_cli.run_preprocess_config(
         config_path,
-        paths=DummyPaths(tmp_path),
+        paths=DummyPaths(tmp_path, settings),
         reporter=NoOpPreprocessReporter(),
         input_fn=lambda _: "yes",
         interactive=True,
@@ -115,7 +113,7 @@ def test_run_preprocess_config_overwrites_existing_output_after_confirmation(tmp
     assert (preprocess_dir / "c00.tif").exists()
 
 
-def test_run_preprocess_config_aborts_when_overwrite_is_declined(tmp_path: Path):
+def test_run_preprocess_config_aborts_when_overwrite_is_declined(tmp_path: Path, settings):
     dataset_name = "CliAbortDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
     config_path = tmp_path / "abort.yml"
@@ -129,7 +127,7 @@ def test_run_preprocess_config_aborts_when_overwrite_is_declined(tmp_path: Path)
     with pytest.raises(preprocess_cli.PreprocessAbortedError, match="left untouched"):
         preprocess_cli.run_preprocess_config(
             config_path,
-            paths=DummyPaths(tmp_path),
+            paths=DummyPaths(tmp_path, settings),
             reporter=NoOpPreprocessReporter(),
             input_fn=lambda _: "no",
             interactive=True,
@@ -139,7 +137,7 @@ def test_run_preprocess_config_aborts_when_overwrite_is_declined(tmp_path: Path)
     assert not (preprocess_dir / "c00.tif").exists()
 
 
-def test_run_preprocess_config_requires_explicit_overwrite_in_non_interactive_mode(tmp_path: Path):
+def test_run_preprocess_config_requires_explicit_overwrite_in_non_interactive_mode(tmp_path: Path, settings):
     dataset_name = "CliNonInteractiveDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
     config_path = tmp_path / "noninteractive.yml"
@@ -152,7 +150,7 @@ def test_run_preprocess_config_requires_explicit_overwrite_in_non_interactive_mo
     with pytest.raises(FileExistsError, match="Existing preprocess output detected"):
         preprocess_cli.run_preprocess_config(
             config_path,
-            paths=DummyPaths(tmp_path),
+            paths=DummyPaths(tmp_path, settings),
             reporter=NoOpPreprocessReporter(),
             interactive=False,
         )

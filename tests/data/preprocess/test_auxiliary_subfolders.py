@@ -7,13 +7,13 @@ import numpy as np
 import pytest
 import tifffile
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.preprocess import PreprocessRun
 from lisai.preprocess.reporting import ConsolePreprocessReporter
 
 
 class DummyPaths:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, settings):
         self.root = root
         self.settings = settings
 
@@ -28,7 +28,7 @@ class DummyPaths:
 
     def preprocess_log_path(self, *, dataset_name: str, data_type: str, usage: str = "training") -> Path:
         key = f"{data_type}_preprocess"
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / settings.data_cfg.logs[key]
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / self.settings.data_cfg.logs[key]
 
     def preprocessed_image_full_path(
         self,
@@ -40,7 +40,7 @@ class DummyPaths:
         usage: str = "training",
         **kwargs,
     ) -> Path:
-        filename = settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
+        filename = self.settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
         return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / additional_subfolder / filename
 
 
@@ -49,7 +49,7 @@ def _write_image(path: Path, value: int, shape: tuple[int, int] = (8, 8)) -> Non
     tifffile.imwrite(path, np.full(shape, value, dtype=np.uint16))
 
 
-def test_single_recon_saves_required_auxiliary_and_registers_role(tmp_path: Path):
+def test_single_recon_saves_required_auxiliary_and_registers_role(tmp_path: Path, settings):
     dataset = "SingleAux"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -70,7 +70,7 @@ def test_single_recon_saves_required_auxiliary_and_registers_role(tmp_path: Path
         "split": {"enabled": False},
     }
 
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
     assert result.n_files == 1
 
     preprocess = tmp_path / dataset / "preprocess" / "recon"
@@ -94,7 +94,7 @@ def test_single_recon_saves_required_auxiliary_and_registers_role(tmp_path: Path
     }
 
 
-def test_single_recon_required_auxiliary_must_match_primary_filename(tmp_path: Path):
+def test_single_recon_required_auxiliary_must_match_primary_filename(tmp_path: Path, settings):
     dataset = "SingleAuxMissing"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -114,10 +114,10 @@ def test_single_recon_required_auxiliary_must_match_primary_filename(tmp_path: P
     }
 
     with pytest.raises(ValueError, match="Missing required auxiliary 'confocal'.*cell01.tif"):
-        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
 
-def test_paired_single_recon_saves_auxiliary_without_registering_it_with_primary_pair(tmp_path: Path):
+def test_paired_single_recon_saves_auxiliary_without_registering_it_with_primary_pair(tmp_path: Path, settings):
     dataset = "PairedAux"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "low" / "cell01.tif", 10, shape=(10, 10))
@@ -142,7 +142,7 @@ def test_paired_single_recon_saves_auxiliary_without_registering_it_with_primary
         "split": {"enabled": False},
     }
 
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
     assert result.n_files == 1
 
     preprocess = tmp_path / dataset / "preprocess" / "recon"
@@ -163,7 +163,7 @@ def test_paired_single_recon_saves_auxiliary_without_registering_it_with_primary
     }
 
 
-def test_auxiliary_matching_must_be_explicit(tmp_path: Path):
+def test_auxiliary_matching_must_be_explicit(tmp_path: Path, settings):
     dataset = "MissingMatching"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -183,10 +183,10 @@ def test_auxiliary_matching_must_be_explicit(tmp_path: Path):
     }
 
     with pytest.raises(ValueError, match="requires an explicit 'matching' value"):
-        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
 
-def test_optional_filename_matching_keeps_unmatched_primary_and_reports_count(tmp_path: Path):
+def test_optional_filename_matching_keeps_unmatched_primary_and_reports_count(tmp_path: Path, settings):
     dataset = "OptionalFilenameAux"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -209,7 +209,7 @@ def test_optional_filename_matching_keeps_unmatched_primary_and_reports_count(tm
     }
 
     stream = io.StringIO()
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute(
         reporter=ConsolePreprocessReporter(stream=stream)
     )
     assert result.n_files == 2
@@ -222,7 +222,7 @@ def test_optional_filename_matching_keeps_unmatched_primary_and_reports_count(tm
     assert "Auxiliary 'confocal': matched 1/2" in stream.getvalue()
 
 
-def test_timestamp_matching_requires_max_time_delta(tmp_path: Path):
+def test_timestamp_matching_requires_max_time_delta(tmp_path: Path, settings):
     dataset = "TimestampNeedsDelta"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "00h00m10s_primary.tif", 10)
@@ -247,10 +247,10 @@ def test_timestamp_matching_requires_max_time_delta(tmp_path: Path):
     }
 
     with pytest.raises(ValueError, match="requires max_time_delta_s"):
-        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
 
-def test_timestamp_matching_is_one_to_one(tmp_path: Path):
+def test_timestamp_matching_is_one_to_one(tmp_path: Path, settings):
     dataset = "TimestampOneToOne"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "00h00m10s_primary.tif", 10)
@@ -277,13 +277,13 @@ def test_timestamp_matching_is_one_to_one(tmp_path: Path):
         "split": {"enabled": False},
     }
 
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
     preprocess = tmp_path / dataset / "preprocess" / "recon"
     assert np.all(tifffile.imread(preprocess / "confocal" / "c00.tif") == 100)
     assert np.all(tifffile.imread(preprocess / "confocal" / "c01.tif") == 200)
 
 
-def test_timestamp_relation_after_primary_filters_candidates(tmp_path: Path):
+def test_timestamp_relation_after_primary_filters_candidates(tmp_path: Path, settings):
     dataset = "TimestampRelation"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "00h00m10s_primary.tif", 10)
@@ -310,12 +310,12 @@ def test_timestamp_relation_after_primary_filters_candidates(tmp_path: Path):
         "split": {"enabled": False},
     }
 
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
     preprocess = tmp_path / dataset / "preprocess" / "recon"
     assert np.all(tifffile.imread(preprocess / "confocal" / "c00.tif") == 110)
 
 
-def test_optional_timestamp_matching_keeps_primary_without_close_auxiliary(tmp_path: Path):
+def test_optional_timestamp_matching_keeps_primary_without_close_auxiliary(tmp_path: Path, settings):
     dataset = "OptionalTimestampAux"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "00h00m10s_primary.tif", 10)
@@ -341,7 +341,7 @@ def test_optional_timestamp_matching_keeps_primary_without_close_auxiliary(tmp_p
         "split": {"enabled": False},
     }
 
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
     assert result.n_files == 2
 
     preprocess = tmp_path / dataset / "preprocess" / "recon"

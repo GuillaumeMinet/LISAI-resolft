@@ -9,7 +9,6 @@ import pytest
 import lisai.cli as root_cli
 import lisai.runs.selection as selection_mod
 import lisai.training.continue_cli as continue_cli
-from lisai.config import settings
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.runs.io import read_run_metadata, write_run_metadata_atomic
 from lisai.runs.scanner import scan_runs
@@ -273,7 +272,7 @@ def test_continue_requires_yes_when_confirmation_is_non_interactive(monkeypatch,
     assert "Confirmation required. Rerun with --yes to continue non-interactively." in stderr.getvalue()
 
 
-def test_continue_blocks_recently_active_runs_without_force(monkeypatch, tmp_path):
+def test_continue_blocks_recently_active_runs_without_force(monkeypatch, tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     selector = "still_running_00"
     now = utc_now()
@@ -309,7 +308,7 @@ def test_continue_blocks_recently_active_runs_without_force(monkeypatch, tmp_pat
     assert "Rerun with --force" in stderr.getvalue()
 
 
-def test_continue_force_allows_recently_active_runs(monkeypatch, tmp_path):
+def test_continue_force_allows_recently_active_runs(monkeypatch, tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     selector = "force_resume_00"
     run_dir = datasets_root / "Gag" / "runs" / "HDN" / "force_resume_00"
@@ -417,7 +416,7 @@ def test_continue_allows_non_interactive_path_inconsistency_with_yes_and_force(m
     assert "continuing with --yes --force" in stderr.getvalue()
 
 
-def test_continue_allows_stale_running_runs_after_confirmation(monkeypatch, tmp_path):
+def test_continue_allows_stale_running_runs_after_confirmation(monkeypatch, tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     selector = "stale_run_00"
     run_dir = datasets_root / "Gag" / "runs" / "HDN" / "stale_run_00"

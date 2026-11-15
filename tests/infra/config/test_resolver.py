@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 import lisai.config.io.resolver as resolver_mod
-from lisai.config import save_yaml, settings
+from lisai.config import save_yaml
 from lisai.config.io.resolver import prune_config_for_saving, resolve_config, resolve_config_dict
 from lisai.config.models import ResolvedExperiment
 from lisai.infra.paths import Paths
@@ -93,7 +93,7 @@ def _fake_dataset_registry(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: registry)
 
 
-def test_resolve_config_train_mode_forbids_load_model_section(tmp_path: Path):
+def test_resolve_config_train_mode_forbids_load_model_section(tmp_path: Path, settings):
     exp_cfg = tmp_path / "exp_train.yml"
     save_yaml(
         {
@@ -113,7 +113,7 @@ def test_resolve_config_train_mode_forbids_load_model_section(tmp_path: Path):
         resolve_config(experiment_cfg_path=exp_cfg, stg=settings)
 
 
-def test_resolve_config_dict_strips_catalog_metadata():
+def test_resolve_config_dict_strips_catalog_metadata(settings):
     cfg = resolve_config_dict(
         {
             "metadata": {
@@ -132,7 +132,7 @@ def test_resolve_config_dict_strips_catalog_metadata():
     assert cfg.data.dataset_name == "ds_metadata"
 
 
-def test_resolve_config_dict_refuses_template_metadata():
+def test_resolve_config_dict_refuses_template_metadata(settings):
     with pytest.raises(ValueError, match="templates must be instantiated"):
         resolve_config_dict(
             {
@@ -144,7 +144,7 @@ def test_resolve_config_dict_refuses_template_metadata():
         )
 
 
-def test_resolve_config_dict_refuses_changeme_placeholders():
+def test_resolve_config_dict_refuses_changeme_placeholders(settings):
     with pytest.raises(ValueError, match="data.dataset_name"):
         resolve_config_dict(
             {
@@ -156,7 +156,7 @@ def test_resolve_config_dict_refuses_changeme_placeholders():
         )
 
 
-def test_resolve_config_dict_fills_single_root_registry_input(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_fills_single_root_registry_input(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -178,7 +178,7 @@ def test_resolve_config_dict_fills_single_root_registry_input(monkeypatch: pytes
     assert cfg.data.registry_data_type == "recon"
 
 
-def test_resolve_config_dict_requires_explicit_non_root_registry_input(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_requires_explicit_non_root_registry_input(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -197,7 +197,7 @@ def test_resolve_config_dict_requires_explicit_non_root_registry_input(monkeypat
         )
 
 
-def test_resolve_config_dict_requires_explicit_paired_registry_target(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_requires_explicit_paired_registry_target(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -216,7 +216,7 @@ def test_resolve_config_dict_requires_explicit_paired_registry_target(monkeypatc
         )
 
 
-def test_resolve_config_dict_uses_format_from_output_override(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_uses_format_from_output_override(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -244,7 +244,7 @@ def test_resolve_config_dict_uses_format_from_output_override(monkeypatch: pytes
     assert cfg.data.data_format == "single"
 
 
-def test_resolve_config_dict_allows_format_from_output_override(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_allows_format_from_output_override(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -271,7 +271,7 @@ def test_resolve_config_dict_allows_format_from_output_override(monkeypatch: pyt
     assert cfg.data.data_format == "single"
 
 
-def test_resolve_config_dict_rejects_single_format_without_output_override(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_rejects_single_format_without_output_override(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -300,7 +300,7 @@ def test_resolve_config_dict_rejects_single_format_without_output_override(monke
         )
 
 
-def test_resolve_config_dict_rejects_unregistered_prepared_dataset(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_rejects_unregistered_prepared_dataset(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: {})
 
     with pytest.raises(ValidationError, match="not registered"):
@@ -314,7 +314,7 @@ def test_resolve_config_dict_rejects_unregistered_prepared_dataset(monkeypatch: 
         )
 
 
-def test_resolve_config_dict_allows_unregistered_unprepared_dataset(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_allows_unregistered_unprepared_dataset(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(resolver_mod, "load_dataset_registry", lambda path: {})
 
     cfg = resolve_config_dict(
@@ -330,7 +330,7 @@ def test_resolve_config_dict_allows_unregistered_unprepared_dataset(monkeypatch:
     assert cfg.data.prep_before is False
 
 
-def test_resolve_config_dict_rejects_registry_data_format_conflict(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_rejects_registry_data_format_conflict(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -349,7 +349,7 @@ def test_resolve_config_dict_rejects_registry_data_format_conflict(monkeypatch: 
         )
 
 
-def test_resolve_config_dict_rejects_evaluation_only_registry_dataset(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_rejects_evaluation_only_registry_dataset(monkeypatch: pytest.MonkeyPatch, settings):
     monkeypatch.setattr(
         resolver_mod,
         "load_dataset_registry",
@@ -368,7 +368,7 @@ def test_resolve_config_dict_rejects_evaluation_only_registry_dataset(monkeypatc
         )
 
 
-def test_resolve_config_dict_requires_input_when_registry_default_is_ambiguous(monkeypatch: pytest.MonkeyPatch):
+def test_resolve_config_dict_requires_input_when_registry_default_is_ambiguous(monkeypatch: pytest.MonkeyPatch, settings):
     entry = _registry_entry(input_name=None)
     entry["structure"]["recon"] = ["inp_a", "inp_b"]
     entry["outputs"]["recon"] = [
@@ -391,7 +391,7 @@ def test_resolve_config_dict_requires_input_when_registry_default_is_ambiguous(m
 
 
 
-def test_apply_mode_resolution_continue_training_loads_origin_and_applies_sparse_overrides(tmp_path: Path):
+def test_apply_mode_resolution_continue_training_loads_origin_and_applies_sparse_overrides(tmp_path: Path, settings):
     origin_run_dir = tmp_path / "origin_run"
     origin_run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -437,7 +437,7 @@ def test_apply_mode_resolution_continue_training_loads_origin_and_applies_sparse
 
 
 
-def test_resolve_config_continue_training_requires_load_model_section(tmp_path: Path):
+def test_resolve_config_continue_training_requires_load_model_section(tmp_path: Path, settings):
     exp_cfg = tmp_path / "exp_invalid_continue.yml"
     save_yaml(
         {
@@ -451,7 +451,7 @@ def test_resolve_config_continue_training_requires_load_model_section(tmp_path: 
 
 
 
-def test_resolve_config_continue_training_forbids_exp_name_override(tmp_path: Path):
+def test_resolve_config_continue_training_forbids_exp_name_override(tmp_path: Path, settings):
     exp_cfg = tmp_path / "exp_continue_with_name.yml"
     save_yaml(
         {
@@ -470,7 +470,7 @@ def test_resolve_config_continue_training_forbids_exp_name_override(tmp_path: Pa
 
 
 
-def test_resolve_config_continue_training_forbids_loss_function_override(tmp_path: Path):
+def test_resolve_config_continue_training_forbids_loss_function_override(tmp_path: Path, settings):
     exp_cfg = tmp_path / "exp_continue_with_loss.yml"
     save_yaml(
         {
@@ -490,7 +490,7 @@ def test_resolve_config_continue_training_forbids_loss_function_override(tmp_pat
 
 
 
-def test_resolve_config_retrain_allows_data_and_normalization_overrides(tmp_path: Path):
+def test_resolve_config_retrain_allows_data_and_normalization_overrides(tmp_path: Path, settings):
     origin_run_dir = tmp_path / "origin_run"
     origin_run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -570,7 +570,7 @@ def test_prune_config_for_saving_drops_train_only_and_disabled_sections():
     assert "tensorboard" not in out
 
 
-def test_resolve_config_dict_matches_file_based_resolution(tmp_path: Path):
+def test_resolve_config_dict_matches_file_based_resolution(tmp_path: Path, settings):
     origin_run_dir = tmp_path / "origin_run"
     origin_run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -604,7 +604,7 @@ def test_resolve_config_dict_matches_file_based_resolution(tmp_path: Path):
     assert resolved_from_dict.model_dump() == resolved_from_file.model_dump()
 
 
-def test_resolve_config_continue_training_auto_selects_safe_checkpoint_and_forces_state_dict(tmp_path: Path):
+def test_resolve_config_continue_training_auto_selects_safe_checkpoint_and_forces_state_dict(tmp_path: Path, settings):
     origin_run_dir = tmp_path / "origin_run"
     origin_run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -656,7 +656,7 @@ def test_resolve_config_continue_training_auto_selects_safe_checkpoint_and_force
 def test_resolve_config_continue_training_uses_project_recovery_defaults_when_origin_has_none(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+ settings):
     origin_run_dir = tmp_path / "origin_run"
     origin_run_dir.mkdir(parents=True, exist_ok=True)
 

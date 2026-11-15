@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from lisai.config.settings import load_default_settings
+
 from lisai.config.json_schema import (
     write_continue_training_json_schema,
     write_experiment_json_schema,
@@ -23,8 +25,12 @@ def main():
         write_retrain_json_schema,
     ]
 
+    selected = load_default_settings()
     for writer, output_path in zip(writers, outputs, strict=True):
-        writer(output_path)
+        if writer is write_continue_training_json_schema:
+            writer(output_path)
+        else:
+            writer(output_path, stg=selected)
         print(output_path)
 
 

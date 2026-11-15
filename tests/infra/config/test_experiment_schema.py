@@ -77,8 +77,8 @@ def test_current_upsamp_yaml_validates_timelapse_context_channels():
 
 
 
-def test_experiment_json_schema_describes_train_authoring_shape_only():
-    schema = experiment_json_schema()
+def test_experiment_json_schema_describes_train_authoring_shape_only(settings):
+    schema = experiment_json_schema(stg=settings)
 
     data_ref = schema["properties"]["data"]["$ref"].split("/")[-1]
     data_properties = schema["$defs"][data_ref]["properties"]
@@ -107,8 +107,8 @@ def test_continue_training_json_schema_only_exposes_resume_specific_roots():
 
 
 
-def test_retrain_json_schema_exposes_transfer_learning_roots_but_not_model():
-    schema = retrain_json_schema()
+def test_retrain_json_schema_exposes_transfer_learning_roots_but_not_model(settings):
+    schema = retrain_json_schema(stg=settings)
     properties = schema["properties"]
 
     assert "experiment" in properties
@@ -122,7 +122,7 @@ def test_retrain_json_schema_exposes_transfer_learning_roots_but_not_model():
 
 
 
-def test_write_training_json_schemas_write_json_files(tmp_path: Path):
+def test_write_training_json_schemas_write_json_files(tmp_path: Path, settings):
     outputs = [
         (write_experiment_json_schema, tmp_path / "experiment.schema.json", "ExperimentConfig"),
         (
@@ -135,14 +135,15 @@ def test_write_training_json_schemas_write_json_files(tmp_path: Path):
     ]
 
     for writer, output_path, expected_title in outputs:
-        written_path = writer(output_path)
+        written_path = (writer(output_path) if writer is write_continue_training_json_schema
+                        else writer(output_path, stg=settings))
         assert written_path == output_path
         data = json.loads(output_path.read_text(encoding="utf-8"))
         assert data["title"] == expected_title
 
 
-def test_training_schema_exposes_new_controls_and_deprecates_val_loss_patience():
-    schema = experiment_json_schema()
+def test_training_schema_exposes_new_controls_and_deprecates_val_loss_patience(settings):
+    schema = experiment_json_schema(stg=settings)
     training_ref = schema["properties"]["training"]["$ref"].split("/")[-1]
     training_properties = schema["$defs"][training_ref]["properties"]
 
@@ -153,8 +154,8 @@ def test_training_schema_exposes_new_controls_and_deprecates_val_loss_patience()
     assert training_properties["val_loss_patience"].get("deprecated") is True
 
 
-def test_experiment_template_schema_allows_placeholders():
-    schema = experiment_template_json_schema()
+def test_experiment_template_schema_allows_placeholders(settings):
+    schema = experiment_template_json_schema(stg=settings)
 
     assert schema["title"] == "ExperimentTemplateConfig"
     assert "metadata" in schema["properties"]
@@ -166,7 +167,7 @@ def test_experiment_template_schema_allows_placeholders():
 
 def test_experiment_schema_adds_registry_dataset_suggestions_and_conditions(
     monkeypatch: pytest.MonkeyPatch,
-):
+ settings):
     monkeypatch.setattr(
         experiment_schema_mod,
         "_load_dataset_registry_for_schema",
@@ -180,7 +181,7 @@ def test_experiment_schema_adds_registry_dataset_suggestions_and_conditions(
         },
     )
 
-    schema = experiment_json_schema()
+    schema = experiment_json_schema(stg=settings)
     data_ref = schema["properties"]["data"]["$ref"].split("/")[-1]
     data_properties = schema["$defs"][data_ref]["properties"]
     dataset_name_schema = data_properties["dataset_name"]
@@ -209,14 +210,14 @@ def test_experiment_schema_adds_registry_dataset_suggestions_and_conditions(
 
 def test_experiment_schema_requires_unprepared_training_for_unknown_registry_dataset(
     monkeypatch: pytest.MonkeyPatch,
-):
+ settings):
     monkeypatch.setattr(
         experiment_schema_mod,
         "_load_dataset_registry_for_schema",
         lambda *, stg: {"demo": _registry_entry(inputs=["inp"])},
     )
 
-    schema = experiment_json_schema()
+    schema = experiment_json_schema(stg=settings)
     unknown_condition = schema["allOf"][-1]
 
     dataset_name_schema = unknown_condition["if"]["properties"]["data"]["properties"]["dataset_name"]
@@ -227,14 +228,14 @@ def test_experiment_schema_requires_unprepared_training_for_unknown_registry_dat
 
 def test_experiment_template_schema_does_not_apply_unknown_dataset_rule_to_placeholders(
     monkeypatch: pytest.MonkeyPatch,
-):
+ settings):
     monkeypatch.setattr(
         experiment_schema_mod,
         "_load_dataset_registry_for_schema",
         lambda *, stg: {"demo": _registry_entry(inputs=["inp"])},
     )
 
-    schema = experiment_template_json_schema()
+    schema = experiment_template_json_schema(stg=settings)
     unknown_condition = schema["allOf"][-1]
     dataset_name_schema = unknown_condition["if"]["properties"]["data"]["properties"]["dataset_name"]
 

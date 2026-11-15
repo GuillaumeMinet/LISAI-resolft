@@ -7,7 +7,6 @@ import pytest
 
 import lisai.training.run_training as run_training_mod
 from lisai.config.models.inference import EvaluateDefaults
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.training.orchestration import post_training as post_training_mod
 from lisai.training.orchestration import run_monitor as run_monitor_mod
@@ -98,7 +97,7 @@ def _make_cfg(*, post_training_inference: bool = False):
     )
 
 
-def _make_runtime(*, writer, logger, run_dir: Path):
+def _make_runtime(*, writer, logger, run_dir: Path, settings):
     return SimpleNamespace(
         device="cpu",
         run_dir=run_dir,
@@ -121,11 +120,11 @@ def _make_prepared_data():
     )
 
 
-def test_run_training_happy_path_builds_and_trains(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_happy_path_builds_and_trains(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "run_a")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "run_a")
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("completed", last_completed_epoch=0))
     captured = {}
@@ -183,11 +182,11 @@ def test_run_training_applies_progress_bar_preference(monkeypatch: pytest.Monkey
 def test_run_training_does_not_remap_unexpected_trainer_exceptions(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "run_b")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "run_b")
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(raise_on_train=RuntimeError("boom"))
 
@@ -213,11 +212,11 @@ def test_run_training_does_not_remap_unexpected_trainer_exceptions(
 def test_run_training_logs_traceback_for_outer_orchestration_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "run_outer_boom")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "run_outer_boom")
 
     fake_setup = SimpleNamespace(
         prepare_data=lambda c, x: (_ for _ in ()).throw(RuntimeError("prepare boom")),
@@ -240,12 +239,12 @@ def test_run_training_logs_traceback_for_outer_orchestration_failure(
     assert metadata.failure_reason == "RuntimeError: prepare boom"
 
 
-def test_run_training_auto_saves_loss_plot_on_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_auto_saves_loss_plot_on_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_saved"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("completed", last_completed_epoch=1))
     captured = {}
@@ -277,12 +276,12 @@ def test_run_training_auto_saves_loss_plot_on_completion(monkeypatch: pytest.Mon
 def test_run_training_auto_saves_loss_plot_on_interrupted_outcome(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_interrupt_saved"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("interrupted", last_completed_epoch=1))
     calls = []
@@ -313,12 +312,12 @@ def test_run_training_auto_saves_loss_plot_on_interrupted_outcome(
 def test_run_training_skips_auto_loss_plot_on_outer_keyboard_interrupt_exception(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_interrupt_exception"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     calls = []
 
     fake_setup = SimpleNamespace(
@@ -348,12 +347,12 @@ def test_run_training_skips_auto_loss_plot_on_outer_keyboard_interrupt_exception
 def test_run_training_auto_saves_loss_plot_on_failure_and_reraises(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_failure_saved"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(
         outcome=_outcome(
@@ -390,11 +389,11 @@ def test_run_training_auto_saves_loss_plot_on_failure_and_reraises(
 def test_run_training_auto_save_failure_does_not_break_training(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "run_plot_error")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "run_plot_error")
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("completed", last_completed_epoch=1))
 
@@ -419,11 +418,11 @@ def test_run_training_auto_save_failure_does_not_break_training(
     assert any("Automatic loss-plot save failed" in msg for msg in logger.warnings)
 
 
-def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg(post_training_inference=True)
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_c")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_c")
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("completed", last_completed_epoch=12))
     captured = {}
@@ -442,7 +441,7 @@ def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatc
     monkeypatch.setattr(
         post_training_mod,
         "resolve_evaluate_config",
-        lambda *, config: captured.update({"config": config}) or eval_cfg,
+        lambda *, config, stg: captured.update({"config": config, "settings": stg}) or eval_cfg,
     )
     monkeypatch.setattr(post_training_mod, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
@@ -450,7 +449,9 @@ def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatc
 
     assert captured == {
         "config": "post_training",
+        "settings": runtime.paths.settings,
         "cfg": eval_cfg,
+        "paths": runtime.paths,
         "dataset_name": "dataset_a",
         "model_name": "run_c",
         "model_subfolder": "Upsamp",
@@ -458,11 +459,11 @@ def test_run_training_triggers_post_training_evaluation_on_completion(monkeypatc
     }
 
 
-def test_run_training_prompts_before_post_training_evaluation_on_interrupt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_prompts_before_post_training_evaluation_on_interrupt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg(post_training_inference=True)
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_d")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_d")
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("interrupted", last_completed_epoch=4))
     captured = {}
@@ -482,7 +483,7 @@ def test_run_training_prompts_before_post_training_evaluation_on_interrupt(monke
     monkeypatch.setattr(
         post_training_mod,
         "resolve_evaluate_config",
-        lambda *, config: captured.update({"config": config}) or eval_cfg,
+        lambda *, config, stg: captured.update({"config": config, "settings": stg}) or eval_cfg,
     )
     monkeypatch.setattr(post_training_mod, "run_evaluate", lambda **kwargs: captured.update(kwargs))
 
@@ -493,11 +494,11 @@ def test_run_training_prompts_before_post_training_evaluation_on_interrupt(monke
     assert captured["cfg"] is eval_cfg
 
 
-def test_run_training_skips_post_training_evaluation_when_interrupt_prompt_declined(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_skips_post_training_evaluation_when_interrupt_prompt_declined(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg(post_training_inference=True)
     writer = DummyWriter()
     logger = DummyLogger()
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_e")
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=tmp_path / "runs" / "dataset_a" / "Upsamp" / "run_e")
     prepared_data = _make_prepared_data()
     trainer = DummyTrainer(outcome=_outcome("interrupted", last_completed_epoch=4))
     calls = []
@@ -520,12 +521,12 @@ def test_run_training_skips_post_training_evaluation_when_interrupt_prompt_decli
     assert calls == []
 
 
-def test_run_training_writes_and_finalizes_run_metadata_on_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_writes_and_finalizes_run_metadata_on_completion(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_complete"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
     fake_setup = SimpleNamespace(
@@ -571,12 +572,12 @@ def test_run_training_writes_and_finalizes_run_metadata_on_completion(monkeypatc
     assert metadata.ended_at is not None
 
 
-def test_run_training_finalizes_run_metadata_as_stopped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_finalizes_run_metadata_as_stopped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_stopped"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
     fake_setup = SimpleNamespace(
@@ -604,12 +605,12 @@ def test_run_training_finalizes_run_metadata_as_stopped(monkeypatch: pytest.Monk
     assert metadata.ended_at is not None
 
 
-def test_run_training_finalizes_run_metadata_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_run_training_finalizes_run_metadata_as_failed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_failed"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
     fake_setup = SimpleNamespace(
@@ -645,12 +646,12 @@ def test_run_training_finalizes_run_metadata_as_failed(monkeypatch: pytest.Monke
 
 def test_run_training_persists_peak_gpu_memory_stats_when_cuda_available(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+, settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_cuda"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     runtime.device = SimpleNamespace(type="cuda", index=0)
     prepared_data = _make_prepared_data()
 
@@ -699,12 +700,12 @@ def test_run_training_persists_peak_gpu_memory_stats_when_cuda_available(
 def test_run_training_does_not_retry_retryable_hdn_divergence(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-):
+ settings):
     cfg = _make_cfg()
     writer = DummyWriter()
     logger = DummyLogger()
     run_dir = tmp_path / "datasets" / "dataset_a" / "runs" / "Upsamp" / "run_retry"
-    runtime = _make_runtime(writer=writer, logger=logger, run_dir=run_dir)
+    runtime = _make_runtime(settings=settings, writer=writer, logger=logger, run_dir=run_dir)
     prepared_data = _make_prepared_data()
 
     trainer = DummyTrainer(

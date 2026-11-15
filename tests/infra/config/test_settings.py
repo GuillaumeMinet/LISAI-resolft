@@ -133,11 +133,15 @@ def test_two_independent_settings_trees(settings_factory):
     assert Paths(a).dataset_registry_path() == paths_a.dataset_registry_path()
 
 
-def test_explicit_settings_preserve_default_legacy_results():
-    from lisai.config.settings import load_default_settings, settings as legacy
+def test_explicit_settings_preserve_default_legacy_results(settings, monkeypatch):
+    from lisai.config.settings import load_default_settings
     from lisai.config.io.resolver import resolve_config_dict
     from lisai.infra.paths import Paths
 
+    import lisai.config.settings as settings_mod
+
+    legacy = settings
+    monkeypatch.setattr(settings_mod, "_legacy_checkout_configs_root", lambda: legacy.CONFIGS_ROOT)
     explicit = Settings.from_config_dir(legacy.CONFIGS_ROOT)
     reloaded = load_default_settings()
     assert reloaded is not legacy and reloaded is not explicit

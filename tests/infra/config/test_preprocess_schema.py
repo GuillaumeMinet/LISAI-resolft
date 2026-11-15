@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.config.json_schema import preprocess_json_schema, write_preprocess_json_schema
 from lisai.preprocess.core import PreprocessConfig
 from lisai.preprocess.pipelines import PIPELINES_REGISTRY
@@ -23,7 +23,7 @@ def _condition_for_pipeline(schema: dict, pipeline_name: str) -> dict:
 
 
 def test_preprocess_yaml_example_validates_against_preprocess_config_model():
-    cfg = load_yaml(Path("configs/preprocess/preprocess.yml"))
+    cfg = load_yaml(Path("configs/preprocess/single.yml"))
 
     validated = PreprocessConfig.model_validate(cfg)
 
@@ -31,8 +31,8 @@ def test_preprocess_yaml_example_validates_against_preprocess_config_model():
     assert validated.pipeline
 
 
-def test_preprocess_json_schema_exposes_described_pipeline_specific_branches():
-    schema = preprocess_json_schema()
+def test_preprocess_json_schema_exposes_described_pipeline_specific_branches(settings):
+    schema = preprocess_json_schema(stg=settings)
 
     assert schema["properties"]["pipeline"]["enum"] == sorted(PIPELINES_REGISTRY)
     assert schema["properties"]["data_type"]["enum"] == sorted(settings.data_cfg.data_types)
@@ -89,10 +89,10 @@ def test_preprocess_json_schema_exposes_described_pipeline_specific_branches():
     assert schema["$defs"]["PreprocessLogConfig"]["properties"]["enabled"]["description"]
 
 
-def test_write_preprocess_json_schema_writes_json_file(tmp_path: Path):
+def test_write_preprocess_json_schema_writes_json_file(tmp_path: Path, settings):
     output_path = tmp_path / "preprocess.schema.json"
 
-    written_path = write_preprocess_json_schema(output_path)
+    written_path = write_preprocess_json_schema(output_path, stg=settings)
 
     assert written_path == output_path
     data = json.loads(output_path.read_text(encoding="utf-8"))

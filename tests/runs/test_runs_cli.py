@@ -10,7 +10,6 @@ from lisai.infra.fs.run_naming import parse_run_dir_name
 import lisai.runs.cli as runs_cli
 import lisai.runs.listing as runs_listing
 from lisai.cli import main as root_main
-from lisai.config import settings
 from lisai.runs.io import write_run_metadata_atomic
 from lisai.runs.scanner import scan_runs
 from lisai.runs.schema import RunMetadata
@@ -303,7 +302,7 @@ def test_runs_list_uses_local_timestamp_formatter(monkeypatch, tmp_path, capsys)
     assert "LOCAL_TS" in captured.out
 
 
-def test_runs_list_marks_old_running_heartbeats_as_stale(monkeypatch, tmp_path, capsys):
+def test_runs_list_marks_old_running_heartbeats_as_stale(monkeypatch, tmp_path, capsys, settings):
     datasets_root = tmp_path / "datasets"
     run_a = datasets_root / "Gag" / "runs" / "HDN" / "run_a"
 
@@ -612,7 +611,7 @@ def test_runs_list_kept_filter_and_marker(monkeypatch, tmp_path, capsys):
     assert "  *  " in kept_line
 
 
-def test_runs_keep_and_unkeep_update_run_metadata(monkeypatch, tmp_path, capsys):
+def test_runs_keep_and_unkeep_update_run_metadata(monkeypatch, tmp_path, capsys, settings):
     datasets_root = tmp_path / "datasets"
     run_dir = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
     _write_metadata(
@@ -637,7 +636,7 @@ def test_runs_keep_and_unkeep_update_run_metadata(monkeypatch, tmp_path, capsys)
     assert "Unkept run: beta_00" in capsys.readouterr().out
 
 
-def test_runs_prune_archives_unkept_terminal_runs_locally(monkeypatch, tmp_path, capsys):
+def test_runs_prune_archives_unkept_terminal_runs_locally(monkeypatch, tmp_path, capsys, settings):
     datasets_root = tmp_path / "datasets"
     parent = datasets_root / "Gag" / "runs" / "HDN" / "ablation"
     candidate = parent / "beta_00"

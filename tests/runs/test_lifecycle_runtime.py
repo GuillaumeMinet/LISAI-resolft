@@ -62,7 +62,7 @@ def test_update_run_runtime_details_sets_signature_and_peak(tmp_path):
     assert metadata.status == "running"
 
 
-def test_create_run_metadata_persists_code_state(monkeypatch, tmp_path):
+def test_create_run_metadata_persists_code_state(monkeypatch, tmp_path, settings):
     run_dir = tmp_path / "demo_00"
     expected = CodeState(
         git_commit="abc1234def5678",
@@ -73,7 +73,6 @@ def test_create_run_metadata_persists_code_state(monkeypatch, tmp_path):
     )
     monkeypatch.setattr("lisai.runs.lifecycle.collect_code_state", lambda *, paths: expected)
 
-    from lisai.config import settings
     from lisai.infra.paths import Paths
     create_run_metadata(run_dir, dataset="Gag", model_subfolder="HDN", max_epoch=10, paths=Paths(settings))
     metadata = read_run_metadata(run_dir)

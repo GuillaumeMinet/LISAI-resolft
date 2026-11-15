@@ -13,7 +13,7 @@ from lisai.data.dataset_registry import (
     registry_value_for_data_type,
 )
 from lisai.infra.paths import Paths
-from lisai.config.settings import Settings, load_default_settings
+from lisai.config.settings import Settings
 
 from ..models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
 
@@ -48,17 +48,15 @@ class _RegistryDatasetSchema:
     data_formats: set[str] = field(default_factory=set)
 
 
-def experiment_json_schema(*, stg: Settings | None = None) -> dict:
-    selected = load_default_settings() if stg is None else stg
+def experiment_json_schema(*, stg: Settings) -> dict:
     return _with_registry_awareness(
-        _with_catalog_metadata(ExperimentConfig.model_json_schema()), stg=selected,
+        _with_catalog_metadata(ExperimentConfig.model_json_schema()), stg=stg,
     )
 
 
-def experiment_template_json_schema(*, stg: Settings | None = None) -> dict:
-    selected = load_default_settings() if stg is None else stg
+def experiment_template_json_schema(*, stg: Settings) -> dict:
     schema = _relax_placeholders(_with_catalog_metadata(ExperimentConfig.model_json_schema()))
-    schema = _with_registry_awareness(schema, allow_placeholders=True, stg=selected)
+    schema = _with_registry_awareness(schema, allow_placeholders=True, stg=stg)
     schema["title"] = "ExperimentTemplateConfig"
     schema["description"] = (
         "Relaxed training config schema for editable templates. Placeholder strings such as "
@@ -71,15 +69,14 @@ def continue_training_json_schema() -> dict:
     return _with_catalog_metadata(ContinueTrainingConfig.model_json_schema())
 
 
-def retrain_json_schema(*, stg: Settings | None = None) -> dict:
-    selected = load_default_settings() if stg is None else stg
+def retrain_json_schema(*, stg: Settings) -> dict:
     return _with_registry_awareness(
-        _with_catalog_metadata(RetrainConfig.model_json_schema()), stg=selected,
+        _with_catalog_metadata(RetrainConfig.model_json_schema()), stg=stg,
     )
 
 
 def write_experiment_json_schema(
-    output_path: str | Path, *, stg: Settings | None = None,
+    output_path: str | Path, *, stg: Settings,
 ) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,7 +86,7 @@ def write_experiment_json_schema(
 
 
 def write_experiment_template_json_schema(
-    output_path: str | Path, *, stg: Settings | None = None,
+    output_path: str | Path, *, stg: Settings,
 ) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,7 +104,7 @@ def write_continue_training_json_schema(output_path: str | Path) -> Path:
 
 
 def write_retrain_json_schema(
-    output_path: str | Path, *, stg: Settings | None = None,
+    output_path: str | Path, *, stg: Settings,
 ) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

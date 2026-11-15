@@ -112,9 +112,7 @@ def test_existing_local_config_gets_schema_hint_without_rewriting_values(tmp_pat
     )
 
 
-def test_local_inference_dir_overrides_project_root(tmp_path: Path):
-    from lisai.config import settings as global_settings
-
+def test_local_inference_dir_overrides_project_root(tmp_path: Path, global_settings):
     settings = Settings.__new__(Settings)
     settings.PROJECT_ROOT = tmp_path
     settings.project_cfg = global_settings.project_cfg
@@ -133,9 +131,7 @@ def test_local_inference_dir_overrides_project_root(tmp_path: Path):
     assert Path(ctx.paths.roots.inference_dir) == (tmp_path / "custom_predictions").resolve()
 
 
-def test_default_local_inference_dir_uses_project_inference_root(tmp_path: Path):
-    from lisai.config import settings as global_settings
-
+def test_default_local_inference_dir_uses_project_inference_root(tmp_path: Path, global_settings):
     settings = Settings.__new__(Settings)
     settings.PROJECT_ROOT = tmp_path
     settings.project_cfg = global_settings.project_cfg

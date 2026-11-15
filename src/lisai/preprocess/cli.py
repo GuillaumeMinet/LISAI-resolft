@@ -52,16 +52,15 @@ def _confirm_overwrite(
 def run_preprocess_config(
     config_path: str | Path,
     *,
-    paths: Paths | None = None,
+    paths: Paths,
     reporter: PreprocessReporter | None = None,
     input_fn: Callable[[str], str] = input,
     interactive: bool | None = None,
 ):
     cfg = load_yaml(config_path)
-    runtime_paths = Paths(load_default_settings()) if paths is None else paths
     active_reporter = ConsolePreprocessReporter() if reporter is None else reporter
 
-    run = PreprocessRun.from_cfg(cfg, paths=runtime_paths)
+    run = PreprocessRun.from_cfg(cfg, paths=paths)
     existing_output = run.existing_output()
 
     overwrite = False

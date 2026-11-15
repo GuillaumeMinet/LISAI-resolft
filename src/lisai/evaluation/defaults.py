@@ -9,7 +9,7 @@ from typing import Any, Literal, Mapping
 from lisai.config import load_yaml
 from lisai.config.io import deep_merge
 from lisai.config.io.config_paths import ConfigPathResolver
-from lisai.config.settings import Settings, load_default_settings
+from lisai.config.settings import Settings
 from lisai.config.models.inference import (
     ApplyDefaults,
     ApplyOutputMode,
@@ -37,14 +37,13 @@ class ApplyOutputPolicy:
 
 
 def resolve_inference_config_path(
-    config_arg: str | Path | None, *, stg: Settings | None = None,
+    config_arg: str | Path | None, *, stg: Settings,
 ) -> Path | None:
-    selected = load_default_settings() if stg is None else stg
-    return ConfigPathResolver("inference", stg=selected).resolve(config_arg)
+    return ConfigPathResolver("inference", stg=stg).resolve(config_arg)
 
 
 def load_inference_config(
-    config_arg: str | Path | None = None, *, stg: Settings | None = None,
+    config_arg: str | Path | None = None, *, stg: Settings,
 ) -> tuple[InferenceOverrides, Path | None]:
     cfg_path = resolve_inference_config_path(config_arg, stg=stg)
     if cfg_path is None:
@@ -268,10 +267,9 @@ def resolve_apply_config(
     model_config: str | Path | None = None,
     config: str | Path | None = None,
     overrides: ApplyOverrides | None = None,
-    stg=None,
+    stg: Settings,
 ) -> ApplyDefaults:
     """Resolve one apply invocation to the complete typed runtime config."""
-    stg = load_default_settings() if stg is None else stg
     model_section = _explicit_model_section(model_config, "apply", stg=stg)
     selected_section = (
         _explicit_selected_section(config, "apply", stg=stg) if config is not None else None
@@ -336,10 +334,9 @@ def resolve_evaluate_config(
     *,
     config: str | Path | None = None,
     overrides: EvaluateOverrides | None = None,
-    stg: Settings | None = None,
+    stg: Settings,
 ) -> EvaluateDefaults:
     """Resolve one evaluate invocation to the canonical typed nested config."""
-    stg = load_default_settings() if stg is None else stg
     selected_section = (
         _explicit_selected_section(config, "evaluate", stg=stg) if config is not None else None
     )
@@ -362,9 +359,8 @@ def resolve_evaluate_config(
 
 
 def load_inference_defaults(
-    path: str | Path | None = None, *, stg: Settings | None = None,
+    path: str | Path | None = None, *, stg: Settings,
 ) -> ResolvedInferenceConfig:
-    stg = load_default_settings() if stg is None else stg
     resolved = ResolvedInferenceConfig().model_dump()
     if path is None:
         cfg, cfg_path = load_inference_config(None, stg=stg)

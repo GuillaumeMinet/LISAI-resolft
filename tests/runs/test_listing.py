@@ -6,7 +6,6 @@ import re
 
 import pytest
 
-from lisai.config import settings
 from lisai.runs.listing import (
     display_run_status,
     is_run_likely_active,

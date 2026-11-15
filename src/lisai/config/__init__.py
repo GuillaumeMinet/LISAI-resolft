@@ -8,7 +8,6 @@ from .models import (
     ResolvedExperiment,
     RetrainConfig,
 )
-from .settings import settings
 
 _JSON_SCHEMA_EXPORTS = {
     "continue_training_json_schema",
@@ -32,7 +31,6 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 __all__ = [
-    "settings",
     "resolve_config",
     "resolve_config_dict",
     "prune_config_for_saving",

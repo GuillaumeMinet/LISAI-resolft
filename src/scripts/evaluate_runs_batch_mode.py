@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from lisai.config.models.inference import EvaluateDefaults, EvaluateOverrides
-from lisai.config.settings import settings
+from lisai.config.settings import load_default_settings
 from lisai.evaluation.defaults import resolve_evaluate_config
 from lisai.evaluation.run_evaluate import run_evaluate
 from lisai.infra.paths import Paths
@@ -60,8 +60,8 @@ class PlannedEvaluation:
 
 
 def main() -> int:
-    paths = Paths(settings)
-    base_cfg = _resolve_base_config()
+    paths = Paths(load_default_settings())
+    base_cfg = _resolve_base_config(stg=paths.settings)
     run_dirs = _discover_run_dirs(paths)
 
     if not run_dirs:
@@ -96,6 +96,7 @@ def main() -> int:
                 model_name=item.run_dir.name,
                 evaluation_dataset_name=evaluation_dataset_name,
                 progress_bar=progress_bar,
+                paths=paths,
             )
         except Exception as exc:
             print(f"FAILED: {item.run_dir.name}: {type(exc).__name__}: {exc}")
@@ -113,10 +114,11 @@ def main() -> int:
     return 0
 
 
-def _resolve_base_config() -> EvaluateDefaults:
+def _resolve_base_config(*, stg) -> EvaluateDefaults:
     cfg = resolve_evaluate_config(
         config=_normalized_inference_config(),
         overrides=_script_overrides(),
+        stg=stg,
     )
     if common_save_location:
         if common_save_folder is None or str(common_save_folder).strip() == "":

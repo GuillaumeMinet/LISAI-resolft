@@ -28,7 +28,8 @@ _SRC_ROOT = Path(__file__).resolve().parents[1]
 if str(_SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(_SRC_ROOT))
 
-from lisai.config import prune_config_for_saving, save_yaml, settings
+from lisai.config import prune_config_for_saving, save_yaml
+from lisai.config.settings import load_default_settings
 from lisai.config.models import ResolvedExperiment
 from lisai.infra.fs import ensure_folder
 from lisai.infra.fs.run_naming import parse_run_dir_name
@@ -125,27 +126,27 @@ def main() -> int:
         copy_small_legacy_artifacts=bool(COPY_SMALL_LEGACY_ARTIFACTS),
     )
 
+    paths = Paths(load_default_settings())
     try:
-        plan = build_import_plan(job)
+        plan = build_import_plan(job, paths=paths)
     except Exception as exc:
         print(f"Preflight failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
-    print_import_plan(plan)
+    print_import_plan(plan, paths=paths)
     if job.dry_run:
         print("\nDRY_RUN=True: no files were written.")
         return 0
 
-    execute_import(plan)
+    execute_import(plan, paths=paths)
     print(f"\nImported legacy run into: {plan.target_run_dir}")
     return 0
 
 
-def build_import_plan(job: LegacyImportJob) -> ImportPlan:
-    job = _normalize_job_settings(job)
+def build_import_plan(job: LegacyImportJob, *, paths: Paths) -> ImportPlan:
+    job = _normalize_job_settings(job, paths=paths)
     _validate_job_settings(job)
 
-    paths = Paths(settings)
     legacy_cfg = _load_legacy_config(job.legacy_model_path)
     target_run_dir = paths.run_dir(
         dataset_name=job.target_dataset,
@@ -161,6 +162,7 @@ def build_import_plan(job: LegacyImportJob) -> ImportPlan:
         target_dataset=job.target_dataset,
         target_model_subfolder=job.target_model_subfolder,
         target_run_name=job.target_run_name,
+        paths=paths,
     )
     resolved_cfg = ResolvedExperiment.model_validate(current_cfg)
     model_spec = build_model_spec(legacy_cfg)
@@ -220,14 +222,14 @@ def _validate_job_settings(job: LegacyImportJob):
         )
 
 
-def _normalize_job_settings(job: LegacyImportJob) -> LegacyImportJob:
+def _normalize_job_settings(job: LegacyImportJob, *, paths: Paths) -> LegacyImportJob:
     return LegacyImportJob(
         legacy_model_path=job.legacy_model_path,
         target_dataset=_normalize_required_folder_name(
             job.target_dataset,
             field_name="TARGET_DATASET",
         ),
-        target_model_subfolder=_normalize_target_model_subfolder(job.target_model_subfolder),
+        target_model_subfolder=_normalize_target_model_subfolder(job.target_model_subfolder, paths=paths),
         target_run_name=_normalize_required_folder_name(
             job.target_run_name,
             field_name="TARGET_RUN_NAME",
@@ -246,13 +248,13 @@ def _normalize_required_folder_name(value: str, *, field_name: str) -> str:
     return text
 
 
-def _normalize_target_model_subfolder(value: str) -> str:
+def _normalize_target_model_subfolder(value: str, *, paths: Paths) -> str:
     normalized = normalize_model_subfolder(value)
     if normalized is None:
         return ""
 
     first_part = normalized.split("/", 1)[0].lower()
-    current_run_container = Paths(settings).run_container_dirname().lower()
+    current_run_container = paths.run_container_dirname().lower()
     stale_containers = {"models", current_run_container}
     if first_part in stale_containers:
         raise ValueError(
@@ -277,12 +279,13 @@ def translate_legacy_config(
     target_dataset: str,
     target_model_subfolder: str,
     target_run_name: str,
+    paths: Paths,
 ) -> dict[str, Any]:
     target_dataset = _normalize_required_folder_name(
         target_dataset,
         field_name="target_dataset",
     )
-    target_model_subfolder = _normalize_target_model_subfolder(target_model_subfolder)
+    target_model_subfolder = _normalize_target_model_subfolder(target_model_subfolder, paths=paths)
     target_run_name = _normalize_required_folder_name(
         target_run_name,
         field_name="target_run_name",
@@ -728,8 +731,7 @@ def build_import_metadata(
         ),
     )
 
-def execute_import(plan: ImportPlan):
-    paths = Paths(settings)
+def execute_import(plan: ImportPlan, *, paths: Paths):
     if plan.target_run_dir.exists():
         raise FileExistsError(f"Target run folder already exists: {plan.target_run_dir}")
 
@@ -829,7 +831,7 @@ def _copy_legacy_origin_artifacts(
         handle.write("\n")
 
 
-def print_import_plan(plan: ImportPlan):
+def print_import_plan(plan: ImportPlan, *, paths: Paths):
     print("Legacy import preflight succeeded.")
     print(f"  Source: {plan.job.legacy_model_path}")
     print(f"  Target: {plan.target_run_dir}")
@@ -849,7 +851,7 @@ def print_import_plan(plan: ImportPlan):
             f" (epoch={checkpoint.epoch})"
         )
     if plan.model_spec.noise_model_name:
-        nm_path = Paths(settings).noise_model_path(noiseModel_name=plan.model_spec.noise_model_name)
+        nm_path = paths.noise_model_path(noiseModel_name=plan.model_spec.noise_model_name)
         print(f"  Noise model: {plan.model_spec.noise_model_name} ({nm_path})")
 
 

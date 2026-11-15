@@ -4,7 +4,6 @@ import importlib
 import inspect
 from pathlib import Path
 from lisai.infra.paths import Paths
-from lisai.config import settings as legacy_settings
 from types import SimpleNamespace
 
 from lisai.config.models.inference import EvaluateDefaults
@@ -116,7 +115,7 @@ def test_format_eval_gt_for_display_handles_special_values():
     assert _format_eval_gt_for_display("gt_avg") == "gt_avg"
 
 
-def test_run_evaluate_default_tiling_policy_reaches_single_evaluation(monkeypatch, tmp_path: Path):
+def test_run_evaluate_default_tiling_policy_reaches_single_evaluation(monkeypatch, tmp_path: Path, settings):
     captured = {}
     saved_run = object()
 
@@ -132,7 +131,7 @@ def test_run_evaluate_default_tiling_policy_reaches_single_evaluation(monkeypatc
         EvaluateDefaults(),
         dataset_name="dataset_a",
         model_name="model_a",
-     paths=Paths(legacy_settings),)
+     paths=Paths(settings),)
 
     assert captured["cfg"].inference.tiling_size == "auto"
 
@@ -144,7 +143,7 @@ def test_format_tiling_size_for_display_reports_policy_and_effective_size():
     assert _format_tiling_size_for_display("off", None) == "off"
 
 
-def test_run_single_evaluation_reports_effective_auto_tiling_size(monkeypatch, tmp_path: Path, capsys):
+def test_run_single_evaluation_reports_effective_auto_tiling_size(monkeypatch, tmp_path: Path, capsys, settings):
     captured = {}
     saved_run = SimpleNamespace(is_lvae=False, upsampling_factor=1)
 
@@ -173,14 +172,14 @@ def test_run_single_evaluation_reports_effective_auto_tiling_size(monkeypatch, t
         saved_run=saved_run,
         cfg=cfg,
         progress_bar=True,
-     paths=Paths(legacy_settings),)
+     paths=Paths(settings),)
 
     assert captured["tiling_size"] == "auto"
     assert "Tiling size: 300 (auto)" in capsys.readouterr().out
     assert (tmp_path / "eval" / "outputs_manifest.yaml").is_file()
 
 
-def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(monkeypatch, tmp_path: Path):
+def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(monkeypatch, tmp_path: Path, settings):
     captured = {}
     saved_run = SimpleNamespace()
     eval_dataset = EvaluationDatasetSpec(
@@ -211,7 +210,7 @@ def test_run_evaluate_resolves_independent_dataset_and_separates_output_root(mon
         dataset_name='training_dataset',
         model_name='model_a',
         evaluation_dataset_name='eval_dataset',
-     paths=Paths(legacy_settings),)
+     paths=Paths(settings),)
 
     assert captured['output_root'] == tmp_path / 'evaluations'
     assert captured['saved_run'] is saved_run

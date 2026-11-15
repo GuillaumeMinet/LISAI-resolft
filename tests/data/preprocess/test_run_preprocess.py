@@ -7,13 +7,13 @@ import numpy as np
 import pytest
 import tifffile
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.preprocess import PreprocessRun
 from lisai.preprocess.reporting import ConsolePreprocessReporter
 
 
 class DummyPaths:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, settings):
         self.root = root
         self.settings = settings
 
@@ -31,7 +31,7 @@ class DummyPaths:
 
     def preprocess_log_path(self, *, dataset_name: str, data_type: str, usage: str = "training") -> Path:
         key = f"{data_type}_preprocess"
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / settings.data_cfg.logs[key]
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / self.settings.data_cfg.logs[key]
 
     def preprocessed_image_full_path(
         self,
@@ -43,7 +43,7 @@ class DummyPaths:
         usage: str = "training",
         **kwargs,
     ) -> Path:
-        filename = settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
+        filename = self.settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
         return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / additional_subfolder / filename
 
 
@@ -81,7 +81,7 @@ def _single_cfg(dataset_name: str) -> dict:
     }
 
 
-def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
+def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path, settings):
     dataset_name = "SampleDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif", "img_b.tif", "img_c.tif"])
 
@@ -96,7 +96,7 @@ def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
         },
     }
 
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     assert result.n_files == 3
     assert (tmp_path / dataset_name / "preprocess" / "recon" / "train" / "c00.tif").exists()
@@ -140,7 +140,7 @@ def test_preprocess_run_writes_yaml_manifest_and_manual_split(tmp_path: Path):
     assert "train" not in registry[dataset_name]["split"]["recon"]
 
 
-def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path):
+def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path, settings):
     dataset_name = "OverrideDefaultsDataset"
     _write_timelapse_source_dataset(tmp_path, dataset_name, file_name="stack.tif", n_timepoints=4)
 
@@ -165,7 +165,7 @@ def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path):
         "split": {"enabled": False},
     }
 
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     registry = load_yaml(tmp_path / "dataset_registry.yml")
     assert registry[dataset_name]["outputs"]["recon"] == [
@@ -187,7 +187,7 @@ def test_preprocess_run_applies_registry_default_overrides(tmp_path: Path):
     }
 
 
-def test_preprocess_run_reports_progress_and_final_console_summary(tmp_path: Path):
+def test_preprocess_run_reports_progress_and_final_console_summary(tmp_path: Path, settings):
     dataset_name = "ReportedDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif", "img_b.tif", "img_c.tif"])
 
@@ -205,7 +205,7 @@ def test_preprocess_run_reports_progress_and_final_console_summary(tmp_path: Pat
     stream = io.StringIO()
     reporter = ConsolePreprocessReporter(stream=stream)
 
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(reporter=reporter)
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute(reporter=reporter)
 
     assert result.n_files == 3
     output = stream.getvalue()
@@ -221,7 +221,7 @@ def test_preprocess_run_reports_progress_and_final_console_summary(tmp_path: Pat
     assert "test images (1): img_c.tif -> c02.tif" in output
 
 
-def test_preprocess_run_progress_uses_full_timelapse_output_name(tmp_path: Path):
+def test_preprocess_run_progress_uses_full_timelapse_output_name(tmp_path: Path, settings):
     dataset_name = "TimelapseReportedDataset"
     _write_timelapse_source_dataset(
         tmp_path,
@@ -243,7 +243,7 @@ def test_preprocess_run_progress_uses_full_timelapse_output_name(tmp_path: Path)
     stream = io.StringIO()
     reporter = ConsolePreprocessReporter(stream=stream)
 
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(reporter=reporter)
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute(reporter=reporter)
 
     assert result.n_files == 1
     output = stream.getvalue()
@@ -268,7 +268,7 @@ def test_preprocess_run_progress_uses_full_timelapse_output_name(tmp_path: Path)
     }
 
 
-def test_preprocess_run_refuses_to_overwrite_existing_content_without_approval(tmp_path: Path):
+def test_preprocess_run_refuses_to_overwrite_existing_content_without_approval(tmp_path: Path, settings):
     dataset_name = "ExistingDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
     preprocess_dir = tmp_path / dataset_name / "preprocess" / "recon"
@@ -276,26 +276,26 @@ def test_preprocess_run_refuses_to_overwrite_existing_content_without_approval(t
     (preprocess_dir / "stale.txt").write_text("stale", encoding="utf-8")
 
     cfg = _single_cfg(dataset_name)
-    run = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path))
+    run = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings))
 
     with pytest.raises(FileExistsError, match="Existing preprocess output detected"):
         run.execute()
 
 
-def test_preprocess_run_allows_empty_existing_directory(tmp_path: Path):
+def test_preprocess_run_allows_empty_existing_directory(tmp_path: Path, settings):
     dataset_name = "EmptyExistingDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
     preprocess_dir = tmp_path / dataset_name / "preprocess" / "recon"
     preprocess_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = _single_cfg(dataset_name)
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     assert result.n_files == 1
     assert (preprocess_dir / "c00.tif").exists()
 
 
-def test_preprocess_failure_summary_tracks_only_processed_items(tmp_path: Path):
+def test_preprocess_failure_summary_tracks_only_processed_items(tmp_path: Path, settings):
     dataset_name = "BrokenDataset"
     _write_broken_single_source_dataset(tmp_path, dataset_name)
 
@@ -312,7 +312,7 @@ def test_preprocess_failure_summary_tracks_only_processed_items(tmp_path: Path):
 
     stream = io.StringIO()
     reporter = ConsolePreprocessReporter(stream=stream)
-    run = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path))
+    run = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings))
 
     with pytest.raises(ValueError, match="expects 2D images"):
         run.execute(reporter=reporter)
@@ -340,7 +340,7 @@ def test_preprocess_failure_summary_tracks_only_processed_items(tmp_path: Path):
     assert "error: ValueError:" in output
 
 
-def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path):
+def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path, settings):
     source_dataset = "SourceDataset"
     target_dataset = "TargetDataset"
     file_names = ["img_a.tif", "img_b.tif", "img_c.tif"]
@@ -357,7 +357,7 @@ def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path):
             "test": ["img_c.tif"],
         },
     }
-    PreprocessRun.from_cfg(source_cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(source_cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     target_cfg = _single_cfg(target_dataset)
     target_cfg["split"] = {
@@ -370,7 +370,7 @@ def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path):
         },
     }
 
-    result = PreprocessRun.from_cfg(target_cfg, paths=DummyPaths(tmp_path)).execute()
+    result = PreprocessRun.from_cfg(target_cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     assert result.n_files == 3
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "train" / "c00.tif").exists()
@@ -378,7 +378,7 @@ def test_preprocess_run_can_reuse_split_from_existing_manifest(tmp_path: Path):
     assert (tmp_path / target_dataset / "preprocess" / "recon" / "test" / "c02.tif").exists()
 
 
-def test_evaluation_preprocess_is_unsplit_and_records_no_fake_train_split(tmp_path: Path):
+def test_evaluation_preprocess_is_unsplit_and_records_no_fake_train_split(tmp_path: Path, settings):
     dataset_name = "EvaluationDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif", "img_b.tif"])
 
@@ -386,7 +386,7 @@ def test_evaluation_preprocess_is_unsplit_and_records_no_fake_train_split(tmp_pa
     cfg["usage"] = "evaluation"
 
     stream = io.StringIO()
-    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(
+    result = PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute(
         reporter=ConsolePreprocessReporter(stream=stream)
     )
 
@@ -413,22 +413,22 @@ def test_evaluation_preprocess_is_unsplit_and_records_no_fake_train_split(tmp_pa
     assert "test images" not in output
 
 
-def test_evaluation_preprocess_rejects_enabled_split(tmp_path: Path):
+def test_evaluation_preprocess_rejects_enabled_split(tmp_path: Path, settings):
     cfg = _single_cfg("EvaluationDataset")
     cfg["usage"] = "evaluation"
     cfg["split"] = {"enabled": True}
 
     with pytest.raises(ValueError, match="Evaluation datasets cannot be split"):
-        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path))
+        PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings))
 
 
-def test_preprocess_registry_description_initializes_but_does_not_overwrite(tmp_path: Path):
+def test_preprocess_registry_description_initializes_but_does_not_overwrite(tmp_path: Path, settings):
     dataset_name = "DescribedDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
 
     cfg = _single_cfg(dataset_name)
     cfg["registry"] = {"description": "Initial description"}
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     registry_path = tmp_path / "dataset_registry.yml"
     registry = load_yaml(registry_path)
@@ -439,18 +439,18 @@ def test_preprocess_registry_description_initializes_but_does_not_overwrite(tmp_
     save_yaml(registry, registry_path)
 
     cfg["registry"] = {"description": "Preprocess description should not win"}
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute(overwrite=True)
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute(overwrite=True)
 
     registry = load_yaml(registry_path)
     assert registry[dataset_name]["description"] == "Manually edited description"
 
 
-def test_preprocess_does_not_overwrite_existing_readme(tmp_path: Path):
+def test_preprocess_does_not_overwrite_existing_readme(tmp_path: Path, settings):
     dataset_name = "DocumentedDataset"
     _write_single_source_dataset(tmp_path, dataset_name, ["img_a.tif"])
     readme = tmp_path / dataset_name / "README.md"
     readme.write_text("Custom dataset notes.\n", encoding="utf-8")
 
-    PreprocessRun.from_cfg(_single_cfg(dataset_name), paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(_single_cfg(dataset_name), paths=DummyPaths(tmp_path, settings)).execute()
 
     assert readme.read_text(encoding="utf-8") == "Custom dataset notes.\n"

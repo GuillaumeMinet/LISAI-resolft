@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from lisai.infra.paths import Paths
-from lisai.config import settings
 
 import io
 from datetime import timedelta

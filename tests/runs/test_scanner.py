@@ -5,7 +5,6 @@ import json
 from lisai.infra.fs.run_naming import parse_run_dir_name
 from lisai.runs.io import write_run_metadata_atomic
 from lisai.runs.scanner import scan_runs
-from lisai.config import settings
 from lisai.infra.paths import Paths
 from lisai.runs.schema import RunMetadata
 
@@ -43,7 +42,7 @@ def _write_metadata(
     write_run_metadata_atomic(run_dir, RunMetadata.model_validate(payload))
 
 
-def test_scan_runs_discovers_nested_run_directories(tmp_path):
+def test_scan_runs_discovers_nested_run_directories(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     run_a = datasets_root / "Gag" / "runs" / "HDN" / "HDN_Gag_KL07_01"
     run_b = datasets_root / "Gag" / "runs" / "HDN" / "ablationA" / "HDN_Gag_KL07_02"
@@ -85,7 +84,7 @@ def test_scan_runs_discovers_nested_run_directories(tmp_path):
     assert all(run.path_consistent for run in results.runs)
 
 
-def test_scan_runs_skips_invalid_metadata_files(tmp_path):
+def test_scan_runs_skips_invalid_metadata_files(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     valid_run = datasets_root / "Gag" / "runs" / "HDN" / "valid_run"
     invalid_json_run = datasets_root / "Gag" / "runs" / "HDN" / "broken_json"
@@ -115,7 +114,7 @@ def test_scan_runs_skips_invalid_metadata_files(tmp_path):
     assert "schema_validation_error" in kinds
 
 
-def test_scan_runs_marks_path_mismatches_in_discovered_runs(tmp_path):
+def test_scan_runs_marks_path_mismatches_in_discovered_runs(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     run_dir = datasets_root / "Gag" / "runs" / "HDN" / "wrong_path"
 
@@ -136,7 +135,7 @@ def test_scan_runs_marks_path_mismatches_in_discovered_runs(tmp_path):
     assert any(issue.startswith("path_mismatch:") for issue in results.runs[0].consistency_issues)
 
 
-def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
+def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     run_dir = datasets_root / "Gag" / "runs" / "HDN" / "folder_name_00"
 
@@ -157,7 +156,7 @@ def test_scan_runs_accepts_run_id_not_matching_folder_name(tmp_path):
     assert results.runs[0].path_consistent is True
 
 
-def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
+def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     active_run = datasets_root / "Gag" / "runs" / "HDN" / "beta_00"
     archived_run = (
@@ -192,7 +191,7 @@ def test_scan_runs_ignores_runs_below_local_archive_folder(tmp_path):
     assert results.invalid == ()
 
 
-def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, monkeypatch):
+def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, monkeypatch, settings):
     import lisai.runs.scanner as scanner_mod
 
     datasets_root = tmp_path / "datasets"

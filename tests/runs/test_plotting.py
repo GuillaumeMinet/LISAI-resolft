@@ -136,7 +136,7 @@ def test_show_loss_plot_fallback_saves_and_opens_when_backend_non_interactive(tm
     assert opened["value"] is True
 
 
-def test_show_loss_plot_uses_show_with_interactive_backend(tmp_path, monkeypatch):
+def test_show_loss_plot_uses_show_with_interactive_backend(tmp_path, monkeypatch, settings):
     run_dir = tmp_path / "dataset" / "runs" / "Upsamp" / "run_00"
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / "loss.txt").write_text(
@@ -196,7 +196,6 @@ def test_show_loss_plot_uses_show_with_interactive_backend(tmp_path, monkeypatch
     )
 
     stderr = io.StringIO()
-    from lisai.config import settings
     from lisai.infra.paths import Paths
     exit_code = plotting.show_loss_plot_for_run(
         run_dir=run_dir,

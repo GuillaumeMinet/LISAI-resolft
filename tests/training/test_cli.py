@@ -11,15 +11,13 @@ from lisai.config.settings import load_default_settings
 
 
 def test_resolve_config_path_supports_training_subpath():
-    repo_root = Path(__file__).resolve().parents[2]
-    expected = (repo_root / "configs" / "training" / "examples" / "vim_denoising_unet.yml").resolve()
+    expected = (load_default_settings().TRAINING_CONFIG_DIR / "examples" / "vim_denoising_unet.yml").resolve()
 
     assert training_cli.resolve_config_path("examples/vim_denoising_unet.yml", resolver=ConfigPathResolver("training", stg=load_default_settings())) == expected
 
 
 def test_resolve_config_path_supports_training_subpath_without_extension():
-    repo_root = Path(__file__).resolve().parents[2]
-    expected = (repo_root / "configs" / "training" / "examples" / "vim_denoising_unet.yml").resolve()
+    expected = (load_default_settings().TRAINING_CONFIG_DIR / "examples" / "vim_denoising_unet.yml").resolve()
 
     assert training_cli.resolve_config_path("examples/vim_denoising_unet", resolver=ConfigPathResolver("training", stg=load_default_settings())) == expected
 

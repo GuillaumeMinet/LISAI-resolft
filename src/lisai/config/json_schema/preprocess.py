@@ -8,7 +8,7 @@ from typing import Any
 
 from pydantic import BaseModel, TypeAdapter
 
-from lisai.config.settings import Settings, load_default_settings
+from lisai.config.settings import Settings
 from lisai.preprocess.core import PreprocessConfig
 from lisai.preprocess.core.config import (
     PreprocessLogConfig,
@@ -120,14 +120,13 @@ def _pipeline_constrained_property(
     return constrained
 
 
-def preprocess_json_schema(*, stg: Settings | None = None) -> dict:
-    selected = load_default_settings() if stg is None else stg
+def preprocess_json_schema(*, stg: Settings) -> dict:
     _ensure_model_field_descriptions()
 
     base_schema = PreprocessConfig.model_json_schema()
     pipeline_names = sorted(PIPELINES_REGISTRY)
-    available_data_types = sorted(selected.data_cfg.data_types)
-    available_fmts = sorted(selected.data_cfg.format)
+    available_data_types = sorted(stg.data_cfg.data_types)
+    available_fmts = sorted(stg.data_cfg.format)
     properties = copy.deepcopy(base_schema["properties"])
     pipeline_property = copy.deepcopy(base_schema["properties"]["pipeline"])
     pipeline_property["enum"] = pipeline_names
@@ -207,7 +206,7 @@ def preprocess_json_schema(*, stg: Settings | None = None) -> dict:
 
 
 def write_preprocess_json_schema(
-    output_path: str | Path, *, stg: Settings | None = None,
+    output_path: str | Path, *, stg: Settings,
 ) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)

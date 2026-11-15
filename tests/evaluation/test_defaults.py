@@ -31,17 +31,20 @@ def _write(path: Path, content: str) -> None:
 
 
 @pytest.fixture
-def inference_config_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def inference_config_dir(tmp_path: Path) -> Path:
     config_dir = tmp_path / "configs" / "inference"
-    fake_settings = SimpleNamespace(
-        INFERENCE_CONFIG_DIR=config_dir,
+    return config_dir
+
+
+@pytest.fixture
+def inference_stg(inference_config_dir: Path):
+    return SimpleNamespace(
+        INFERENCE_CONFIG_DIR=inference_config_dir,
         INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="default",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
-    monkeypatch.setattr(defaults_mod, "load_default_settings", lambda: fake_settings)
-    return config_dir
 
 
 def _write_local_defaults(config_dir: Path, content: str) -> Path:
@@ -85,24 +88,24 @@ def _complete_apply_config(*, tiling_size=512, crop_size=128, saving=None) -> di
     return {"apply": apply}
 
 
-def test_resolve_inference_config_path_defaults_to_local_defaults(inference_config_dir: Path):
+def test_resolve_inference_config_path_defaults_to_local_defaults(inference_config_dir: Path, inference_stg):
     defaults_path = _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
 
-    resolved = resolve_inference_config_path(None)
+    resolved = resolve_inference_config_path(None, stg=inference_stg)
 
     assert resolved == defaults_path.resolve()
 
 
-def test_named_lookup_prefers_local_config(inference_config_dir: Path):
+def test_named_lookup_prefers_local_config(inference_config_dir: Path, inference_stg):
     local_path = inference_config_dir / "local" / "fast.yml"
     tracked_path = inference_config_dir / "fast.yml"
     _write(local_path, "apply:\n  inference:\n    tiling_size: 256\n")
     save_yaml(_complete_apply_config(tiling_size=1024), tracked_path)
 
-    assert resolve_inference_config_path("fast") == local_path.resolve()
+    assert resolve_inference_config_path("fast", stg=inference_stg) == local_path.resolve()
 
 
-def test_local_named_config_inherits_local_defaults_then_cli(inference_config_dir: Path):
+def test_local_named_config_inherits_local_defaults_then_cli(inference_config_dir: Path, inference_stg):
     _write_local_defaults(
         inference_config_dir,
         """
@@ -133,7 +136,7 @@ apply:
         overrides=ApplyOverrides(
             inference=ApplyInferenceOverrides(crop_size=200),
         ),
-    )
+    stg=inference_stg)
 
     assert resolved.inference.tiling_size == 512
     assert resolved.inference.crop_size == 200
@@ -142,7 +145,7 @@ apply:
     assert resolved.postprocess.color_code.colormap == "turbo"
 
 
-def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: Path):
+def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: Path, inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
@@ -157,7 +160,7 @@ def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: 
         overrides=ApplyOverrides(
             inference=ApplyInferenceOverrides(tiling_size=512),
         ),
-    )
+    stg=inference_stg)
 
     assert isinstance(resolved, ApplyDefaults)
     assert resolved.inference.tiling_size == 512
@@ -165,7 +168,7 @@ def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: 
     assert resolved.postprocess.denormalize is True
 
 
-def test_resolve_evaluate_config_returns_typed_nested_config(inference_config_dir: Path):
+def test_resolve_evaluate_config_returns_typed_nested_config(inference_config_dir: Path, inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "evaluate:\n  inference:\n    tiling_size: 256\n",
@@ -176,7 +179,7 @@ def test_resolve_evaluate_config_returns_typed_nested_config(inference_config_di
         overrides=EvaluateOverrides(
             inference=EvaluateInferenceOverrides(tiling_size="off"),
         ),
-    )
+    stg=inference_stg)
 
     assert isinstance(resolved, EvaluateDefaults)
     assert resolved.inference.tiling_size == "off"
@@ -185,7 +188,7 @@ def test_resolve_evaluate_config_returns_typed_nested_config(inference_config_di
     assert resolved.saving.overwrite is True
 
 
-def test_local_defaults_accept_legacy_flat_layout(inference_config_dir: Path):
+def test_local_defaults_accept_legacy_flat_layout(inference_config_dir: Path, inference_stg):
     _write_local_defaults(
         inference_config_dir,
         """
@@ -195,7 +198,7 @@ apply:
 """.strip() + "\n",
     )
 
-    resolved = resolve_apply_config()
+    resolved = resolve_apply_config(stg=inference_stg)
 
     assert resolved.inference.downsamp == 2
     assert resolved.inference.fill_factor is None
@@ -203,7 +206,7 @@ apply:
 
 def test_named_nonlocal_config_inherits_local_defaults_without_being_overridden(
     inference_config_dir: Path,
-):
+ inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    tiling_size: 256\n  postprocess:\n    denormalize: false\n",
@@ -213,13 +216,13 @@ def test_named_nonlocal_config_inherits_local_defaults_without_being_overridden(
         "apply:\n  inference:\n    tiling_size: 1024\n",
     )
 
-    resolved = resolve_apply_config(config="examples/portable")
+    resolved = resolve_apply_config(config="examples/portable", stg=inference_stg)
 
     assert resolved.inference.tiling_size == 1024
     assert resolved.postprocess.denormalize is False
 
 
-def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path):
+def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path, inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
@@ -229,13 +232,13 @@ def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path):
         "apply:\n  inference:\n    lvae_num_samples: 10\n",
     )
 
-    resolved = resolve_apply_config(config="examples/hdn_sup")
+    resolved = resolve_apply_config(config="examples/hdn_sup", stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples == 10
     assert resolved.inference.tiling_size == 256
 
 
-def test_named_config_explicit_null_overrides_local_default(inference_config_dir: Path):
+def test_named_config_explicit_null_overrides_local_default(inference_config_dir: Path, inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    lvae_num_samples: 30\n",
@@ -245,46 +248,46 @@ def test_named_config_explicit_null_overrides_local_default(inference_config_dir
         "apply:\n  inference:\n    lvae_num_samples: null\n",
     )
 
-    resolved = resolve_apply_config(config="examples/no_lvae_sampling")
+    resolved = resolve_apply_config(config="examples/no_lvae_sampling", stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples is None
 
 
 def test_named_nonlocal_evaluate_preserves_tiling_policy_and_cli_override(
     inference_config_dir: Path,
-):
+ inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: auto\n")
     _write(
         inference_config_dir / "examples" / "no_tiling.yml",
         "evaluate:\n  inference:\n    tiling_size: off\n",
     )
 
-    resolved = resolve_evaluate_config(config="examples/no_tiling")
+    resolved = resolve_evaluate_config(config="examples/no_tiling", stg=inference_stg)
     forced = resolve_evaluate_config(
         config="examples/no_tiling",
         overrides=EvaluateOverrides(
             inference=EvaluateInferenceOverrides(tiling_size=512),
         ),
-    )
+    stg=inference_stg)
 
     assert resolved.inference.tiling_size == "off"
     assert forced.inference.tiling_size == 512
 
 
-def test_resolve_evaluate_config_requires_requested_section_in_local_config(inference_config_dir: Path):
+def test_resolve_evaluate_config_requires_requested_section_in_local_config(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  data:\n    split: test\n")
     _write(inference_config_dir / "local" / "apply_only.yml", "apply:\n  inference:\n    tiling_size: 512\n")
 
     with pytest.raises(ValueError, match="does not define a 'evaluate' section"):
-        resolve_evaluate_config(config="apply_only")
+        resolve_evaluate_config(config="apply_only", stg=inference_stg)
 
 
-def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Path):
+def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  data:\n    split: test\n")
     _write(inference_config_dir / "local" / "invalid.yml", "evaluate:\n  test_loader: bad\n")
 
     with pytest.raises(Exception, match="test_loader"):
-        resolve_evaluate_config(config="invalid")
+        resolve_evaluate_config(config="invalid", stg=inference_stg)
 
 
 def test_resolve_apply_config_fills_local_config_saving_fallbacks(inference_config_dir: Path):
@@ -438,10 +441,10 @@ def test_typed_output_override_has_highest_priority(inference_config_dir: Path):
     assert policy.mode == "folder_inside"
 
 
-def test_builtin_post_training_preset_is_used_if_local_file_is_missing(inference_config_dir: Path):
+def test_builtin_post_training_preset_is_used_if_local_file_is_missing(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: 256\n")
 
-    resolved = resolve_evaluate_config(config="post_training")
+    resolved = resolve_evaluate_config(config="post_training", stg=inference_stg)
 
     assert resolved.inference.tiling_size == 256
     assert resolved.checkpoint.best_or_last == "both"
@@ -449,14 +452,14 @@ def test_builtin_post_training_preset_is_used_if_local_file_is_missing(inference
     assert resolved.saving.overwrite is True
 
 
-def test_local_post_training_overrides_builtin_and_inherits_local_defaults(inference_config_dir: Path):
+def test_local_post_training_overrides_builtin_and_inherits_local_defaults(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: 384\n")
     _write(
         inference_config_dir / "local" / "post_training.yml",
         "evaluate:\n  metrics:\n    - custom_metric\n",
     )
 
-    resolved = resolve_evaluate_config(config="post_training")
+    resolved = resolve_evaluate_config(config="post_training", stg=inference_stg)
 
     assert resolved.inference.tiling_size == 384
     assert resolved.checkpoint.best_or_last == "both"
@@ -466,7 +469,7 @@ def test_local_post_training_overrides_builtin_and_inherits_local_defaults(infer
 
 def test_promoted_model_config_layers_between_local_defaults_and_explicit_config(
     inference_config_dir: Path,
-):
+ inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
@@ -481,7 +484,7 @@ def test_promoted_model_config_layers_between_local_defaults_and_explicit_config
     resolved = resolve_apply_config(
         model_config=model_config,
         config="large_tiles",
-    )
+    stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples == 10
     assert resolved.inference.tiling_size == 512
@@ -489,7 +492,7 @@ def test_promoted_model_config_layers_between_local_defaults_and_explicit_config
 
 def test_explicit_config_and_cli_override_promoted_model_config_with_warning(
     inference_config_dir: Path,
-):
+ inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    lvae_num_samples: 30\n",
@@ -506,14 +509,14 @@ def test_explicit_config_and_cli_override_promoted_model_config_with_warning(
             overrides=ApplyOverrides(
                 inference=ApplyInferenceOverrides(lvae_num_samples=5),
             ),
-        )
+        stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples == 5
 
 
 def test_explicit_config_override_promoted_model_config_warns_without_cli_override(
     inference_config_dir: Path,
-):
+ inference_stg):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
     model_config = inference_config_dir / "model_defaults.yml"
     _write(model_config, "apply:\n  inference:\n    lvae_num_samples: 10\n")
@@ -524,14 +527,14 @@ def test_explicit_config_override_promoted_model_config_warns_without_cli_overri
         resolved = resolve_apply_config(
             model_config=model_config,
             config=selected_config,
-        )
+        stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples == 20
 
 
 def test_local_defaults_do_not_warn_when_promoted_model_overrides_them(
     inference_config_dir: Path,
-):
+ inference_stg):
     _write_local_defaults(
         inference_config_dir,
         "apply:\n  inference:\n    lvae_num_samples: 30\n",
@@ -541,7 +544,7 @@ def test_local_defaults_do_not_warn_when_promoted_model_overrides_them(
 
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always")
-        resolved = resolve_apply_config(model_config=model_config)
+        resolved = resolve_apply_config(model_config=model_config, stg=inference_stg)
 
     assert captured == []
     assert resolved.inference.lvae_num_samples == 10

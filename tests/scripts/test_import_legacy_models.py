@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+from lisai.infra.paths import Paths
+
 import pytest
 
 
@@ -21,7 +23,7 @@ def _import_script():
     return module
 
 
-def test_lvae_translation_keeps_checkpoint_compatible_batch_norm():
+def test_lvae_translation_keeps_checkpoint_compatible_batch_norm(settings):
     script = _import_script()
     legacy_cfg = {
         "is_lvae": True,
@@ -54,6 +56,7 @@ def test_lvae_translation_keeps_checkpoint_compatible_batch_norm():
 
     current = script.translate_legacy_config(
         legacy_cfg,
+        paths=Paths(settings),
         target_dataset="Fixed_vimentin",
         target_model_subfolder="Denoising/HDN",
         target_run_name="HDN_imported",
@@ -150,7 +153,7 @@ def test_unet_rcan_translation_preserves_explicit_kernel_factor():
     assert section["parameters"]["RCAN_prm"]["upsamp_kernel_factor"] == 1
 
 
-def test_legacy_denoising_unet_rcan_translation_sets_large_default_tiling_size():
+def test_legacy_denoising_unet_rcan_translation_sets_large_default_tiling_size(settings):
     script = _import_script()
     legacy_cfg = {
         "model_architecture": "unetrcan",
@@ -167,6 +170,7 @@ def test_legacy_denoising_unet_rcan_translation_sets_large_default_tiling_size()
 
     current = script.translate_legacy_config(
         legacy_cfg,
+        paths=Paths(settings),
         target_dataset="Fixed_vimentin",
         target_model_subfolder="denoising_legacy",
         target_run_name="UNetRCAN_single_to_avg",
@@ -175,17 +179,17 @@ def test_legacy_denoising_unet_rcan_translation_sets_large_default_tiling_size()
     assert current["inference"]["default_tiling_size"] == 2000
 
 
-def test_target_model_subfolder_rejects_old_run_container_prefixes():
+def test_target_model_subfolder_rejects_old_run_container_prefixes(settings):
     script = _import_script()
 
-    assert script._normalize_target_model_subfolder(r"Upsamp\Refinement") == "Upsamp/Refinement"
+    assert script._normalize_target_model_subfolder(r"Upsamp\Refinement", paths=Paths(settings)) == "Upsamp/Refinement"
     with pytest.raises(ValueError, match="Remove the leading 'models'"):
-        script._normalize_target_model_subfolder("models/Upsamp")
+        script._normalize_target_model_subfolder("models/Upsamp", paths=Paths(settings))
     with pytest.raises(ValueError, match="Remove the leading 'runs'"):
-        script._normalize_target_model_subfolder("runs/Upsamp")
+        script._normalize_target_model_subfolder("runs/Upsamp", paths=Paths(settings))
 
 
-def test_legacy_upsampling_unet_rcan_translation_uses_architecture_default_tiling():
+def test_legacy_upsampling_unet_rcan_translation_uses_architecture_default_tiling(settings):
     script = _import_script()
     legacy_cfg = {
         "model_architecture": "unetrcan",
@@ -202,6 +206,7 @@ def test_legacy_upsampling_unet_rcan_translation_uses_architecture_default_tilin
 
     current = script.translate_legacy_config(
         legacy_cfg,
+        paths=Paths(settings),
         target_dataset="Fixed_vimentin",
         target_model_subfolder="Upsamp",
         target_run_name="UNetRCAN_upsamp",
@@ -261,7 +266,7 @@ def test_lvae_noise_model_check_requires_canonical_files(tmp_path: Path):
 def test_execute_import_keeps_loss_and_log_in_run_root_and_saves_plot(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-):
+ settings):
     script = _import_script()
     legacy_run = tmp_path / "legacy_run"
     target_run = tmp_path / "target_run"
@@ -312,7 +317,7 @@ def test_execute_import_keeps_loss_and_log_in_run_root_and_saves_plot(
         metadata={"run": "metadata"},
     )
 
-    script.execute_import(plan)
+    script.execute_import(plan, paths=Paths(settings))
 
     assert (target_run / "loss.txt").read_text(encoding="utf-8").startswith("Epoch")
     assert (target_run / "train_log.log").read_text(encoding="utf-8") == "legacy log\n"

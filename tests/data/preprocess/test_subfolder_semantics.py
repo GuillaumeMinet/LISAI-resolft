@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import tifffile
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
 from lisai.preprocess import PreprocessRun
 from lisai.preprocess.pipelines.paired_single_recon import PairedSingleReconConfig
 from lisai.preprocess.pipelines.recon_mltpl_snr import ReconMltplSnrConfig, ReconMltplSnrPipeline
@@ -19,7 +19,7 @@ from lisai.preprocess.pipelines.single import SingleReconConfig
 
 
 class DummyPaths:
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, settings):
         self.root = root
         self.settings = settings
 
@@ -34,7 +34,7 @@ class DummyPaths:
 
     def preprocess_log_path(self, *, dataset_name: str, data_type: str, usage: str = "training") -> Path:
         key = f"{data_type}_preprocess"
-        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / settings.data_cfg.logs[key]
+        return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / self.settings.data_cfg.logs[key]
 
     def preprocessed_image_full_path(
         self,
@@ -46,7 +46,7 @@ class DummyPaths:
         usage: str = "training",
         **kwargs,
     ) -> Path:
-        filename = settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
+        filename = self.settings.get_data_filename(fmt=fmt, data_type=data_type, **kwargs)
         return self.dataset_preprocess_dir(dataset_name=dataset_name, data_type=data_type, usage=usage) / additional_subfolder / filename
 
 
@@ -55,7 +55,7 @@ def _write_image(path: Path, value: int) -> None:
     tifffile.imwrite(path, np.full((8, 8), value, dtype=np.uint16))
 
 
-def test_single_recon_uses_base_for_input_and_auxiliary(tmp_path: Path):
+def test_single_recon_uses_base_for_input_and_auxiliary(tmp_path: Path, settings):
     dataset = "SingleBase"
     dump = tmp_path / dataset / "dump" / "recon" / "gag"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -75,7 +75,7 @@ def test_single_recon_uses_base_for_input_and_auxiliary(tmp_path: Path):
         "split": {"enabled": False},
     }
 
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     preprocess = tmp_path / dataset / "preprocess" / "recon"
     assert np.all(tifffile.imread(preprocess / "resolft" / "c00.tif") == 10)
@@ -89,7 +89,7 @@ def test_single_recon_uses_base_for_input_and_auxiliary(tmp_path: Path):
     assert registry[dataset]["defaults"]["recon"]["input"] == "resolft"
 
 
-def test_paired_single_recon_uses_common_base_for_all_roles(tmp_path: Path):
+def test_paired_single_recon_uses_common_base_for_all_roles(tmp_path: Path, settings):
     dataset = "PairedBase"
     dump = tmp_path / dataset / "dump" / "recon" / "gag"
     _write_image(dump / "low" / "cell01.tif", 10)
@@ -111,7 +111,7 @@ def test_paired_single_recon_uses_common_base_for_all_roles(tmp_path: Path):
         "split": {"enabled": False},
     }
 
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
 
     preprocess = tmp_path / dataset / "preprocess" / "recon"
     assert np.all(tifffile.imread(preprocess / "low" / "c00.tif") == 10)
@@ -126,7 +126,7 @@ def test_paired_single_recon_uses_common_base_for_all_roles(tmp_path: Path):
     }
 
 
-def test_single_recon_output_subfolder_can_flatten_or_override(tmp_path: Path):
+def test_single_recon_output_subfolder_can_flatten_or_override(tmp_path: Path, settings):
     dataset = "SingleOutputOverride"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -144,7 +144,7 @@ def test_single_recon_output_subfolder_can_flatten_or_override(tmp_path: Path):
         "split": {"enabled": False},
     }
 
-    PreprocessRun.from_cfg(flatten_cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(flatten_cfg, paths=DummyPaths(tmp_path, settings)).execute()
     preprocess = tmp_path / dataset / "preprocess" / "recon"
     assert (preprocess / "c00.tif").exists()
 
@@ -164,11 +164,11 @@ def test_single_recon_output_subfolder_can_flatten_or_override(tmp_path: Path):
             "output_subfolder": "primary",
         },
     }
-    PreprocessRun.from_cfg(override_cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(override_cfg, paths=DummyPaths(tmp_path, settings)).execute()
     assert (tmp_path / override_dataset / "preprocess" / "recon" / "primary" / "c00.tif").exists()
 
 
-def test_single_recon_legacy_dump_subfolder_keeps_root_output(tmp_path: Path):
+def test_single_recon_legacy_dump_subfolder_keeps_root_output(tmp_path: Path, settings):
     dataset = "SingleLegacyOutput"
     dump = tmp_path / dataset / "dump" / "recon"
     _write_image(dump / "resolft" / "cell01.tif", 10)
@@ -182,7 +182,7 @@ def test_single_recon_legacy_dump_subfolder_keeps_root_output(tmp_path: Path):
         "pipeline_cfg": {"dump_subfolder": "resolft"},
         "split": {"enabled": False},
     }
-    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path)).execute()
+    PreprocessRun.from_cfg(cfg, paths=DummyPaths(tmp_path, settings)).execute()
     assert (tmp_path / dataset / "preprocess" / "recon" / "c00.tif").exists()
 
 
@@ -204,8 +204,8 @@ def test_legacy_dump_subfolder_conflicts_only_with_its_new_equivalent():
         ReconMltplSnrConfig(base_subfolder="gag", dump_subfolder="legacy")
 
 
-def test_timelapse_and_mltpl_snr_use_base_then_input_subfolder(tmp_path: Path):
-    paths = DummyPaths(tmp_path)
+def test_timelapse_and_mltpl_snr_use_base_then_input_subfolder(tmp_path: Path, settings):
+    paths = DummyPaths(tmp_path, settings)
     run = SimpleNamespace(dataset_name="Data", data_type="recon", usage="training", paths=paths)
     expected = tmp_path / "Data" / "dump" / "recon" / "group" / "primary"
 
@@ -220,8 +220,8 @@ def test_timelapse_and_mltpl_snr_use_base_then_input_subfolder(tmp_path: Path):
     assert mltpl.build_source(run=run).root == expected
 
 
-def test_legacy_dump_subfolder_keeps_previous_pipeline_path_meaning(tmp_path: Path):
-    paths = DummyPaths(tmp_path)
+def test_legacy_dump_subfolder_keeps_previous_pipeline_path_meaning(tmp_path: Path, settings):
+    paths = DummyPaths(tmp_path, settings)
     run = SimpleNamespace(dataset_name="Data", data_type="recon", usage="training", paths=paths)
 
     timelapse = ReconTimelapseSimplePipeline(ReconTimelapseSimpleConfig(dump_subfolder="legacy"))

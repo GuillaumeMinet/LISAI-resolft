@@ -304,8 +304,3 @@ class Settings:
 
         filename = self.resolve_path(template, **kwargs)
         return filename
-
-
-# Transitional only (Patch A of M1). Existing modules still import this name.
-# Patch G deletes the singleton once all internal callers receive Settings/Paths.
-settings = load_default_settings()

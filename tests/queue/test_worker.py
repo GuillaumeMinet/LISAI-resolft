@@ -7,7 +7,6 @@ from pathlib import Path
 
 import lisai.queue.worker as worker_mod
 import lisai.runs.listing as runs_listing
-from lisai.config import settings
 from lisai.queue.control import update_queue_control
 from lisai.queue.schema import QueueJob
 from lisai.queue.state import create_queued_job, mark_job_running
@@ -244,7 +243,7 @@ def test_worker_status_reporter_prints_on_change_and_heartbeat(monkeypatch, tmp_
     assert "heartbeat: idle: no queued jobs" in lines[1]
 
 
-def test_worker_treats_old_running_heartbeat_as_stale_not_active(monkeypatch, tmp_path):
+def test_worker_treats_old_running_heartbeat_as_stale_not_active(monkeypatch, tmp_path, settings):
     _queued_job(tmp_path)
     stale_run = _run(
         run_id="01ARZ3NDEKTSV4RRFFQ69G5FAC",

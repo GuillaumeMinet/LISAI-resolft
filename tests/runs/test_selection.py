@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from lisai.infra.paths import Paths
-from lisai.config import settings
 
 import io
 from datetime import timedelta
@@ -57,7 +56,7 @@ def _write_metadata(
     write_run_metadata_atomic(run_dir, RunMetadata.model_validate(payload))
 
 
-def test_resolve_discovered_run_selector_accepts_run_id(tmp_path):
+def test_resolve_discovered_run_selector_accepts_run_id(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     run_dir = datasets_root / "Gag" / "runs" / "HDN" / "resume_me_00"
     run_id = "01ARZ3NDEKTSV4RRFFQ69GC100"
@@ -74,7 +73,7 @@ def test_resolve_discovered_run_selector_accepts_run_id(tmp_path):
     assert selected.run_dir == run_dir.resolve()
 
 
-def test_resolve_discovered_run_selector_accepts_dataset_subfolder_run_dir(tmp_path):
+def test_resolve_discovered_run_selector_accepts_dataset_subfolder_run_dir(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     run_dir = datasets_root / "Gag" / "runs" / "Upsamp_base" / "SubA" / "resume_me_00"
     _write_metadata(
@@ -95,7 +94,7 @@ def test_resolve_discovered_run_selector_accepts_dataset_subfolder_run_dir(tmp_p
     assert selected.run_dir == run_dir.resolve()
 
 
-def test_resolve_discovered_run_selector_accepts_bare_run_dir_with_dataset_filter(tmp_path):
+def test_resolve_discovered_run_selector_accepts_bare_run_dir_with_dataset_filter(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     selected_dir = datasets_root / "Gag" / "runs" / "HDN" / "duplicate_00"
     other_dir = datasets_root / "Actin" / "runs" / "HDN" / "duplicate_00"
@@ -124,7 +123,7 @@ def test_resolve_discovered_run_selector_accepts_bare_run_dir_with_dataset_filte
     assert selected.run_dir == selected_dir.resolve()
 
 
-def test_resolve_discovered_run_selector_reports_bare_run_dir_ambiguity(tmp_path):
+def test_resolve_discovered_run_selector_reports_bare_run_dir_ambiguity(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     _write_metadata(
         datasets_root / "Gag" / "runs" / "HDN" / "duplicate_00",
@@ -154,7 +153,7 @@ def test_resolve_discovered_run_selector_reports_bare_run_dir_ambiguity(tmp_path
     assert "Rerun with --dataset/--subfolder or with --run-id to disambiguate." in stderr.getvalue()
 
 
-def test_resolve_discovered_run_selector_uses_partial_exp_name_fallback(tmp_path):
+def test_resolve_discovered_run_selector_uses_partial_exp_name_fallback(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     first_dir = datasets_root / "Gag" / "runs" / "HDN" / "reducedUpsamp_beta_00"
     second_dir = datasets_root / "Actin" / "runs" / "Upsamp" / "reducedUpsamp_debug_00"
@@ -185,7 +184,7 @@ def test_resolve_discovered_run_selector_uses_partial_exp_name_fallback(tmp_path
     assert selected.run_dir == second_dir.resolve()
 
 
-def test_resolve_discovered_run_selector_prefers_exact_bare_run_dir_over_partial_exp_name(tmp_path):
+def test_resolve_discovered_run_selector_prefers_exact_bare_run_dir_over_partial_exp_name(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     exact_dir = datasets_root / "Gag" / "runs" / "HDN" / "reduced"
     partial_dir = datasets_root / "Gag" / "runs" / "HDN" / "reducedUpsamp_beta_00"
@@ -214,7 +213,7 @@ def test_resolve_discovered_run_selector_prefers_exact_bare_run_dir_over_partial
     assert selected.run_dir == exact_dir.resolve()
 
 
-def test_resolve_discovered_run_selector_rejects_selector_with_run_id(tmp_path):
+def test_resolve_discovered_run_selector_rejects_selector_with_run_id(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     run_id = "01ARZ3NDEKTSV4RRFFQ69GC10A"
     _write_metadata(
@@ -237,7 +236,7 @@ def test_resolve_discovered_run_selector_rejects_selector_with_run_id(tmp_path):
     assert "Use either a run selector or --run-id, not both." in stderr.getvalue()
 
 
-def test_resolve_discovered_run_selector_accepts_partial_dataset_filter(tmp_path):
+def test_resolve_discovered_run_selector_accepts_partial_dataset_filter(tmp_path, settings):
     datasets_root = tmp_path / "datasets"
     selected_dir = datasets_root / "actin_fixed_multi_snr" / "runs" / "HDN" / "duplicate_00"
     other_dir = datasets_root / "vimentin_live" / "runs" / "HDN" / "duplicate_00"

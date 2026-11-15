@@ -8,7 +8,6 @@ import torch
 
 from lisai.models import loader
 from lisai.models.params import AnyModelParams, UNetParams
-from lisai.config import settings
 from lisai.infra.paths import Paths
 
 
@@ -117,7 +116,7 @@ def test_origin_checkpoint_path_best_falls_back_to_highest_epoch_checkpoint(
 
 
 
-def test_prepare_model_for_training_requires_architecture():
+def test_prepare_model_for_training_requires_architecture(settings):
     spec = _base_spec(architecture="")
 
     with pytest.raises(ValueError, match="architecture"):
@@ -127,7 +126,7 @@ def test_prepare_model_for_training_requires_architecture():
 
 def test_prepare_model_for_training_full_model_load_returns_loaded_object(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+, settings):
     checkpoint = tmp_path / "model_full.pt"
     checkpoint.write_bytes(b"test")
 
@@ -160,7 +159,7 @@ def test_prepare_model_for_training_full_model_load_returns_loaded_object(
 
 def test_prepare_model_for_training_loads_model_state_dict_and_returns_checkpoint_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+, settings):
     checkpoint = tmp_path / "model_state_dict.pt"
     checkpoint.write_bytes(b"test")
 
@@ -191,7 +190,7 @@ def test_prepare_model_for_training_loads_model_state_dict_and_returns_checkpoin
 
 def test_prepare_model_for_training_plain_state_dict_returns_none_checkpoint_state(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-):
+, settings):
     checkpoint = tmp_path / "plain_state_dict.pt"
     checkpoint.write_bytes(b"test")
 

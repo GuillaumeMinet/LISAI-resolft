@@ -7,19 +7,19 @@ import pytest
 from lisai.infra.paths import Paths
 
 
-def test_paths_exposes_project_root(tmp_path):
+def test_paths_exposes_project_root(tmp_path, settings):
     settings = SimpleNamespace(PROJECT_ROOT=tmp_path)
 
     assert Paths(settings).project_root() == tmp_path.resolve()
 
 
-def test_paths_exposes_data_root(tmp_path):
+def test_paths_exposes_data_root(tmp_path, settings):
     settings = SimpleNamespace(DATA_ROOT=tmp_path / "data")
 
     assert Paths(settings).data_root() == (tmp_path / "data").resolve()
 
 
-def test_dataset_usage_subfolders_control_dataset_location(monkeypatch, settings_factory):
+def test_dataset_usage_subfolders_control_dataset_location(monkeypatch, settings_factory, settings):
     settings = settings_factory("usage")
 
     monkeypatch.setitem(
@@ -47,7 +47,7 @@ def test_dataset_usage_subfolders_control_dataset_location(monkeypatch, settings
     )
 
 
-def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_path, settings_factory):
+def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_path, settings_factory, settings):
     settings = settings_factory("inference")
 
     monkeypatch.setitem(
@@ -65,7 +65,7 @@ def test_inference_output_dir_uses_effective_inference_root(monkeypatch, tmp_pat
     ) == tmp_path / "predictions" / "paper_mito" / "mito_model"
 
 
-def test_promoted_model_downloads_dir_uses_project_template(monkeypatch, tmp_path, settings_factory):
+def test_promoted_model_downloads_dir_uses_project_template(monkeypatch, tmp_path, settings_factory, settings):
     settings = settings_factory("promoted")
 
     monkeypatch.setitem(

@@ -61,9 +61,10 @@ def run_post_training_evaluation(cfg, runtime, outcome: "TrainingOutcome") -> No
     if runtime.run_dir is None:
         return
 
-    eval_cfg = resolve_evaluate_config(config=POST_TRAINING_INFERENCE_CONFIG)
+    eval_cfg = resolve_evaluate_config(config=POST_TRAINING_INFERENCE_CONFIG, stg=runtime.paths.settings)
     run_evaluate(
         cfg=eval_cfg,
+        paths=runtime.paths,
         dataset_name=cfg.data.dataset_name,
         model_name=runtime.run_dir.name,
         model_subfolder=cfg.routing.models_subfolder,
@@ -84,6 +85,7 @@ def auto_save_loss_plot_image(cfg, runtime, *, terminal_reason: str) -> None:
     try:
         saved_path = save_loss_plot_for_run(
             run_dir=runtime.run_dir,
+            paths=runtime.paths,
             dataset=dataset,
             model_subfolder=model_subfolder,
             architecture=architecture,
