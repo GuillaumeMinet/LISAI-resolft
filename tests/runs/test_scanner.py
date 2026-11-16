@@ -218,7 +218,7 @@ def test_default_run_scan_uses_only_configured_training_dataset_root(tmp_path, m
     )
 
     paths = Paths(settings)
-    monkeypatch.setattr(paths, "data_root", lambda: tmp_path)
+    monkeypatch.setattr(paths, "workspace_root", lambda: tmp_path)
     monkeypatch.setattr(paths, "training_datasets_root", lambda: training_root)
 
     results = scanner_mod.scan_runs(paths=paths)

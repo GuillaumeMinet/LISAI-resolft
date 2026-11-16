@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from lisai.config.settings import Settings
-from lisai.config.io.yaml import save_yaml
+from lisai.config.io.yaml import save_yaml, load_yaml
 
 
 @pytest.fixture
@@ -24,8 +24,22 @@ def settings_factory(tmp_path):
         configs_root.mkdir(parents=True)
         for filename in ("project_config.yml", "data_config.yml"):
             shutil.copy2(ROOT / "configs" / filename, configs_root / filename)
-        save_yaml({"infrastructure": {"data_root": str(data_root or tmp_path / name / "data")}},
+        workspace = (data_root or tmp_path / name / "data").resolve()
+        save_yaml({"infrastructure": {"data_root": str(workspace)}},
                   configs_root / "local_config.yml")
+        # M2 workspace global YAMLs exist independently of the user's configs.
+        workspace_configs = workspace / "configs"
+        workspace_configs.mkdir(parents=True, exist_ok=True)
+        project = load_yaml(ROOT / "configs" / "project_config.yml")
+        for section in ("roots", "templates"):
+            project["paths"][section] = {
+                key: value.replace("{data_root}", "{workspace_root}").replace(
+                    "{paths.roots.code_dir}/tensorboard", "{workspace_root}/tensorboard")
+                if isinstance(value, str) else value
+                for key, value in project["paths"][section].items()
+            }
+        save_yaml(project, workspace_configs / "workspace.yml")
+        shutil.copy2(ROOT / "configs" / "data_config.yml", workspace_configs / "data.yml")
         return Settings.from_config_dir(configs_root)
     return create
 
@@ -38,6 +52,7 @@ def settings(settings_factory):
         source = ROOT / "configs" / name
         if source.exists():
             shutil.copytree(source, selected.CONFIGS_ROOT / name)
+            shutil.copytree(source, selected.WORKSPACE_ROOT / "configs" / name)
     return selected
 
 
@@ -62,4 +77,4 @@ def _legacy_default_cli_config(settings, monkeypatch):
     settings_module = importlib.import_module("lisai.config.settings")
     monkeypatch.setattr(settings_module, "_legacy_checkout_configs_root", lambda: settings.CONFIGS_ROOT)
     monkeypatch.setenv("LISAI_CONFIG_ROOT", str(settings.CONFIGS_ROOT))
-    monkeypatch.setenv("LISAI_HOME", str(Path(settings.local_cfg.infrastructure.data_root).resolve()))
+    monkeypatch.setenv("LISAI_HOME", str(Path(settings.WORKSPACE_ROOT).resolve()))

@@ -4,13 +4,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .models import DataConfig, LocalConfig, ProjectConfig
+from .models import DataConfig, LocalConfig, LegacyLocalConfig, DeveloperLocalConfig, ProjectConfig
 from .models.inference import ResolvedInferenceConfig
 from .models.inference.presets import POST_TRAINING_OVERRIDES
 from .io.yaml import load_yaml, save_yaml
+from pydantic import ConfigDict, Field
+from .models.local_config import LocalConsoleConfig, LocalInferenceConfig
 
 
-_LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/local-config.schema.json"
+_LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/legacy-local-config.schema.json"
 _INFERENCE_DEFAULTS_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference-defaults.schema.json"
 _INFERENCE_OVERRIDES_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference.schema.json"
 
@@ -49,20 +51,42 @@ def _to_attr(x: Any) -> Any:
 
 
 def _legacy_checkout_configs_root() -> Path:
-    """Find the existing checkout configuration only at a default-loading boundary.
-
-    A later workspace milestone will replace this legacy location selector.
-    """
+    """Legacy checkout discovery retained for explicit compatibility tooling only."""
     return Path(__file__).resolve().parents[3] / "configs"
 
 
 def load_default_settings() -> Settings:
-    """Load the legacy checkout configuration afresh for a CLI/API operation.
+    """Python API default: workspace selection, never CLI developer activation.
 
-    This function never initializes missing files. Library calls must not prompt
-    for paths or modify an installation implicitly.
+    Unlike the CLI this does not read LISAI_CONFIG_ROOT or a checkout local.yml.
+    No file or folder is created by this loader.
     """
-    return Settings.from_config_dir(_legacy_checkout_configs_root())
+    workspace = Path(os.environ.get("LISAI_HOME", str(Path.home() / "LISAI"))).expanduser()
+    if not workspace.is_absolute():
+        raise ValueError("LISAI_HOME must be an absolute workspace path")
+    return Settings.from_workspace(workspace)
+
+
+class WorkspaceFileConfig(ProjectConfig):
+    """Strict workspace.yml adapter, reusing the existing ProjectConfig model."""
+
+    model_config = ConfigDict(extra="forbid")
+    inference: LocalInferenceConfig = Field(default_factory=LocalInferenceConfig)
+    console: LocalConsoleConfig = Field(default_factory=LocalConsoleConfig)
+
+
+def _legacy_project_templates(raw: dict) -> dict:
+    """One-time legacy read adapter; active templates never expose data_root."""
+    paths = raw.get("paths", {})
+    for section in ("roots", "templates"):
+        values = paths.get(section, {})
+        for key, value in values.items():
+            if isinstance(value, str):
+                value = value.replace("{data_root}", "{workspace_root}")
+                value = value.replace("{paths.roots.code_dir}/tensorboard", "{workspace_root}/tensorboard")
+                values[key] = value
+    return raw
+
 
 
 def _migrate_local_inference_output(raw: dict) -> bool:
@@ -150,58 +174,107 @@ def prepare_legacy_config_dir(
 
 
 class Settings:
-    """Validated, read-only view of one explicitly selected legacy config tree.
+    """One immutable-on-load, explicitly selected configuration context.
 
-    Construction never creates or modifies files and never prompts. Low-level
-    template expansion remains owned here; ``Paths`` builds domain paths from it.
+    Workspace YAMLs are authoritative and the writable experiment root is
+    independent. The legacy three-file loader is retained solely as an explicit
+    migration/testing entry point; its old placeholders are translated on read.
+    Construction never creates, rewrites or prompts for configuration.
     """
 
     def __init__(self, configs_root: str | Path):
+        # Explicit legacy loading; no code should call this as a new-runtime default.
         self.CONFIGS_ROOT = Path(configs_root).expanduser().resolve()
-        self.PROJECT_ROOT = self.CONFIGS_ROOT.parent
+        self.PROJECT_ROOT = self.CONFIGS_ROOT.parent  # transitional source API until M2 F
         self._local_yaml_path = self.CONFIGS_ROOT / "local_config.yml"
         self._project_yaml_path = self.CONFIGS_ROOT / "project_config.yml"
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
-
-        self.local_cfg: LocalConfig = LocalConfig.model_validate(
-            self._load_required(self._local_yaml_path)
+        legacy = LegacyLocalConfig.model_validate(self._load_required(self._local_yaml_path))
+        self.WORKSPACE_ROOT = Path(legacy.infrastructure.data_root).expanduser().resolve()
+        self.local_cfg = LocalConfig.model_validate(
+            legacy.model_dump(exclude={"infrastructure"})
         )
-        self.project_cfg: ProjectConfig = ProjectConfig.model_validate(
-            self._load_required(self._project_yaml_path)
+        self.project_cfg = ProjectConfig.model_validate(
+            _legacy_project_templates(self._load_required(self._project_yaml_path))
         )
-        self.data_cfg: DataConfig = DataConfig.model_validate(
-            self._load_required(self._data_yaml_path)
-        )
+        self.data_cfg = DataConfig.model_validate(self._load_required(self._data_yaml_path))
         self._ctx = self._build_context()
 
     @classmethod
     def from_config_dir(cls, configs_root: str | Path) -> Settings:
-        """Load the three existing YAML files from an explicit config directory."""
+        """Explicit read-only adapter for old three-file configuration trees."""
         return cls(configs_root)
+
+    @classmethod
+    def from_workspace(
+        cls, workspace: str | Path, *,
+        config_root: str | Path | None = None,
+        local_config: str | Path | None = None,
+    ) -> Settings:
+        """Load workspace.yml + data.yml from workspace, user YAMLs from config_root.
+
+        External local.yml is considered only when the caller explicitly chose
+        a non-workspace config root, or supplied local_config directly. This
+        avoids accidental developer-mode activation in the Python API.
+        """
+        instance = cls.__new__(cls)
+        instance.WORKSPACE_ROOT = Path(workspace).expanduser().resolve()
+        owned = instance.WORKSPACE_ROOT / "configs"
+        instance.CONFIGS_ROOT = Path(config_root).expanduser().resolve() if config_root is not None else owned
+        instance.PROJECT_ROOT = instance.CONFIGS_ROOT.parent  # transitional until M2 F
+        instance._project_yaml_path = owned / "workspace.yml"
+        instance._data_yaml_path = owned / "data.yml"
+        instance._local_yaml_path = None
+        if local_config is not None:
+            instance._local_yaml_path = Path(local_config).expanduser().resolve()
+        elif instance.CONFIGS_ROOT != owned:
+            candidate = instance.CONFIGS_ROOT / "local.yml"
+            if candidate.is_file():
+                instance._local_yaml_path = candidate
+
+        source = instance._load_required(instance._project_yaml_path)
+        workspace_file = WorkspaceFileConfig.model_validate(source)
+        # Pydantic strict ProjectConfig remains the public project_cfg.
+        instance.project_cfg = ProjectConfig.model_validate(
+            workspace_file.model_dump(exclude={"inference", "console"})
+        )
+        instance.data_cfg = DataConfig.model_validate(instance._load_required(instance._data_yaml_path))
+        effective = {
+            "inference": workspace_file.inference.model_dump(),
+            "console": workspace_file.console.model_dump(),
+        }
+        if instance._local_yaml_path is not None:
+            external = DeveloperLocalConfig.model_validate(
+                instance._load_required(instance._local_yaml_path)
+            )
+            # Whitelist: only explicitly authored console/inference values.
+            # This is not a general-purpose deep merge.
+            authored = external.model_dump(exclude_unset=True)
+            for field, value in authored.get("console", {}).items():
+                effective["console"][field] = value
+            for field, value in authored.get("inference", {}).items():
+                if field == "output":
+                    effective["inference"]["output"].update(value)
+                else:
+                    effective["inference"][field] = value
+        instance.local_cfg = LocalConfig.model_validate(effective)
+        instance._ctx = instance._build_context()
+        return instance
 
     @staticmethod
     def _load_required(path: Path) -> dict:
         if not path.is_file():
-            raise FileNotFoundError(f"Critical LISAI config missing: {path}")
+            raise FileNotFoundError(
+                f"Critical LISAI config missing: {path}. "
+                f"Initialize its workspace explicitly with 'lisai workspace init {path.parent.parent}'."
+            )
         return load_yaml(path)
 
     def _build_context(self) -> AttrDict:
-        data_root = Path(self.local_cfg.infrastructure.data_root).resolve()
-        code_dir = self.PROJECT_ROOT.resolve()
-
         ctx = AttrDict(
-            data_root=str(data_root),
-            code_dir=str(code_dir),
-            paths=AttrDict(
-                roots=AttrDict(),
-                templates=AttrDict(),
-            ),
+            workspace_root=str(self.WORKSPACE_ROOT),
+            paths=AttrDict(roots=AttrDict(), templates=AttrDict()),
         )
-
-        # Provide code_dir for templates
-        ctx.paths.roots.code_dir = str(code_dir)
-
-        # Resolve roots (depend only on local infrastructure plus explicit local overrides).
         for key, tmpl in (self.project_cfg.paths.roots or {}).items():
             if key == "run_container_dirname":
                 text = str(tmpl).strip().strip("/\\")
@@ -209,18 +282,13 @@ class Settings:
                     raise ValueError("project.paths.roots.run_container_dirname must not be empty.")
                 ctx.paths.roots[key] = text
                 continue
-
             if key == "inference_dir" and self.local_cfg.inference.inference_dir != "default":
                 value = self.local_cfg.inference.inference_dir
             else:
                 value = tmpl.format(**ctx)
-            value = str(Path(os.path.normpath(value)).expanduser().resolve())
-            ctx.paths.roots[key] = value
-
-        # Store templates as-is (experiment-dependent keys can't be resolved yet)
+            ctx.paths.roots[key] = str(Path(os.path.normpath(value)).expanduser().resolve())
         for key, tmpl in (self.project_cfg.paths.templates or {}).items():
             ctx.paths.templates[key] = tmpl
-
         return ctx
 
 
@@ -238,8 +306,8 @@ class Settings:
         return self._project_yaml_path
 
     @property
-    def DATA_ROOT(self) -> Path:
-        return Path(self._ctx.data_root).resolve()
+    def WORKSPACE_CONFIG_PATH(self) -> Path:
+        return self._project_yaml_path
 
     @property
     def DATA_CONFIG_PATH(self) -> Path:

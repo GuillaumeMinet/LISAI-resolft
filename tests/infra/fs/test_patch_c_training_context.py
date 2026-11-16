@@ -52,7 +52,7 @@ def test_two_contexts_run_naming_checkpoints_and_tensorboard(settings_factory):
         runs.append(run_dir)
 
     assert runs[0] != runs[1]
-    assert a.DATA_ROOT != b.DATA_ROOT
+    assert a.WORKSPACE_ROOT != b.WORKSPACE_ROOT
 
 
 def test_numbered_folder_accepts_selected_format(tmp_path):

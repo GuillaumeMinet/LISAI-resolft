@@ -1,6 +1,6 @@
 """Build and validate a local dataset release catalog.
 
-The release builder is intentionally local-only: the LISAI data root provides
+The release builder is intentionally local-only: the LISAI workspace root provides
 registry metadata, while the staging directory is authoritative for the curated
 release contents. It does not contact Zenodo and it does not create archives.
 """
@@ -26,7 +26,7 @@ _GIB = 1024**3
 
 
 class ReleaseValidationError(ValueError):
-    """Raised when the staged release is inconsistent with the LISAI data root."""
+    """Raised when the staged release is inconsistent with the LISAI workspace root."""
 
     def __init__(self, errors: Iterable[str]):
         self.errors = tuple(str(error) for error in errors)
@@ -327,7 +327,7 @@ def _validate_noise_models(
 
 
 def build_dataset_catalog(
-    data_root: str | Path,
+    workspace_root: str | Path,
     staging_dir: str | Path,
     *,
     output_path: str | Path | None = None,
@@ -342,7 +342,7 @@ def build_dataset_catalog(
     packages are intentionally outside the dataset catalog.
     """
     stream = stream or sys.stdout
-    data_root = Path(data_root).expanduser().resolve()
+    workspace_root = Path(workspace_root).expanduser().resolve()
     staging_dir = Path(staging_dir).expanduser().resolve()
     output_path = (
         Path(output_path).expanduser().resolve()
@@ -353,12 +353,12 @@ def build_dataset_catalog(
     errors: list[str] = []
     warnings: list[str] = []
 
-    if not data_root.is_dir():
-        raise ReleaseValidationError([f"LISAI data root does not exist: {data_root}"])
+    if not workspace_root.is_dir():
+        raise ReleaseValidationError([f"LISAI workspace root does not exist: {workspace_root}"])
     if not staging_dir.is_dir():
         raise ReleaseValidationError([f"Staging directory does not exist: {staging_dir}"])
 
-    registry_path = data_root / _DATASET_REGISTRY_RELATIVE_PATH
+    registry_path = workspace_root / _DATASET_REGISTRY_RELATIVE_PATH
     if not registry_path.is_file():
         raise ReleaseValidationError([f"Dataset registry not found: {registry_path}"])
     registry = load_dataset_registry(registry_path)

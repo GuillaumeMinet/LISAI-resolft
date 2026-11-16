@@ -43,4 +43,12 @@ def test_write_local_config_json_schema_writes_json_file(tmp_path: Path):
 
     assert written_path == output_path
     parsed = json.loads(output_path.read_text(encoding="utf-8"))
-    assert parsed["title"] == "LocalConfig"
+    assert parsed["title"] == "DeveloperLocalConfig"
+
+
+def test_local_schema_has_selector_and_rejects_legacy_infrastructure():
+    schema = local_config_json_schema()
+    assert "dev" in schema["properties"]
+    assert "workspace" in schema["properties"]
+    assert "infrastructure" not in schema["properties"]
+    assert schema["additionalProperties"] is False

@@ -1,7 +1,7 @@
 """CLI-only selection of workspace and writable experiment-config locations.
 
-This module deliberately does not construct Settings or create files. It is usable
-before the M2 workspace-file loader and initializer exist (patches B and E).
+Selection reads only local selector fields and never creates files. The explicit
+loader below constructs Settings from the selected workspace/config root.
 """
 from __future__ import annotations
 
@@ -193,32 +193,18 @@ def resolve_cli_locations(
     )
 
 
-def load_legacy_settings_for_selected_locations(locations: ResolvedLocations):
-    """Patch-A bridge only: accept an *equivalent* existing M1 settings tree.
-
-    Patch B replaces this with Settings.from_workspace. Refuse a mismatched
-    workspace instead of silently training against the legacy data root.
-    """
+def load_settings_for_selected_locations(locations: ResolvedLocations):
+    """Load both selected roots once at the CLI boundary, with no fallback."""
     from lisai.config.settings import Settings
 
-    root = locations.experiment_config_root
-    expected = ("local_config.yml", "project_config.yml", "data_config.yml")
-    if not all((root / filename).is_file() for filename in expected):
-        missing = ", ".join(str(root / filename) for filename in expected if not (root / filename).is_file())
-        raise FileNotFoundError(
-            "M2 workspace settings loading is introduced in Patch B. "
-            f"The selected configuration root has no complete legacy configuration: {missing}. "
-            "Use 'lisai config show' to inspect the selection."
-        )
-    settings = Settings.from_config_dir(root)
-    actual = Path(settings.local_cfg.infrastructure.data_root).expanduser().resolve()
-    if actual != locations.workspace_root:
-        raise ValueError(
-            f"Selected workspace {locations.workspace_root} does not match legacy data_root {actual}. "
-            "Patch B is required for independently selected M2 workspaces; "
-            "no operation was started with the wrong data root."
-        )
-    return settings
+    return Settings.from_workspace(
+        locations.workspace_root,
+        config_root=locations.experiment_config_root,
+        local_config=locations.local_config_path if (
+            locations.local_config_path is not None and locations.local_config_path.is_file()
+        ) else None,
+    )
+
 
 
 def describe_locations(locations: ResolvedLocations) -> str:

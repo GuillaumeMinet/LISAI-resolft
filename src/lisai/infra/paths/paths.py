@@ -40,8 +40,8 @@ class Paths:
     def project_root(self) -> Path:
         return Path(self.settings.PROJECT_ROOT).resolve()
 
-    def data_root(self) -> Path:
-        return Path(self.settings.DATA_ROOT).resolve()
+    def workspace_root(self) -> Path:
+        return Path(self.settings.WORKSPACE_ROOT).resolve()
 
     def datasets_root(self) -> Path:
         return Path(self.settings.resolve_path(self.settings.project_cfg.paths.roots["data_dir"])).resolve()
@@ -83,7 +83,7 @@ class Paths:
 
     def promoted_models_root(self) -> Path:
         roots = self.settings.project_cfg.paths.roots or {}
-        template = roots.get("promoted_models_dir", "{data_root}/models")
+        template = roots.get("promoted_models_dir", "{workspace_root}/models")
         return Path(self.settings.resolve_path(template)).resolve()
 
     def promoted_model_registry_path(self) -> Path:
@@ -291,7 +291,7 @@ class Paths:
     ):
         """ 
         dataset_dir / preprocess / subfolder / filename
-        e.g. : <data_root>/preprocess/gt_avg/c05.tif
+        e.g. : <workspace_root>/preprocess/gt_avg/c05.tif
         """
         base_dir = self.dataset_preprocess_dir(
             dataset_name=dataset_name, data_type=data_type, usage=usage

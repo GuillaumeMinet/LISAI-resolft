@@ -345,7 +345,7 @@ def install_dataset_plan(
         print("Extracting required noise models...", file=output)
         _extract_archive(
             archive_path,
-            destination=resolved_paths.data_root(),
+            destination=resolved_paths.workspace_root(),
             expected_top_level="noise_models",
             include_top_level_children=set(plan.required_noise_models),
         )

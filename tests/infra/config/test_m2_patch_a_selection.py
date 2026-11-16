@@ -185,14 +185,14 @@ def test_config_show_without_workspace_is_read_only(tmp_path, monkeypatch, capsy
     assert not workspace.exists()
 
 
-def test_selected_old_settings_must_match_workspace(settings_factory, tmp_path):
+def test_selected_workspace_is_authoritative(settings_factory, tmp_path):
     settings = settings_factory("correct", data_root=tmp_path / "A")
     loc = selection.resolve_cli_locations(
         workspace=tmp_path / "B", config_root=settings.CONFIGS_ROOT,
         environ={}, editable_source_root=None,
     )
-    with pytest.raises(ValueError, match="does not match legacy data_root"):
-        selection.load_legacy_settings_for_selected_locations(loc)
+    with pytest.raises(FileNotFoundError, match="workspace.yml"):
+        selection.load_settings_for_selected_locations(loc)
 
 
 def test_selected_legacy_settings_can_dispatch_once(settings_factory, tmp_path, monkeypatch):
@@ -207,6 +207,7 @@ def test_selected_legacy_settings_can_dispatch_once(settings_factory, tmp_path, 
     ])
     assert result == 0
     assert len(seen) == 1 and seen[0].CONFIGS_ROOT == settings.CONFIGS_ROOT
+    assert seen[0].WORKSPACE_ROOT == settings.WORKSPACE_ROOT
 
 
 def test_runner_flags_and_help_are_inert(tmp_path, monkeypatch):
@@ -227,7 +228,7 @@ def test_runner_hands_selected_paths_to_queue_handler(tmp_path, monkeypatch):
     expected = object()
     observed = {}
     monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: None)
-    monkeypatch.setattr(runner_cli, "load_legacy_settings_for_selected_locations", lambda loc: loc)
+    monkeypatch.setattr(runner_cli, "load_settings_for_selected_locations", lambda loc: loc)
     monkeypatch.setattr(runner_cli, "Paths", lambda loc: (observed.setdefault("locations", loc), expected)[1])
     monkeypatch.setattr(queue_cli, "list_jobs", lambda **kwargs: observed.update(kwargs) or 0)
     rc = runner_cli.main([

@@ -20,8 +20,8 @@ def _parser() -> argparse.ArgumentParser:
         )
     )
     parser.add_argument(
-        "data_root",
-        help="LISAI data root containing datasets/, noise_models/, etc.",
+        "workspace_root",
+        help="LISAI workspace root containing datasets/, noise_models/, etc.",
     )
     parser.add_argument(
         "staging_dir",
@@ -39,7 +39,7 @@ def main() -> int:
     args = _parser().parse_args()
     try:
         build_dataset_catalog(
-            args.data_root,
+            args.workspace_root,
             args.staging_dir,
             output_path=args.output,
             progress=True,

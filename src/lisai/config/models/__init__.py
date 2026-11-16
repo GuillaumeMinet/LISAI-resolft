@@ -7,6 +7,8 @@ from .inference import (
 )
 from .local_config import (
     LocalConfig,
+    LegacyLocalConfig,
+    DeveloperLocalConfig,
     LocalConsoleConfig,
     LocalInferenceConfig,
     LocalInfrastructureConfig,
@@ -17,6 +19,8 @@ from .training import ContinueTrainingConfig, ExperimentConfig, ResolvedExperime
 __all__ = [
     "ProjectConfig",
     "LocalConfig",
+    "LegacyLocalConfig",
+    "DeveloperLocalConfig",
     "LocalConsoleConfig",
     "LocalInfrastructureConfig",
     "LocalInferenceConfig",

@@ -7,7 +7,7 @@ from typing import Sequence
 from lisai.config.cli import add_configs_subparser
 from lisai.config.selection import (
     describe_locations,
-    load_legacy_settings_for_selected_locations,
+    load_settings_for_selected_locations,
     resolve_cli_locations,
 )
 from lisai.data.cli import add_datasets_subparser
@@ -54,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "config" and args.config_command == "show":
             print(describe_locations(locations))
             return 0
-        settings = load_legacy_settings_for_selected_locations(locations)
+        settings = load_settings_for_selected_locations(locations)
     except (FileNotFoundError, ValueError) as exc:
         print(f"LISAI configuration: {exc}", file=sys.stderr)
         return 2

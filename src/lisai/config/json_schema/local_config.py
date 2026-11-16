@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ..models.local_config import LocalConfig
+from ..models.local_config import DeveloperLocalConfig
 
 
 def local_config_json_schema() -> dict:
-    """Return the JSON schema for the untracked machine-local LISAI config."""
-    return LocalConfig.model_json_schema()
+    """Return the schema for optional external developer local.yml."""
+    return DeveloperLocalConfig.model_json_schema()
 
 
 def write_local_config_json_schema(output_path: str | Path) -> Path:

@@ -16,7 +16,7 @@ def main():
     dataset_name = "Vim_fixed_mltplSNR_30nm"
 
     # subfolders are relative to canonical dataset dir:
-    # <data_root>/Data/<dataset_name>/<subfolder>
+    # <workspace_root>/Data/<dataset_name>/<subfolder>
     signal_subfolder = r"inference\N2V\Vim_fixed_Avg1-3_no_clipping"
     observation_subfolder = r"dump\rec\timelapses_gathered"  # or "same"
 

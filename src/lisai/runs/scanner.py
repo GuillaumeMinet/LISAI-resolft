@@ -60,7 +60,7 @@ def scan_runs(datasets_root: str | Path | None = None, *, paths: Paths) -> ScanR
     use_canonical_root = datasets_root is None
     root = default_datasets_root(paths=chosen_paths) if use_canonical_root else Path(datasets_root)
     root = root.resolve()
-    stored_path_root = chosen_paths.data_root() if use_canonical_root else root.parent
+    stored_path_root = chosen_paths.workspace_root() if use_canonical_root else root.parent
     if not root.exists():
         return ScanResults(runs=(), invalid=())
 

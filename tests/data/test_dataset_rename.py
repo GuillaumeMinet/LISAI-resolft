@@ -23,7 +23,7 @@ class FakePaths:
     def __init__(self, root: Path):
         self.root = root
 
-    def data_root(self) -> Path:
+    def workspace_root(self) -> Path:
         return self.root
 
     def datasets_root(self) -> Path:

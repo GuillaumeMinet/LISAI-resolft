@@ -16,7 +16,7 @@ def main():
     dataset_name = "Mito_fixed"
 
     # subfolders are relative to canonical dataset dir:
-    # <data_root>/Data/<dataset_name>/<subfolder>
+    # <workspace_root>/Data/<dataset_name>/<subfolder>
     signal_subfolder = r"preprocess\recon\gt_avg\train"
     observation_subfolder = r"preprocess\recon\inp_mltpl_snr\train"  # or "same"
 

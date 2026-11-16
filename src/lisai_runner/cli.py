@@ -4,7 +4,7 @@ import argparse
 import sys
 from typing import Sequence
 
-from lisai.config.selection import load_legacy_settings_for_selected_locations, resolve_cli_locations
+from lisai.config.selection import load_settings_for_selected_locations, resolve_cli_locations
 from lisai.infra.paths import Paths
 from lisai_runner.queue.cli import add_queue_subparser
 
@@ -25,7 +25,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
     try:
         locations = resolve_cli_locations(workspace=args.workspace, config_root=args.config_root)
-        settings = load_legacy_settings_for_selected_locations(locations)
+        settings = load_settings_for_selected_locations(locations)
     except (FileNotFoundError, ValueError) as exc:
         print(f"LISAI runner configuration: {exc}", file=sys.stderr)
         return 2

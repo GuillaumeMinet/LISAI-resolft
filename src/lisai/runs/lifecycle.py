@@ -27,10 +27,10 @@ from .schema import (
 
 def stored_run_path(run_dir: str | Path, *, paths: Paths) -> str:
     path = Path(run_dir).resolve()
-    data_root = paths.data_root()
+    workspace_root = paths.workspace_root()
 
     try:
-        return path.relative_to(data_root).as_posix()
+        return path.relative_to(workspace_root).as_posix()
     except ValueError:
         return path.as_posix()
 

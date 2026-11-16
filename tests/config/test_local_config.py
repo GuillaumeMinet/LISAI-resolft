@@ -6,12 +6,12 @@ import pytest
 from pydantic import ValidationError
 
 from lisai.config.io.yaml import load_yaml, save_yaml
-from lisai.config.models.local_config import LocalConfig
+from lisai.config.models.local_config import LocalConfig, LegacyLocalConfig
 from lisai.config.settings import Settings, prepare_legacy_config_dir
 
 
 def test_existing_local_config_without_inference_section_uses_defaults():
-    cfg = LocalConfig.model_validate(
+    cfg = LegacyLocalConfig.model_validate(
         {
             "infrastructure": {
                 "data_root": "/tmp/lisai",
@@ -26,13 +26,13 @@ def test_existing_local_config_without_inference_section_uses_defaults():
 
 
 def test_local_inference_output_mode_accepts_source_relative_modes():
-    folder_inside = LocalConfig.model_validate(
+    folder_inside = LegacyLocalConfig.model_validate(
         {
             "infrastructure": {"data_root": "/tmp/lisai"},
             "inference": {"output": {"mode": "folder_inside"}},
         }
     )
-    folder_outside = LocalConfig.model_validate(
+    folder_outside = LegacyLocalConfig.model_validate(
         {
             "infrastructure": {"data_root": "/tmp/lisai"},
             "inference": {"output": {"mode": "folder_outside"}},
@@ -62,7 +62,7 @@ def test_first_time_setup_writes_inference_defaults(monkeypatch, tmp_path: Path)
     assert written["inference"] == raw["inference"]
     assert written["console"] == raw["console"]
     assert local_path.read_text(encoding="utf-8").startswith(
-        "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
+        "# yaml-language-server: $schema=./schema/legacy-local-config.schema.json\n"
     )
 
 
@@ -108,17 +108,16 @@ def test_existing_local_config_gets_schema_hint_without_rewriting_values(tmp_pat
 
     assert loaded == expected
     assert local_path.read_text(encoding="utf-8").startswith(
-        "# yaml-language-server: $schema=./schema/local-config.schema.json\n"
+        "# yaml-language-server: $schema=./schema/legacy-local-config.schema.json\n"
     )
 
 
 def test_local_inference_dir_overrides_project_root(tmp_path: Path, global_settings):
     settings = Settings.__new__(Settings)
-    settings.PROJECT_ROOT = tmp_path
+    settings.WORKSPACE_ROOT = tmp_path / "data"
     settings.project_cfg = global_settings.project_cfg
     settings.local_cfg = LocalConfig.model_validate(
         {
-            "infrastructure": {"data_root": str(tmp_path / "data")},
             "inference": {
                 "output": {"mode": "default"},
                 "inference_dir": str(tmp_path / "custom_predictions"),
@@ -133,11 +132,10 @@ def test_local_inference_dir_overrides_project_root(tmp_path: Path, global_setti
 
 def test_default_local_inference_dir_uses_project_inference_root(tmp_path: Path, global_settings):
     settings = Settings.__new__(Settings)
-    settings.PROJECT_ROOT = tmp_path
+    settings.WORKSPACE_ROOT = tmp_path / "data"
     settings.project_cfg = global_settings.project_cfg
     settings.local_cfg = LocalConfig.model_validate(
         {
-            "infrastructure": {"data_root": str(tmp_path / "data")},
             "inference": {
                 "output": {"mode": "default"},
                 "inference_dir": "default",

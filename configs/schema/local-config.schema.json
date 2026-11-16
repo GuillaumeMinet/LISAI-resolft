@@ -1,5 +1,36 @@
 {
   "$defs": {
+    "DeveloperModeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "DeveloperModeConfig",
+      "type": "object"
+    },
+    "DeveloperWorkspaceSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Root"
+        }
+      },
+      "title": "DeveloperWorkspaceSelector",
+      "type": "object"
+    },
     "LocalConsoleConfig": {
       "additionalProperties": false,
       "description": "Machine-local console display preferences.",
@@ -68,39 +99,24 @@
       },
       "title": "LocalInferenceOutputConfig",
       "type": "object"
-    },
-    "LocalInfrastructureConfig": {
-      "additionalProperties": false,
-      "description": "Machine-specific filesystem settings.",
-      "properties": {
-        "data_root": {
-          "title": "Data Root",
-          "type": "string"
-        }
-      },
-      "required": [
-        "data_root"
-      ],
-      "title": "LocalInfrastructureConfig",
-      "type": "object"
     }
   },
   "additionalProperties": false,
-  "description": "Local, untracked LISAI configuration.",
+  "description": "Strict external local.yml: a selector plus whitelisted preferences.",
   "properties": {
-    "infrastructure": {
-      "$ref": "#/$defs/LocalInfrastructureConfig"
-    },
     "inference": {
       "$ref": "#/$defs/LocalInferenceConfig"
     },
     "console": {
       "$ref": "#/$defs/LocalConsoleConfig"
+    },
+    "dev": {
+      "$ref": "#/$defs/DeveloperModeConfig"
+    },
+    "workspace": {
+      "$ref": "#/$defs/DeveloperWorkspaceSelector"
     }
   },
-  "required": [
-    "infrastructure"
-  ],
-  "title": "LocalConfig",
+  "title": "DeveloperLocalConfig",
   "type": "object"
 }

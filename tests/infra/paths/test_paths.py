@@ -13,10 +13,10 @@ def test_paths_exposes_project_root(tmp_path, settings):
     assert Paths(settings).project_root() == tmp_path.resolve()
 
 
-def test_paths_exposes_data_root(tmp_path, settings):
-    settings = SimpleNamespace(DATA_ROOT=tmp_path / "data")
+def test_paths_exposes_workspace_root(tmp_path, settings):
+    settings = SimpleNamespace(WORKSPACE_ROOT=tmp_path / "data")
 
-    assert Paths(settings).data_root() == (tmp_path / "data").resolve()
+    assert Paths(settings).workspace_root() == (tmp_path / "data").resolve()
 
 
 def test_dataset_usage_subfolders_control_dataset_location(monkeypatch, settings_factory, settings):

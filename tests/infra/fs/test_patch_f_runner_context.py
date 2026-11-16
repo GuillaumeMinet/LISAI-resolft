@@ -66,7 +66,7 @@ def test_run_scanner_lifecycle_and_heartbeat_a_b_a(settings_factory):
         scan = scan_runs(paths=paths)
         assert len(scan.runs) == 1
         assert scan.runs[0].run_dir == paths.run_dir(dataset_name="my_dataset", models_subfolder="my_model", exp_name="my_run")
-    assert a.data_root() != b.data_root()
+    assert a.workspace_root() != b.workspace_root()
 
 
 def test_queue_storage_and_control_a_b_a(settings_factory):

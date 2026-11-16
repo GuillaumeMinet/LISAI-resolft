@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .inference import ApplyOutputMode, SaveInputMode
@@ -76,18 +78,52 @@ class LocalConsoleConfig(BaseModel):
 
 
 class LocalConfig(BaseModel):
-    """Local, untracked LISAI configuration."""
+    """Effective runtime preferences; never owns the workspace location."""
 
     model_config = ConfigDict(extra="forbid")
 
-    infrastructure: LocalInfrastructureConfig
     inference: LocalInferenceConfig = Field(default_factory=LocalInferenceConfig)
     console: LocalConsoleConfig = Field(default_factory=LocalConsoleConfig)
+
+
+class LegacyLocalConfig(LocalConfig):
+    """Read old local_config.yml only through explicit migration/testing loading."""
+
+    infrastructure: LocalInfrastructureConfig
+
+
+class DeveloperModeConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = Field(default=False, strict=True)
+
+
+class DeveloperWorkspaceSelector(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    root: str | None = None
+
+    @field_validator("root")
+    @classmethod
+    def _absolute_root(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("workspace.root in local.yml must be absolute")
+        return str(path.resolve())
+
+
+class DeveloperLocalConfig(LocalConfig):
+    """Strict external local.yml: a selector plus whitelisted preferences."""
+
+    dev: DeveloperModeConfig = Field(default_factory=DeveloperModeConfig)
+    workspace: DeveloperWorkspaceSelector = Field(default_factory=DeveloperWorkspaceSelector)
 
 
 __all__ = [
     "LocalConfig",
     "LocalInfrastructureConfig",
+    "LegacyLocalConfig",
+    "DeveloperLocalConfig",
     "LocalInferenceConfig",
     "LocalInferenceOutputConfig",
     "LocalConsoleConfig",
