@@ -65,7 +65,7 @@ QUEUE_MANAGED_SNAPSHOTS_DIRNAME = "submitted_configs"
 
 
 def _command_paths(paths: Paths | None) -> Paths:
-    """Select a legacy settings tree once at a runner command boundary."""
+    """Select API workspace defaults only for direct in-process runner calls."""
     return Paths(load_default_settings()) if paths is None else paths
 
 
@@ -93,6 +93,7 @@ def submit_job(
     record = create_queued_job(
         config_path=snapshot_config,
         source_config=resolved_config,
+        workspace_root=paths.workspace_root(),
         config_root=paths.settings.CONFIGS_ROOT,
         queue_root=queue_root,
         resource_class=resource_class,
@@ -195,6 +196,7 @@ def submit_sweep(
         context = load_scheduling_context(snapshot_config, paths=paths)
         record = create_queued_job(
             queue_root=queue_root,
+            workspace_root=paths.workspace_root(),
             config_root=paths.settings.CONFIGS_ROOT,
             config_path=snapshot_config,
             source_config=generated_config,
@@ -1621,7 +1623,24 @@ def _should_evaluate_after_cancel(
 
 def _job_paths(job: QueueJob, paths: Paths) -> Paths:
     """Preserve submission context when a worker evaluates a queued job."""
-    return Paths(Settings.from_config_dir(job.config_root)) if job.config_root else paths
+    if job.workspace_root is not None:
+        # Recreate the *submission* workspace even if a queue worker is currently
+        # operating under another workspace or writable config directory.
+        return Paths(Settings.from_workspace(
+            job.workspace_root,
+            config_root=job.config_root,
+        ))
+    if job.config_root is not None:
+        # Read-only compatibility for jobs queued before M2. Never guess a
+        # workspace from the worker's current environment or working directory.
+        legacy = Path(job.config_root)
+        if (legacy / "project_config.yml").is_file():
+            return Paths(Settings.from_config_dir(legacy))
+        raise ValueError(
+            f"Queued job {job.job_id} lacks workspace_root and {legacy} is not "
+            "a legacy config directory; resubmit the job with M2 workspace identity."
+        )
+    return paths
 
 
 def _resolve_run_for_queue_job(job: QueueJob, *, stderr, paths: Paths) -> DiscoveredRun | None:

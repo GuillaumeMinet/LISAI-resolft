@@ -188,7 +188,7 @@ class Settings:
     def __init__(self, configs_root: str | Path):
         # Explicit legacy loading; no code should call this as a new-runtime default.
         self.CONFIGS_ROOT = Path(configs_root).expanduser().resolve()
-        self.PROJECT_ROOT = self.CONFIGS_ROOT.parent  # transitional source API until M2 F
+        self.PROJECT_ROOT = self.CONFIGS_ROOT.parent  # legacy loader compatibility only
         self._local_yaml_path = self.CONFIGS_ROOT / "local_config.yml"
         self._project_yaml_path = self.CONFIGS_ROOT / "project_config.yml"
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
@@ -225,7 +225,6 @@ class Settings:
         instance.WORKSPACE_ROOT = Path(workspace).expanduser().resolve()
         owned = instance.WORKSPACE_ROOT / "configs"
         instance.CONFIGS_ROOT = Path(config_root).expanduser().resolve() if config_root is not None else owned
-        instance.PROJECT_ROOT = instance.CONFIGS_ROOT.parent  # transitional until M2 F
         instance._project_yaml_path = owned / "workspace.yml"
         instance._data_yaml_path = owned / "data.yml"
         instance._local_yaml_path = None

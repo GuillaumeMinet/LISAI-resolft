@@ -5,7 +5,7 @@ Filesystem layout in LISAI is defined through [`Paths`](../src/lisai/infra/paths
 ## Main Locations
 
 - Dataset registry: `Paths.dataset_registry_path()`
-- Local data root: `Paths.data_root()`
+- Workspace root: `Paths.workspace_root()`
 - Training datasets root: `Paths.training_datasets_root()`
 - Evaluation-only datasets root: `Paths.evaluation_datasets_root()`
 - Dataset root for loading: `Paths.dataset_dir(dataset_name=..., data_subfolder=..., usage=...)`
@@ -18,10 +18,10 @@ Filesystem layout in LISAI is defined through [`Paths`](../src/lisai/infra/paths
 - Noise model file: `Paths.noise_model_path(...)`
 - TensorBoard runs: `Paths.tensorboard_dir(...)`
 
-With the default project configuration, the data root is organized as:
+With the default workspace configuration (`<workspace>/configs/workspace.yml`), the workspace is organized as:
 
 ```text
-<data_root>/
+<workspace_root>/
 ├── datasets/
 │   ├── dataset_registry.yml
 │   ├── training/
@@ -43,11 +43,18 @@ With the default project configuration, the data root is organized as:
 ├── inference/
 │   └── <source_name>/
 │       └── <model_name>/
-└── noise_models/
-    └── <noise_model>/
+├── noise_models/
+│   └── <noise_model>/
+├── tensorboard/
+│   └── <dataset>/
+│       └── <tensorboard_subfolder>/
+└── .lisai/queue/
+    ├── queued/
+    ├── running/
+    └── logs/
 ```
 
-The physical `training` and `evaluation` dataset folder names, the run-container name (`runs` by default), and the main root templates come from `configs/project_config.yml`.
+The physical `training` and `evaluation` dataset folder names, the run-container name (`runs` by default), and the main root templates come from `<workspace>/configs/workspace.yml`.
 
 ## Training Run Layout
 
@@ -72,7 +79,7 @@ Dataset-based evaluation results are kept with the source run rather than in the
     └── <checkpoint_selection>/
 ```
 
-`lisai apply`, by contrast, uses the general inference root by default (`<data_root>/inference/...`), unless its output mode is overridden by the local/inference config or CLI.
+`lisai apply`, by contrast, uses the general inference root by default (`<workspace_root>/inference/...`), unless its output mode is overridden by the local/inference config or CLI.
 
 ## Preprocess Layout
 
@@ -86,14 +93,14 @@ Training datasets may contain `train`/`val`/`test` folders under their processed
 
 ## Promoted Models
 
-Reusable promoted models live outside the training-run hierarchy under `<data_root>/models/`. The registry is stored at `model_registry.yml`, while each model has its own directory containing its LISAI model manifest, weights, model card, and any packaged inference/noise-model artifacts required by that model.
+Reusable promoted models live outside the training-run hierarchy under `<workspace_root>/models/`. The registry is stored at `model_registry.yml`, while each model has its own directory containing its LISAI model manifest, weights, model card, and any packaged inference/noise-model artifacts required by that model.
 
 ## External Runs
 
 Imported external baselines are stored under the training dataset they were trained on:
 
 ```text
-<data_root>/datasets/training/<dataset>/external_runs/<run_name>/
+<workspace_root>/datasets/training/<dataset>/external_runs/<run_name>/
 ```
 
 They preserve external checkpoint/config provenance and imported evaluation outputs, but they are not executable LISAI training runs.

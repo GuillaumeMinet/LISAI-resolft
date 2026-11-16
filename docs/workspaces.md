@@ -78,3 +78,33 @@ After migration, explicitly run `workspace init` to add any missing directories,
 local inference configs and editor schemas, and `dev init` separately if using
 source-checkout-local experiment configs. Developer `local.yml` is deliberately
 not auto-generated from legacy settings: it is an independent, opt-in selection.
+
+## Runtime queue, TensorBoard and provenance (M2 Patch F)
+
+`lisai-runner` uses `<workspace>/.lisai/queue/` by default; `LISAI_QUEUE_ROOT`
+remains an explicit override when intentionally sharing a queue. A submitted
+job records **both** its workspace root and its writable experiment-config root
+and the worker forwards both to its child. The worker's current directory
+and any developer activation in that process do not choose job settings.
+
+```sh
+lisai-runner --workspace /absolute/path/to/LISAI \
+  --config-root /absolute/path/to/checkout/configs queue submit --config local/my_train
+lisai-runner --workspace /absolute/path/to/LISAI \
+  --config-root /absolute/path/to/checkout/configs queue worker
+```
+
+Run checkpoints and training metadata remain under
+`<workspace>/datasets/training/<dataset>/runs/...`; TensorBoard uses
+`<workspace>/tensorboard/<dataset>/<tensorboard_subfolder>/`.
+
+Run provenance always records the installed LISAI version if available. Git
+metadata is recorded only when LISAI can verify its **own imported editable
+checkout**, not by scanning an arbitrary Git repository above the workspace.
+Promoted-model manifests copy provenance from the original training-run
+metadata, rather than collecting it again on the machine doing the promotion.
+
+Jobs created before this change can still be launched using their explicit
+legacy three-file config directory (`--settings-config-dir` internally). A
+legacy job with no recoverable configuration identity must be resubmitted; no
+workspace is silently inferred from the worker's current directory.

@@ -12,7 +12,7 @@ paths:
     promoted_models_dir: "{data_root}/models"
     inference_dir: "{data_root}/inference"
     run_container_dirname: "runs"
-    # code_dir is injected automatically by Settings (project root)
+    # The source checkout is never a data path root.
 
   dataset_usage_subfolders:
     training: "training"
@@ -30,7 +30,7 @@ paths:
     # run_dir = training dir, where checkpoints, training curves, validation images, etc. are saved
     run_dir: "{paths.roots.data_dir}/{dataset_usage_subfolder}/{dataset_name}/{run_container_dirname}/{models_subfolder}/{exp_name}"
 
-    tensorboard_runs_dir: "{paths.roots.code_dir}/tensorboard/{dataset_name}/{tensorboard_subfolder}"
+    tensorboard_runs_dir: "{workspace_root}/tensorboard/{dataset_name}/{tensorboard_subfolder}"
 
     inference_output_dir: "{paths.roots.inference_dir}/{source_name}/{model_name}"
 

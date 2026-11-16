@@ -59,30 +59,34 @@ The CUDA environment currently pins `pytorch-cuda=12.1`. If your machine uses a 
 
 ### Local Configuration
 
-LISAI resolves datasets, saved runs, inference outputs, and noise models from a local data root.
+LISAI resolves datasets, saved runs, inference outputs and noise models from an
+explicit workspace. Initialize it once, without modifying the installed package:
 
-Create or edit `configs/local_config.yml` on your machine:
-
-```yaml
-infrastructure:
-  data_root: "D:/path/to/lisai-data"
+```bash
+lisai workspace init D:/path/to/lisai-workspace
+lisai --workspace D:/path/to/lisai-workspace config show
 ```
 
-This file is local-machine configuration and is ignored by Git. If it is missing, importing the package or running the CLI will prompt for a data root and write it.
+Its authoritative settings live in `<workspace>/configs/workspace.yml` and
+`<workspace>/configs/data.yml`. For editable development, use `lisai dev init`
+so experiments remain under the source checkout's `configs/`. Selecting
+`--workspace` does not override an independently selected `--config-root`.
+Neither imports nor ordinary CLI commands prompt or write configuration.
+See [workspace setup and migration](docs/workspaces.md).
 
-With the default project config, the main data locations are:
+With the default workspace config, the main data locations are:
 
-- datasets: `<data_root>/datasets` (split into `training/` and `evaluation/`)
-- noise models: `<data_root>/noise_models`
-- promoted models: `<data_root>/models`
-- training runs: `<data_root>/datasets/training/<dataset>/runs/<models_subfolder>/<exp_name>`
-- inference outputs: `<data_root>/inference/<source_name>/<model_name>`
+- datasets: `<workspace_root>/datasets` (split into `training/` and `evaluation/`)
+- noise models: `<workspace_root>/noise_models`
+- promoted models: `<workspace_root>/models`
+- training runs: `<workspace_root>/datasets/training/<dataset>/runs/<models_subfolder>/<exp_name>`
+- inference outputs: `<workspace_root>/inference/<source_name>/<model_name>`
 
 
 ### Download paper datasets and models
 
 To start with concrete examples, you can directly use datasets available from the paper Zenodo repository.
-LISAI can browse, download and install the published datasets directly into the configured `data_root`:
+LISAI can browse, download and install the published datasets directly into the selected workspace:
 
 ```bash
 lisai datasets catalog
@@ -323,18 +327,18 @@ For now, models catalog only includes models linked to the original publication 
 
 All main workflows are configured with YAML files:
 
-- `configs/project_config.yml`: project-level path templates, run layout, naming, recovery, and queue defaults
-- `configs/data_config.yml`: supported data formats, filename templates, and data subfolder names
-- `configs/preprocess/*.yml`: preprocessing pipeline configs
-- `configs/training/presets/*.yml`: tracked recipes used to create local configs
-- `configs/training/templates/*.yml`: tracked generic starting points with placeholders
-- `configs/training/examples/*.yml`: tracked training examples
-- `configs/training/local/*.yml`: local training configs, ignored by Git
-- `configs/inference/local/*.yml`: personal inference defaults and workflow overrides, ignored by Git
-- `configs/inference/**/*.yml`: tracked inference configs may stay sparse; unspecified values inherit from `local/defaults.yml`
-- `configs/schema/*.json`: generated JSON schemas for supported config types
+- `<workspace>/configs/workspace.yml`: authoritative paths, run layout, naming, recovery and queue defaults
+- `<workspace>/configs/data.yml`: supported data formats and filename templates
+- `lisai` package resources: read-only training presets/templates/examples, inference presets and generic preprocess templates
+- `<config-root>/training/local/*.yml`: editable training experiments
+- `<config-root>/preprocess/local/*.yml`: editable preprocessing configurations
+- `<config-root>/inference/local/*.yml`: editable inference defaults and post-training settings
+- `<config-root>/schema/*.json`: explicitly refreshed, registry-aware editor schemas
 
-Short config names are resolved from their workflow folder. For example, `lisai train examples/vim_denoising_unet` resolves under `configs/training/`, and `lisai preprocess single` resolves under `configs/preprocess/`. Inference config names check `configs/inference/local/` first, then `configs/inference/`. Explicit values in the selected inference config override `local/defaults.yml`, and explicit CLI options override both.
+The writable config root defaults to `<workspace>/configs`, but can be the
+verified editable checkout's `configs/` in developer mode.
+
+Short config names are resolved from their workflow folder. For example, `lisai train examples/vim_denoising_unet` selects a packaged example, while `lisai train local/my_training` selects an editable YAML from the selected writable root. Preprocess templates must first be instantiated with `lisai configs new preprocess <template> --dataset <name>`. Inference `local/` files are editable, and `presets/` refer to packaged inference resources. Explicit values in the selected inference config override `local/defaults.yml`, and explicit CLI options override both.
 
 Training presets and templates are catalog inputs, not direct training inputs. Use `lisai configs new ...` to instantiate a preset or template into `configs/training/local/`, then train the local config.
 
@@ -345,7 +349,7 @@ LISAI supports two training-data paths:
 
 - Unprepared data: use this when the data has not been written by the LISAI preprocessing step. In the training config, set `data.prep_before: false`. The loader scans the configured dataset folder and creates a file-level split manifest during training. This path is currently intended for unpaired datasets.
 
-- Preprocessed data: run a preprocessing config first, for example `lisai preprocess single`. The preprocess step writes the dataset into the expected training layout, can create `train`/`val`/`test` splits, and registers the result in the dataset registry under `<data_root>/datasets/dataset_registry.yml`. Training configs for this path use `data.prep_before: true` and `data.already_split: true`.
+- Preprocessed data: run a local preprocessing configuration first, for example `lisai preprocess local/my_preprocess`. The preprocess step writes the dataset into the expected training layout, can create `train`/`val`/`test` splits, and registers the result in the dataset registry under `<workspace_root>/datasets/dataset_registry.yml`. Training configs for this path use `data.prep_before: true` and `data.already_split: true`.
 
 See [Preprocessing](docs/preprocess.md) and [Data organization](docs/data_organization.md) for the detailed folder semantics.
 
@@ -379,13 +383,13 @@ lisai-runner queue list
 lisai-runner queue worker
 ```
 
-For example, [`configs/training/examples/sweep_hdn_betaKL.yaml`](configs/training/examples/sweep_hdn_betaKL.yaml) defines a sweep over `experiment.task.betaKL` values using a shared HDN base config:
+For example, the packaged `examples/sweep_hdn_betaKL` defines a sweep over `experiment.task.betaKL` values using a shared HDN base config:
 
 ```bash
 lisai-runner queue submit-sweep --file examples/sweep_hdn_betaKL.yaml
 ```
 
-The queue currently supports job submission, sweep submission, listing, logs, cancellation and cleanup.
+The queue currently supports job submission, sweep submission, listing, logs, cancellation and cleanup. By default, queue state lives at `<workspace>/.lisai/queue/` (override with `LISAI_QUEUE_ROOT`), and TensorBoard output is under `<workspace>/tensorboard/`. The worker records both the submitted workspace and writable config root, so a subprocess does not depend on the source checkout or its working directory.
 
 
 ### Reproducibility and external baselines

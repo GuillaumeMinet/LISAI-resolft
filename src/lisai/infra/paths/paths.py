@@ -37,9 +37,6 @@ class Paths:
         self.keys = keys or TemplateKeys()
 
     # Canonical template paths
-    def project_root(self) -> Path:
-        return Path(self.settings.PROJECT_ROOT).resolve()
-
     def workspace_root(self) -> Path:
         return Path(self.settings.WORKSPACE_ROOT).resolve()
 

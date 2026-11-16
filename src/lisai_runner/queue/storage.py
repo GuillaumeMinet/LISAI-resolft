@@ -30,7 +30,7 @@ def default_queue_root(*, paths: Paths) -> Path:
     env_override = os.environ.get("LISAI_QUEUE_ROOT")
     if env_override:
         return Path(env_override).expanduser().resolve()
-    return (paths.project_root() / ".lisai" / "queue").resolve()
+    return (paths.workspace_root() / ".lisai" / "queue").resolve()
 
 
 def queue_state_dir(status: JobStatus, *, queue_root: str | Path | None = None) -> Path:

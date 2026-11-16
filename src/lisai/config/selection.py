@@ -104,7 +104,7 @@ def _source_checkout_for_import() -> Path | None:
 
 
 def _read_local_selector(path: Path) -> tuple[bool, Path | None]:
-    """Read only selector fields; typed local preferences are implemented in B."""
+    """Read only selector fields; full preference validation happens on Settings load."""
     if not path.is_file():
         return False, None
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))

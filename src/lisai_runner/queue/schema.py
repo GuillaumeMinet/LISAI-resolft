@@ -31,7 +31,9 @@ class QueueJob(BaseModel):
     selector: str | None = None
     config: str
     source_config: str | None = None
-    # Legacy configuration tree selected when the job was submitted.
+    # Both roots are captured at submission; config_root remains the writable
+    # experiment YAML root, not the workspace containing global settings.
+    workspace_root: str | None = None
     config_root: str | None = None
     status: JobStatus
     priority: JobPriority = "normal"
@@ -86,7 +88,7 @@ class QueueJob(BaseModel):
             raise ValueError("selector index must be >= 1.")
         return format_queue_selector(number)
 
-    @field_validator("source_config", "config_root", "dataset", "model_subfolder", "run_name", "log_path", "error")
+    @field_validator("source_config", "workspace_root", "config_root", "dataset", "model_subfolder", "run_name", "log_path", "error")
     @classmethod
     def _validate_optional_text_fields(cls, value: str | None) -> str | None:
         if value is None:
@@ -121,6 +123,12 @@ class QueueJob(BaseModel):
 
     @model_validator(mode="after")
     def _validate_status_consistency(self):
+        if self.workspace_root is not None:
+            if self.config_root is None:
+                raise ValueError("workspace_root requires config_root for two-root worker handoff")
+            from pathlib import Path
+            if not Path(self.workspace_root).is_absolute() or not Path(self.config_root).is_absolute():
+                raise ValueError("Submitted workspace_root and config_root must be absolute paths")
         if self.submitted_at is None:
             raise ValueError("submitted_at must be set.")
         if self.updated_at is None:

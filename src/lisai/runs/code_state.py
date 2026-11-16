@@ -10,14 +10,22 @@ from .schema import CodeState
 
 
 def collect_code_state(repo_dir: str | Path | None = None, *, paths: Paths | None = None) -> CodeState:
-    """Collect a best-effort snapshot of the source state for run metadata."""
-    if repo_dir is None and paths is None:
-        raise ValueError("collect_code_state requires paths when repo_dir is not supplied")
-    cwd = Path(repo_dir).resolve() if repo_dir is not None else paths.project_root()
-    git_commit = _git_output(cwd, "rev-parse", "HEAD")
-    git_branch = _git_output(cwd, "branch", "--show-current")
-    git_remote = _git_output(cwd, "config", "--get", "remote.origin.url")
-    status = _git_output(cwd, "status", "--porcelain", empty_as_none=False)
+    """Record installed LISAI version and verified source checkout Git state.
+
+    ``repo_dir`` explicitly selects a repository for compatibility/testing;
+    ordinary training passes ``paths`` but never treats it as a Git location.
+    """
+    # Production callers never infer a source checkout from a workspace or cwd.
+    # The shared verifier checks the *imported* LISAI package, installation
+    # metadata, project layout, and Git root. An installed wheel has no source
+    # checkout and therefore records version-only provenance.
+    from lisai.config.selection import _source_checkout_for_import
+
+    cwd = Path(repo_dir).resolve() if repo_dir is not None else _source_checkout_for_import()
+    git_commit = _git_output(cwd, "rev-parse", "HEAD") if cwd is not None else None
+    git_branch = _git_output(cwd, "branch", "--show-current") if cwd is not None else None
+    git_remote = _git_output(cwd, "config", "--get", "remote.origin.url") if cwd is not None else None
+    status = _git_output(cwd, "status", "--porcelain", empty_as_none=False) if cwd is not None else None
 
     return CodeState(
         git_commit=git_commit,

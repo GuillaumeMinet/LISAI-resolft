@@ -259,6 +259,20 @@ class QueueWorker:
             return f"prelaunch_validation_failed: config not found ({config_path})"
         if not config_path.is_file():
             return f"prelaunch_validation_failed: config is not a file ({config_path})"
+        if job.workspace_root is not None:
+            # Catch uninitialized/moved workspaces before starting Python/GPU.
+            owned_configs = Path(job.workspace_root) / "configs"
+            missing = [owned_configs / name for name in ("workspace.yml", "data.yml")
+                       if not (owned_configs / name).is_file()]
+            if missing:
+                return ("prelaunch_validation_failed: selected workspace is missing "
+                        + ", ".join(map(str, missing))
+                        + f" (run 'lisai workspace init {job.workspace_root}')")
+        elif job.config_root is not None:
+            old = Path(job.config_root)
+            if not (old / "project_config.yml").is_file():
+                return ("prelaunch_validation_failed: old job lacks workspace_root and "
+                        f"{old} is not a legacy config directory; resubmit this job")
         return None
 
     def _running_cuda_counts(self) -> dict[int, int]:
@@ -316,12 +330,25 @@ class QueueWorker:
                 "lisai_runner.training_entrypoint",
                 "--config",
                 job.config,
-                "--settings-config-dir",
-                job.config_root or str(self.paths.settings.CONFIGS_ROOT),
             ]
+            if job.workspace_root is not None:
+                command.extend([
+                    "--workspace", job.workspace_root,
+                    "--config-root", job.config_root,
+                ])
+            elif job.config_root is not None:
+                # Old queued jobs still reference a legacy three-file config dir.
+                command.extend(["--settings-config-dir", job.config_root])
+            else:
+                # Job created without explicit identity by a legacy in-process
+                # caller: preserve the worker-selected roots as an explicit handoff.
+                command.extend([
+                    "--workspace", str(self.paths.workspace_root()),
+                    "--config-root", str(self.paths.settings.CONFIGS_ROOT),
+                ])
             process = subprocess.Popen(
                 command,
-                cwd=str(self.paths.project_root()),
+                cwd=str(self.queue_root),
                 env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log_handle,

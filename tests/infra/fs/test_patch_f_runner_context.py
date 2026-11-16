@@ -75,7 +75,7 @@ def test_queue_storage_and_control_a_b_a(settings_factory):
     assert default_queue_root(paths=a) != default_queue_root(paths=b)
     for paths, paused, max_runs in ((a, False, 1), (b, True, 2), (a, False, 1)):
         root = default_queue_root(paths=paths)
-        assert root == paths.project_root() / ".lisai" / "queue"
+        assert root == paths.workspace_root() / ".lisai" / "queue"
         assert default_queue_control(paths=paths).paused is paused
         assert read_queue_control(queue_root=root, paths=paths).max_concurrent_runs_per_gpu == max_runs
         assert read_queue_control(queue_root=root, paths=paths).paused is paused
@@ -99,6 +99,7 @@ def test_submit_job_remembers_selected_config_and_queue_root_a_b_a(settings_fact
         jobs, invalid = discover_jobs(queue_root=default_queue_root(paths=paths))
         assert not invalid
         assert jobs[-1].job.config_root == str(paths.settings.CONFIGS_ROOT)
+        assert jobs[-1].job.workspace_root == str(paths.workspace_root())
         assert jobs[-1].job.source_config == str(src)
         snapshot = Path(jobs[-1].job.config)
         assert snapshot.is_file() and snapshot.parent.name == "submitted_configs"
@@ -135,8 +136,8 @@ def test_worker_preserves_config_identity_when_worker_and_job_settings_differ(se
     cmd = captured["args"]
     assert cmd[cmd.index("--settings-config-dir") + 1] == str(b.settings.CONFIGS_ROOT)
     assert cmd[cmd.index("--config") + 1] == str(cfg)
-    # Working directory remains the legacy workspace, but never decides configuration.
-    assert captured["cwd"] == str(a.project_root())
+    # Worker uses its explicitly selected queue directory as a neutral cwd.
+    assert captured["cwd"] == str(root.resolve())
     assert captured["stdin"] == worker_mod.subprocess.DEVNULL
     assert captured["env"]["LISAI_DISABLE_TQDM"] == "1"
     worker._running_processes[record.job.job_id].log_handle.close()
