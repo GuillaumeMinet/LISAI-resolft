@@ -215,6 +215,17 @@ def describe_locations(locations: ResolvedLocations) -> str:
     except PackageNotFoundError:
         package_version = "source checkout (no installed metadata)"
     workspace_present = locations.workspace_config.is_file() and locations.data_config.is_file()
+    from lisai.config.settings import CURRENT_DEFAULTS_REVISION
+    revision_status = "unavailable"
+    if locations.workspace_config.is_file():
+        try:
+            from lisai.config.io.yaml import load_yaml
+            revision = load_yaml(locations.workspace_config).get("defaults_revision", 0)
+            revision_status = f"{revision} (packaged: {CURRENT_DEFAULTS_REVISION})"
+            if isinstance(revision, int) and revision < CURRENT_DEFAULTS_REVISION:
+                revision_status += " — update available (lisai workspace update)"
+        except (OSError, ValueError):
+            revision_status = "invalid workspace.yml"
     return "\n".join((
         f"Mode:               {'Developer' if locations.developer_mode else 'Normal'}",
         f"LISAI version:      {package_version}",
@@ -227,6 +238,7 @@ def describe_locations(locations: ResolvedLocations) -> str:
         f"Experiment root:    {locations.experiment_config_root}  [{locations.config_root_origin}]",
         f"Local preferences:  {locations.local_config_path or '(none)'}",
         "Built-in configs:   LISAI installed package resources",
+        f"Defaults revision:  {revision_status}",
         f"Workspace status:   {'initialized' if workspace_present else 'not initialized'}",
-        "Workspace init:     lisai workspace init <PATH>  (Patch E)" if not workspace_present else "",
+        "Workspace init:     lisai workspace init <PATH>" if not workspace_present else "",
     )).rstrip()

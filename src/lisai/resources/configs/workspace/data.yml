@@ -1,0 +1,37 @@
+# ============================================================
+# LISAI – Data-level configuration
+#
+# Defines:
+# - available data formats
+# - canonical file naming patterns
+# - subfolder conventions
+# - supported data types
+# ============================================================
+
+format:
+  single:
+    raw: "{sample_id}.hdf5"
+    recon: "{sample_id}.tif"
+
+  mltpl_snr:
+    # Logic: folder/file
+    raw: "{sample_id}/{snr_level}.hdf5"
+    recon: "{sample_id}.tif"
+
+  timelapse:
+    # Logic: "c13_t05/01.hdf5" for raw, "c13_t05.tif" for recon
+    raw: "{sample_id}_t{n_timepoints:02d}/{timepoint}.hdf5"
+    recon: "{sample_id}_t{n_timepoints:02d}.tif"
+
+subfolders:
+  dump: "dump"
+  preprocess: "preprocess"
+  noise_models: "noise_models"
+
+data_types:
+  raw: [".hdf5", ".h5"]
+  recon: [".tiff", ".tif"]
+
+logs:
+  raw_preprocess: "raw_preprocess_log.yaml"
+  recon_preprocess: "recon_preprocess_log.yaml"

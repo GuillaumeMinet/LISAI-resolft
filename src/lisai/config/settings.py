@@ -14,6 +14,8 @@ from .models.local_config import LocalConsoleConfig, LocalInferenceConfig
 
 _LOCAL_CONFIG_SCHEMA_HINT = "# yaml-language-server: $schema=./schema/legacy-local-config.schema.json"
 _INFERENCE_DEFAULTS_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference-defaults.schema.json"
+CURRENT_DEFAULTS_REVISION = 1
+
 _INFERENCE_OVERRIDES_SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/inference.schema.json"
 
 
@@ -71,6 +73,7 @@ class WorkspaceFileConfig(ProjectConfig):
     """Strict workspace.yml adapter, reusing the existing ProjectConfig model."""
 
     model_config = ConfigDict(extra="forbid")
+    defaults_revision: int = Field(default=0, ge=0)
     inference: LocalInferenceConfig = Field(default_factory=LocalInferenceConfig)
     console: LocalConsoleConfig = Field(default_factory=LocalConsoleConfig)
 
@@ -191,6 +194,7 @@ class Settings:
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
         legacy = LegacyLocalConfig.model_validate(self._load_required(self._local_yaml_path))
         self.WORKSPACE_ROOT = Path(legacy.infrastructure.data_root).expanduser().resolve()
+        self.DEFAULTS_REVISION = None  # Legacy settings carry no workspace revision.
         self.local_cfg = LocalConfig.model_validate(
             legacy.model_dump(exclude={"infrastructure"})
         )
@@ -234,9 +238,10 @@ class Settings:
 
         source = instance._load_required(instance._project_yaml_path)
         workspace_file = WorkspaceFileConfig.model_validate(source)
+        instance.DEFAULTS_REVISION = workspace_file.defaults_revision
         # Pydantic strict ProjectConfig remains the public project_cfg.
         instance.project_cfg = ProjectConfig.model_validate(
-            workspace_file.model_dump(exclude={"inference", "console"})
+            workspace_file.model_dump(exclude={"inference", "console", "defaults_revision"})
         )
         instance.data_cfg = DataConfig.model_validate(instance._load_required(instance._data_yaml_path))
         effective = {

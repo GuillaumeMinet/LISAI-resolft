@@ -74,3 +74,6 @@ AGENTS.md
 # Common OS artifacts
 .DS_Store
 Thumbs.db
+
+# Developer-local workspace selection and preferences (never commit)
+/configs/local.yml

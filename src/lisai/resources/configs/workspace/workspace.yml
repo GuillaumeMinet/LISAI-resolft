@@ -1,0 +1,73 @@
+# LISAI workspace-global settings; explicit updates only.
+project:
+  name: lisai
+paths:
+  roots:
+    data_dir: '{workspace_root}/datasets'
+    noise_models_dir: '{workspace_root}/noise_models'
+    promoted_models_dir: '{workspace_root}/models'
+    inference_dir: '{workspace_root}/inference'
+    run_container_dirname: runs
+  dataset_usage_subfolders:
+    training: training
+    evaluation: evaluation
+  templates:
+    dataset_registry: '{paths.roots.data_dir}/dataset_registry.yml'
+    promoted_model_registry: '{paths.roots.promoted_models_dir}/model_registry.yml'
+    promoted_model_dir: '{paths.roots.promoted_models_dir}/{model_name}'
+    promoted_model_exports_dir: '{paths.roots.promoted_models_dir}/_exports'
+    promoted_model_downloads_dir: '{paths.roots.promoted_models_dir}/downloads'
+    dataset_loading: '{paths.roots.data_dir}/{dataset_usage_subfolder}/{dataset_name}/{data_subfolder}'
+    run_dir: '{paths.roots.data_dir}/{dataset_usage_subfolder}/{dataset_name}/{run_container_dirname}/{models_subfolder}/{exp_name}'
+    tensorboard_runs_dir: '{workspace_root}/tensorboard/{dataset_name}/{tensorboard_subfolder}'
+    inference_output_dir: '{paths.roots.inference_dir}/{source_name}/{model_name}'
+    noise_model: '{paths.roots.noise_models_dir}/{noiseModel_name}/GMM.npz'
+run_layout:
+  subdirs:
+    checkpoints: checkpoints
+    validation_images: validation_images
+    retrain_origin: retrain_origin
+  artifacts:
+    loss_file: loss.txt
+    loss_plot: loss_plot.png
+    train_log: train_log.log
+    config_train: config_train.yaml
+    split_manifest: split_manifest.json
+  retrain_origin_artifacts:
+    loss_file: origin_loss.txt
+    train_log: origin_log.log
+    config_train: origin_config.yaml
+naming:
+  exp_name_format: '{name}_{id:02d}'
+  sample_id: c{id:02d}
+  run_dir_index_width: 2
+run_tracking:
+  active_heartbeat_timeout_minutes: 10
+recovery:
+  hdn_safe_resume:
+    enabled: true
+    auto_use_safe_checkpoint_on_continue: true
+    drop_optimizer_scheduler_state_on_safe_resume: true
+    rewind_steps: 2
+    lr_scale: 0.1
+    min_lr: 1.0e-08
+    max_compound_steps: None
+    force_grad_clip_max_norm: None
+queue:
+  resource_class_vram_mb:
+    light: 3000
+    medium: 6000
+    heavy: 9000
+  fixed_margin_pct: 0.2
+  safety_margin_mb: 2000
+  poll_seconds: 5
+  paused: false
+  max_concurrent_runs_per_gpu: 1
+defaults_revision: 1
+inference:
+  output:
+    mode: default
+    save_input_mode: if_not_in_place
+  inference_dir: default
+console:
+  progress_bar: null

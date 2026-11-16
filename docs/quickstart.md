@@ -24,16 +24,22 @@ Install the package in editable mode:
 pip install -e . --no-deps
 ```
 
-## Local Data Root
+## Workspace initialization (LISAI v0.1)
 
-LISAI resolves datasets, saved runs, promoted models, inference outputs, and noise models from a local data root. Create `configs/local_config.yml` on your machine:
+LISAI no longer creates `configs/local_config.yml` automatically or prompts
+on import. The workspace owns persistent datasets, model bundles and authoritative
+`workspace.yml`/`data.yml`. Explicitly initialize it first:
 
-```yaml
-infrastructure:
-  data_root: "D:/path/to/lisai-data"
+```powershell
+lisai workspace init D:/path/to/LISAI
+lisai --workspace D:/path/to/LISAI config show
 ```
 
-This file is intentionally ignored by Git. If it is missing, the first CLI command prompts for a data root and writes the file.
+For editable developer checkouts, run `lisai --workspace D:/path/to/LISAI dev init`.
+This selects that workspace while keeping local experiment configs in the repo.
+Package presets remain read-only; local experiment configurations are editable.
+See [Workspaces and migration](workspaces.md) for developer activation, defaults
+updates and conversion from the old `local_config.yml` layout.
 
 ## Smoke Test
 
