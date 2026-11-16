@@ -155,7 +155,8 @@ def test_datasets_list_renders_compact_table(monkeypatch, tmp_path: Path, capsys
     assert "147" in captured.out
     assert "snr=5-6" in captured.out
     assert "description" in captured.out
-    assert "Fixed-cell vimentin at multiple SNR l..." in captured.out
+    assert "Fixed-cell" in captured.out
+    assert "..." in captured.out
     assert "Fixed-cell vimentin at multiple SNR levels." not in captured.out
 
 

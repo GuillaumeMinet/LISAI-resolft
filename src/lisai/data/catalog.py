@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -202,6 +203,23 @@ def load_catalog(
         raise ValueError(f"Invalid downloadable-dataset catalog at {catalog_url}: {exc}") from exc
 
 
+def load_catalog_file(path: str | Path) -> DatasetCatalog:
+    """Read and validate an explicitly supplied local downloadable-dataset catalog.
+
+    This offline operation never accesses the published Zenodo catalog. It is
+    useful for validating a freshly built catalog before release.
+    """
+    source = Path(path).expanduser()
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid downloadable-dataset catalog at {source}: {exc}") from exc
+    try:
+        return DatasetCatalog.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError(f"Invalid downloadable-dataset catalog at {source}: {exc}") from exc
+
+
 def dataset_download_size(dataset: DownloadableDataset) -> int:
     return sum(archive.size_bytes for archive in dataset.archives)
 
@@ -231,4 +249,5 @@ __all__ = [
     "dataset_download_size",
     "list_datasets",
     "load_catalog",
+    "load_catalog_file",
 ]

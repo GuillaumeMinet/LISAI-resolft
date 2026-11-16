@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
-from lisai.config import ResolvedExperiment, load_yaml, settings
+from lisai.config import ResolvedExperiment, load_yaml
+from lisai.config.settings import load_default_settings
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
 from lisai.runs import filter_runs, scan_runs
@@ -87,12 +88,13 @@ class GraphRun:
         return str(self.config.experiment.task.name)
 
 
-def load_graph_run(run: DiscoveredRun) -> GraphRun:
+def load_graph_run(run: DiscoveredRun, *, paths: Paths | None = None) -> GraphRun:
     """Load one discovered run and its resolved training configuration."""
 
     run_dir = run.run_dir
 
-    cfg_path = Paths(settings).cfg_train_path(
+    selected_paths = Paths(load_default_settings()) if paths is None else paths
+    cfg_path = selected_paths.cfg_train_path(
         run_dir=run_dir,
     )
 
@@ -119,6 +121,7 @@ def discover_graph_runs(
     run_names: RunNames = "all",
     status: str | None = None,
     kept: bool | None = None,
+    paths: Paths | None = None,
 ) -> list[GraphRun]:
     """
     Discover runs using LISAI's canonical run discovery.
@@ -130,7 +133,8 @@ def discover_graph_runs(
         use exact run-directory names and preserve the supplied order.
     """
 
-    scan = scan_runs()
+    selected_paths = Paths(load_default_settings()) if paths is None else paths
+    scan = scan_runs(paths=selected_paths)
 
     candidates = filter_runs(
         scan.runs,
@@ -169,6 +173,6 @@ def discover_graph_runs(
         ]
 
     return [
-        load_graph_run(run)
+        load_graph_run(run, paths=selected_paths)
         for run in selected
     ]

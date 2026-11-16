@@ -5,12 +5,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
-import lisai.queue.cli as queue_cli
-from lisai.cli import main as root_main
+import lisai_runner.queue.cli as queue_cli
+from lisai_runner.cli import main as root_main
 from lisai.config import load_yaml
-from lisai.queue.history import SchedulingContext
-from lisai.queue.schema import QueueJob
-from lisai.queue.storage import DiscoveredJob, discover_jobs, queue_logs_dir, queue_state_dir, write_job_atomic
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
+from lisai_runner.queue.history import SchedulingContext
+from lisai_runner.queue.schema import QueueJob
+from lisai_runner.queue.storage import DiscoveredJob, discover_jobs, queue_logs_dir, queue_state_dir, write_job_atomic
 from lisai.runs.schema import TrainingSignature
 
 
@@ -20,11 +22,11 @@ def test_queue_submit_and_list_via_root_cli(monkeypatch, tmp_path, capsys):
     config_path.write_text("{}", encoding="utf-8")
 
     monkeypatch.setenv("LISAI_QUEUE_ROOT", str(queue_root))
-    monkeypatch.setattr(queue_cli, "resolve_config_path", lambda _: config_path)
+    monkeypatch.setattr(queue_cli, "resolve_config_path", lambda _, *, resolver: config_path)
     monkeypatch.setattr(
         queue_cli,
         "load_scheduling_context",
-        lambda _: SchedulingContext(
+        lambda _, *, paths: SchedulingContext(
             config_path=config_path,
             dataset="Gag",
             model_subfolder="HDN",
@@ -55,11 +57,11 @@ def test_queue_submit_copies_source_config_to_managed_snapshot(monkeypatch, tmp_
     expected_bytes = source_config.read_bytes()
 
     monkeypatch.setenv("LISAI_QUEUE_ROOT", str(queue_root))
-    monkeypatch.setattr(queue_cli, "resolve_config_path", lambda _: source_config)
+    monkeypatch.setattr(queue_cli, "resolve_config_path", lambda _, *, resolver: source_config)
     monkeypatch.setattr(
         queue_cli,
         "load_scheduling_context",
-        lambda path: SchedulingContext(
+        lambda path, *, paths: SchedulingContext(
             config_path=Path(path).resolve(),
             dataset="Gag",
             model_subfolder="HDN",
@@ -342,16 +344,16 @@ def test_cancel_eval_policy_follows_config_default(monkeypatch, tmp_path):
     monkeypatch.setattr(
         queue_cli,
         "resolve_config",
-        lambda _path: SimpleNamespace(experiment=SimpleNamespace(post_training_inference=True)),
+        lambda _path, *, stg: SimpleNamespace(experiment=SimpleNamespace(post_training_inference=True)),
     )
-    assert queue_cli._should_evaluate_after_cancel(job, eval_override=None, stderr=io.StringIO()) is True
+    assert queue_cli._should_evaluate_after_cancel(job, paths=Paths(load_default_settings()), eval_override=None, stderr=io.StringIO()) is True
 
     monkeypatch.setattr(
         queue_cli,
         "resolve_config",
-        lambda _path: SimpleNamespace(experiment=SimpleNamespace(post_training_inference=False)),
+        lambda _path, *, stg: SimpleNamespace(experiment=SimpleNamespace(post_training_inference=False)),
     )
-    assert queue_cli._should_evaluate_after_cancel(job, eval_override=None, stderr=io.StringIO()) is False
+    assert queue_cli._should_evaluate_after_cancel(job, paths=Paths(load_default_settings()), eval_override=None, stderr=io.StringIO()) is False
 
 
 def test_cancel_eval_policy_override_takes_priority(monkeypatch, tmp_path):
@@ -370,10 +372,10 @@ def test_cancel_eval_policy_override_takes_priority(monkeypatch, tmp_path):
     monkeypatch.setattr(
         queue_cli,
         "resolve_config",
-        lambda _path: SimpleNamespace(experiment=SimpleNamespace(post_training_inference=False)),
+        lambda _path, *, stg: SimpleNamespace(experiment=SimpleNamespace(post_training_inference=False)),
     )
-    assert queue_cli._should_evaluate_after_cancel(job, eval_override=True, stderr=io.StringIO()) is True
-    assert queue_cli._should_evaluate_after_cancel(job, eval_override=False, stderr=io.StringIO()) is False
+    assert queue_cli._should_evaluate_after_cancel(job, paths=Paths(load_default_settings()), eval_override=True, stderr=io.StringIO()) is True
+    assert queue_cli._should_evaluate_after_cancel(job, paths=Paths(load_default_settings()), eval_override=False, stderr=io.StringIO()) is False
 
 
 def test_cancel_running_process_not_found_triggers_eval_hook(monkeypatch, tmp_path):
@@ -406,11 +408,13 @@ def test_cancel_running_process_not_found_triggers_eval_hook(monkeypatch, tmp_pa
     monkeypatch.setattr(
         queue_cli,
         "_maybe_run_post_cancel_evaluation",
-        lambda job, *, eval_override, stdout, stderr: called.append((job.job_id, eval_override)),
+        lambda job, *, eval_override, stdout, stderr, paths: called.append((job.job_id, eval_override)),
     )
 
     ok = queue_cli._cancel_single_record(
         record,
+        paths=Paths(load_default_settings()),
+        queue_root=queue_root,
         force=False,
         allow_force_prompt=False,
         eval_override=True,
@@ -501,9 +505,9 @@ def test_queue_submit_sweep_creates_multiple_jobs_with_overrides(monkeypatch, tm
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(queue_cli, "resolve_config_path", lambda arg: Path(arg).resolve())
+    monkeypatch.setattr(queue_cli, "resolve_config_path", lambda arg, *, resolver: Path(arg).resolve())
 
-    def fake_context(path: Path) -> SchedulingContext:
+    def fake_context(path: Path, *, paths) -> SchedulingContext:
         cfg = load_yaml(path)
         return SchedulingContext(
             config_path=Path(path).resolve(),
@@ -585,7 +589,7 @@ def test_queue_submit_sweep_resolves_file_from_training_sweeps_dir(monkeypatch, 
         encoding="utf-8",
     )
 
-    def fake_context(path: Path) -> SchedulingContext:
+    def fake_context(path: Path, *, paths) -> SchedulingContext:
         cfg = load_yaml(path)
         return SchedulingContext(
             config_path=Path(path).resolve(),
@@ -595,7 +599,7 @@ def test_queue_submit_sweep_resolves_file_from_training_sweeps_dir(monkeypatch, 
             training_signature=TrainingSignature(architecture="unet", batch_size=8, patch_size=128),
         )
 
-    def fake_resolve_config_path(arg: str) -> Path:
+    def fake_resolve_config_path(arg: str, *, resolver) -> Path:
         path = Path(arg)
         if path.is_absolute():
             return path.resolve()

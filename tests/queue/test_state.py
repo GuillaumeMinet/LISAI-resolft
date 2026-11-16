@@ -5,8 +5,8 @@ from pathlib import Path
 
 from lisai.runs.schema import TrainingSignature
 
-from lisai.queue.state import create_queued_job, mark_job_blocked, mark_job_done, mark_job_running
-from lisai.queue.storage import discover_jobs
+from lisai_runner.queue.state import create_queued_job, mark_job_blocked, mark_job_done, mark_job_running
+from lisai_runner.queue.storage import discover_jobs
 
 
 def test_queue_job_creation_and_state_transitions(tmp_path: Path):

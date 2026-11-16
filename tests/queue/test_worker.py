@@ -5,14 +5,16 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import lisai.queue.worker as worker_mod
+import lisai_runner.queue.worker as worker_mod
 import lisai.runs.listing as runs_listing
-from lisai.queue.control import update_queue_control
-from lisai.queue.schema import QueueJob
-from lisai.queue.state import create_queued_job, mark_job_running
-from lisai.queue.storage import discover_jobs, queue_state_dir
-from lisai.queue.worker import QueueWorker, WorkerCycleResult
+from lisai_runner.queue.control import update_queue_control
+from lisai_runner.queue.schema import QueueJob
+from lisai_runner.queue.state import create_queued_job, mark_job_running
+from lisai_runner.queue.storage import discover_jobs, queue_state_dir
+from lisai_runner.queue.worker import QueueWorker, WorkerCycleResult
 from lisai.runs.scanner import DiscoveredRun, ScanResults
+from lisai.config.settings import load_default_settings
+from lisai.infra.paths import Paths
 from lisai.runs.schema import RunMetadata, TrainingSignature
 
 
@@ -121,7 +123,7 @@ def test_worker_launch_order_is_priority_first_then_fifo(monkeypatch, tmp_path):
         now=datetime(2026, 3, 20, 12, 2, tzinfo=timezone.utc),
     )
 
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
     launched: list[str] = []
     monkeypatch.setattr(
         QueueWorker,
@@ -129,7 +131,7 @@ def test_worker_launch_order_is_priority_first_then_fifo(monkeypatch, tmp_path):
         lambda self, record: launched.append(record.job.job_id) or True,
     )
 
-    worker = QueueWorker(queue_root=queue_root)
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root)
     result = worker.run_once()
 
     assert result.status_key == "launched"
@@ -139,10 +141,10 @@ def test_worker_launch_order_is_priority_first_then_fifo(monkeypatch, tmp_path):
 def test_worker_blocks_invalid_device_spec(monkeypatch, tmp_path):
     queue_root = tmp_path / ".lisai" / "queue"
     created = _queued_job(tmp_path, device="cuda:abc")
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
     monkeypatch.setattr(QueueWorker, "_launch_job", lambda self, record: True)
 
-    worker = QueueWorker(queue_root=queue_root)
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root)
     result = worker.run_once()
 
     assert result.status_key in {"idle", "waiting/no_eligible"}
@@ -161,7 +163,7 @@ def test_worker_waits_when_concurrency_limit_is_reached(monkeypatch, tmp_path):
         tmp_path,
         now=datetime(2026, 3, 20, 12, 5, tzinfo=timezone.utc),
     )
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
 
     launched: list[str] = []
     monkeypatch.setattr(
@@ -170,7 +172,7 @@ def test_worker_waits_when_concurrency_limit_is_reached(monkeypatch, tmp_path):
         lambda self, record: launched.append(record.job.job_id) or True,
     )
 
-    worker = QueueWorker(queue_root=queue_root)
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root)
     result = worker.run_once()
 
     assert result.status_key == "waiting/device_busy"
@@ -184,9 +186,9 @@ def test_worker_allows_launch_when_concurrency_override_increases_capacity(monke
         tmp_path,
         now=datetime(2026, 3, 20, 12, 5, tzinfo=timezone.utc),
     )
-    update_queue_control(queue_root=queue_root, max_concurrent_runs_per_gpu=2)
+    update_queue_control(paths=Paths(load_default_settings()), queue_root=queue_root, max_concurrent_runs_per_gpu=2)
 
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
     launched: list[str] = []
     monkeypatch.setattr(
         QueueWorker,
@@ -194,7 +196,7 @@ def test_worker_allows_launch_when_concurrency_override_increases_capacity(monke
         lambda self, record: launched.append(record.job.job_id) or True,
     )
 
-    worker = QueueWorker(queue_root=queue_root)
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root)
     result = worker.run_once()
 
     assert result.status_key == "launched"
@@ -204,9 +206,9 @@ def test_worker_allows_launch_when_concurrency_override_increases_capacity(monke
 def test_worker_paused_control_prevents_launch(monkeypatch, tmp_path):
     queue_root = tmp_path / ".lisai" / "queue"
     _queued_job(tmp_path)
-    update_queue_control(queue_root=queue_root, paused=True)
+    update_queue_control(paths=Paths(load_default_settings()), queue_root=queue_root, paused=True)
 
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
     launched: list[str] = []
     monkeypatch.setattr(
         QueueWorker,
@@ -214,7 +216,7 @@ def test_worker_paused_control_prevents_launch(monkeypatch, tmp_path):
         lambda self, record: launched.append(record.job.job_id) or True,
     )
 
-    worker = QueueWorker(queue_root=queue_root)
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root)
     result = worker.run_once()
 
     assert result.status_key == "paused"
@@ -223,7 +225,7 @@ def test_worker_paused_control_prevents_launch(monkeypatch, tmp_path):
 
 def test_worker_status_reporter_prints_on_change_and_heartbeat(monkeypatch, tmp_path):
     output = io.StringIO()
-    worker = QueueWorker(
+    worker = QueueWorker(paths=Paths(load_default_settings()),
         queue_root=tmp_path / ".lisai" / "queue",
         heartbeat_seconds=30,
         stdout=output,
@@ -254,12 +256,12 @@ def test_worker_treats_old_running_heartbeat_as_stale_not_active(monkeypatch, tm
         peak_gpu_mem_mb=None,
     )
 
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(stale_run,), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(stale_run,), invalid=()))
     monkeypatch.setattr(settings.project_cfg.run_tracking, "active_heartbeat_timeout_minutes", 10)
     monkeypatch.setattr(runs_listing, "utc_now", lambda: datetime(2026, 3, 20, 12, 0, tzinfo=timezone.utc))
     monkeypatch.setattr(QueueWorker, "_launch_job", lambda self, record: True)
 
-    worker = QueueWorker(queue_root=tmp_path / ".lisai" / "queue")
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=tmp_path / ".lisai" / "queue")
     result = worker.run_once()
 
     assert result.status_key == "launched"
@@ -309,7 +311,7 @@ def test_worker_infer_run_id_prefers_single_dynamic_active_candidate(monkeypatch
     )
 
     monkeypatch.setattr(runs_listing, "utc_now", lambda: now)
-    worker = QueueWorker(queue_root=tmp_path / ".lisai" / "queue")
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=tmp_path / ".lisai" / "queue")
 
     inferred = worker._infer_run_id_for_job(job, (stale_candidate, active_candidate))
     assert inferred == "01ARZ3NDEKTSV4RRFFQ69G5FAE"
@@ -336,7 +338,7 @@ def test_worker_launch_sets_env_flag_to_disable_tqdm(monkeypatch, tmp_path):
 
     monkeypatch.setattr(worker_mod.subprocess, "Popen", fake_popen)
 
-    worker = QueueWorker(queue_root=tmp_path / ".lisai" / "queue")
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=tmp_path / ".lisai" / "queue")
     launched = worker._launch_job(record)
 
     assert launched is True
@@ -370,9 +372,9 @@ def test_worker_quarantines_invalid_queued_job_once(monkeypatch, tmp_path):
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
     stderr = io.StringIO()
-    worker = QueueWorker(queue_root=queue_root, stdout=io.StringIO(), stderr=stderr)
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root, stdout=io.StringIO(), stderr=stderr)
 
     first = worker.run_once()
     second = worker.run_once()
@@ -402,7 +404,7 @@ def test_worker_quarantine_does_not_block_valid_launch(monkeypatch, tmp_path):
     invalid_path.write_text("{", encoding="utf-8")
 
     valid = _queued_job(tmp_path)
-    monkeypatch.setattr(worker_mod, "scan_runs", lambda: ScanResults(runs=(), invalid=()))
+    monkeypatch.setattr(worker_mod, "scan_runs", lambda *, paths: ScanResults(runs=(), invalid=()))
     launched: list[str] = []
     monkeypatch.setattr(
         QueueWorker,
@@ -410,7 +412,7 @@ def test_worker_quarantine_does_not_block_valid_launch(monkeypatch, tmp_path):
         lambda self, record: launched.append(record.job.job_id) or True,
     )
 
-    worker = QueueWorker(queue_root=queue_root, stdout=io.StringIO(), stderr=io.StringIO())
+    worker = QueueWorker(paths=Paths(load_default_settings()), queue_root=queue_root, stdout=io.StringIO(), stderr=io.StringIO())
     result = worker.run_once()
 
     assert result.status_key == "launched"

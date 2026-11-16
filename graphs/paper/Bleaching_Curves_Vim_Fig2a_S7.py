@@ -14,11 +14,12 @@ from matplotlib.legend import Legend
 
 from graphs.utils.paths import get_saved_graphs_dir
 from lisai.infra.paths import Paths
+from lisai.config.settings import load_default_settings
 
 
 # Path to the main folder
-lisaiPaths=Paths()
-root = lisaiPaths.data_root()
+lisaiPaths = Paths(load_default_settings())
+root = lisaiPaths.workspace_root()
 data_folder = Path(root) / r"paper_dataset\application_denoising\vimentin\bleaching_experiment"
 
 mean_all = []

@@ -610,7 +610,7 @@ def _prepare_eval_item_arrays(item: EvalItem, *, config: DataSection):
         downsamp_factor = 1
 
     initial_crop = config.initial_crop
-    if initial_crop is not None:
+    if initial_crop is not None and initial_crop != 0:
         if isinstance(initial_crop, int):
             crop_size = initial_crop // downsamp_factor
         else:

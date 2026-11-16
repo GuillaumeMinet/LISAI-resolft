@@ -25,7 +25,7 @@ Main supported workflows:
 
 LISAI is driven primarily through YAML configuration files and the `lisai` command-line interface. 
 
-While LISAI is structured as a Python package, the current release still assumes the repository layout and configuration files; support for fully standalone installation and use through a stable Python API is planned for a future release.
+LISAI v0.1 supports explicit standalone workspaces and source-checkout developer configurations. Built-in presets are packaged with the installed distribution. The file-based Python API remains available; streamlined inference APIs and minimal-install dependency validation are planned for M3.
 
 
 ## Getting started
@@ -112,7 +112,7 @@ lisai models download --all --install
 
 ### 1. Inspect or preprocess datasets
 
-LISAI keeps a registry of datasets available under the configured data root.
+LISAI keeps a registry of datasets inside the selected workspace.
 
 ```bash
 lisai datasets list
@@ -126,8 +126,10 @@ lisai datasets show <dataset>
 Raw datasets can be converted into the standard LISAI training/evaluation layout with:
 
 ```bash
-lisai preprocess single
-lisai preprocess configs/preprocess/single.yml
+lisai configs list --domain preprocess
+lisai configs new preprocess single_recon --dataset <dataset-name>
+# Edit the generated <config-root>/preprocess/local/<dataset-name>.yml
+lisai preprocess local/<dataset-name>
 ```
 
 Successful preprocessing registers the resulting dataset automatically.
@@ -263,7 +265,7 @@ lisai apply <run-selector> images/ --tiling-size 512
 - folder_inside: in a folder located inside the source_data root
 - folder_outside: in a folder located outside the source_data root
 
-You can specify your preference directly in the `local_config.yml` under the `inference` section, or for one-time usage, specify as a cli argument:
+Set workspace-wide inference preferences in `<workspace>/configs/workspace.yml`, or use whitelisted per-developer overrides in `<config-root>/local.yml`. For a single invocation, specify the CLI argument:
 
 ```bash
 lisai apply <run-selector> images/ --output-mode in_place

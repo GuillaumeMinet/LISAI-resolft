@@ -9,7 +9,8 @@ from typing import Iterable, Mapping, Sequence
 import numpy as np
 from tifffile import TiffFile, imread
 
-from lisai.config import load_yaml, settings
+from lisai.config import load_yaml
+from lisai.config.settings import load_default_settings
 from lisai.data.dataset_registry import (
     load_dataset_info,
     registry_data_types,
@@ -280,6 +281,7 @@ def load_eval_output_items(
     evaluation: RunEvaluation,
     *,
     required: Sequence[str] = ("gt", "pred"),
+    paths: Paths | None = None,
 ) -> tuple[ManifestEvalItem, ...]:
     """Load output files and provenance from an evaluation manifest."""
     manifest_path = evaluation.folder / "outputs_manifest.yaml"
@@ -288,7 +290,8 @@ def load_eval_output_items(
             f"{evaluation.folder} has no outputs_manifest.yaml; exact alignment is unavailable."
         )
 
-    dataset_outputs = _load_dataset_outputs_spec(evaluation)
+    selected_paths = Paths(load_default_settings()) if paths is None else paths
+    dataset_outputs = _load_dataset_outputs_spec(evaluation, paths=selected_paths)
     items = tuple(
         _manifest_item(evaluation.folder, record, dataset_outputs=dataset_outputs)
         for record in load_outputs_manifest(manifest_path)["items"]
@@ -316,6 +319,7 @@ def prepare_comparison_outputs(
     required: Sequence[str] = ("gt", "pred"),
     align: bool = True,
     gt_reference: str | RunEvaluation = "per_run",
+    paths: Paths | None = None,
 ) -> ComparisonOutputs:
     """Load aligned outputs with explicit GT semantics.
 
@@ -331,8 +335,9 @@ def prepare_comparison_outputs(
     if isinstance(gt_reference, RunEvaluation) and gt_reference.run_dir not in {e.run_dir for e in evaluations}:
         raise ValueError("A RunEvaluation used as gt_reference must be included in the comparison.")
 
+    selected_paths = Paths(load_default_settings()) if paths is None else paths
     by_run = {
-        evaluation.run_dir: load_eval_output_items(evaluation, required=required)
+        evaluation.run_dir: load_eval_output_items(evaluation, required=required, paths=selected_paths)
         for evaluation in evaluations
     }
     dataset_reference = _shared_dataset_reference(evaluations, by_run) if gt_reference == "dataset" else None
@@ -487,7 +492,9 @@ def _manifest_item(
     return ManifestEvalItem(name, input_id, gt_id, source_axis, source_indices, outputs, dataset_outputs)
 
 
-def _load_dataset_outputs_spec(evaluation: RunEvaluation) -> DatasetOutputsSpec | None:
+def _load_dataset_outputs_spec(
+    evaluation: RunEvaluation, *, paths: Paths,
+) -> DatasetOutputsSpec | None:
     metadata_path = evaluation.folder / "evaluation.yaml"
     if not metadata_path.is_file():
         return None
@@ -509,7 +516,7 @@ def _load_dataset_outputs_spec(evaluation: RunEvaluation) -> DatasetOutputsSpec 
         return None
     recorded_data_dir = None if data_dir is None else Path(data_dir)
 
-    dataset_info = load_dataset_info(Paths(settings).dataset_registry_path(), str(dataset_name))
+    dataset_info = load_dataset_info(paths.dataset_registry_path(), str(dataset_name))
     if not isinstance(dataset_info, Mapping):
         return None
 
@@ -528,6 +535,7 @@ def _load_dataset_outputs_spec(evaluation: RunEvaluation) -> DatasetOutputsSpec 
         data_type=data_type,
         usage=usage,
         recorded_data_dir=recorded_data_dir,
+        paths=paths,
     )
 
     input_output = _registered_output_spec(dataset_info, data_type, input_path)
@@ -565,8 +573,9 @@ def _canonical_dataset_data_dir(
     data_type: str,
     usage: str,
     recorded_data_dir: Path | None = None,
+    paths: Paths,
 ) -> Path:
-    data_dir = Paths(settings).dataset_preprocess_dir(
+    data_dir = paths.dataset_preprocess_dir(
         dataset_name=dataset_name,
         data_type=data_type,
         usage=usage,

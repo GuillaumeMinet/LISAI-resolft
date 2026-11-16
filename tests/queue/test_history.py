@@ -5,7 +5,7 @@ from pathlib import Path
 from lisai.runs.scanner import DiscoveredRun
 from lisai.runs.schema import RunMetadata, TrainingSignature
 
-from lisai.queue.history import estimate_expected_vram_mb
+from lisai_runner.queue.history import estimate_expected_vram_mb
 
 
 def _run(

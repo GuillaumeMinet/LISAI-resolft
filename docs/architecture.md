@@ -24,7 +24,7 @@ This page describes the current production architecture under `src/lisai/**`.
 ### Config Catalog
 
 1. `lisai configs ...` is registered by [`src/lisai/cli.py`](../src/lisai/cli.py) through [`src/lisai/config/cli.py`](../src/lisai/config/cli.py).
-2. [`src/lisai/config/catalog.py`](../src/lisai/config/catalog.py) discovers training configs under `presets/`, `templates/`, `examples/`, and `local/`.
+2. [`src/lisai/config/catalog.py`](../src/lisai/config/catalog.py) discovers versioned built-in `presets/`, `templates/` and `examples/` from package resources and editable `local/` from the selected experiment-config root.
 3. Top-level `metadata` is catalog-only and stripped before training validation.
 4. Presets and templates are not trainable directly; instantiate them into `configs/training/local/` first.
 5. Generated JSON Schemas under `configs/schema/` provide validation/editor metadata for the typed YAML configuration models.
@@ -34,7 +34,7 @@ This page describes the current production architecture under `src/lisai/**`.
 1. [`src/lisai/config/models/inference/**`](../src/lisai/config/models/inference) defines the typed `apply` and `evaluate` configuration contracts.
 2. [`src/lisai/evaluation/defaults.py`](../src/lisai/evaluation/defaults.py) resolves sparse inference configs.
 3. Resolution precedence is: canonical typed defaults < `configs/inference/local/defaults.yml` < promoted-model config (for `apply --model`) < selected inference config < typed CLI overrides.
-4. Apply output routing and input-saving defaults may finally fall back to machine-local settings from `configs/local_config.yml` when the inference config leaves them unspecified.
+4. Apply output routing and input-saving defaults may finally fall back to effective workspace preferences from `configs/workspace.yml` and optional whitelisted overrides in the selected external `local.yml` when the inference config leaves them unspecified.
 
 ### Evaluation and Apply
 

@@ -52,7 +52,7 @@ lisai train --help
 
 ## Datasets
 
-Inspect datasets already registered under the local data root:
+Inspect datasets already registered in the selected workspace:
 
 ```powershell
 lisai datasets list
@@ -102,13 +102,9 @@ lisai train local/my_hdn
 lisai train examples/vim_denoising_unet
 ```
 
-You can also pass an explicit file path:
+For an explicitly selected user YAML file, pass its absolute path; built-in examples use the `examples/` namespace.
 
-```powershell
-lisai train configs/training/examples/vim_denoising_unet.yml
-```
-
-Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into `configs/training/local/` before training. Example configs assume the referenced datasets already exist under your configured data root.
+Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into `configs/training/local/` before training. Example configs assume the referenced datasets already exist in the selected workspace.
 
 ## Evaluation and Apply
 
@@ -160,11 +156,13 @@ They can also carry a model-specific inference config and can be exported, insta
 Run preprocessing from a YAML config:
 
 ```powershell
-lisai preprocess single
-lisai preprocess configs/preprocess/single.yml
+lisai configs list --domain preprocess
+lisai configs new preprocess single_recon --dataset my_dataset
+# Edit <config-root>/preprocess/local/my_dataset.yml
+lisai preprocess local/my_dataset
 ```
 
-Tracked preprocess examples are available in `configs/preprocess/`. They assume the corresponding dataset dump folders already exist under your configured data root. Successful preprocessing updates the dataset registry.
+Generic preprocess templates are shipped as read-only package resources. Dataset-specific preprocess files belong in `<config-root>/preprocess/local/`; the corresponding dump folders must already exist in the selected workspace. Successful preprocessing updates the workspace dataset registry.
 
 ## Where To Look Next
 

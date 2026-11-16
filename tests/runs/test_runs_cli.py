@@ -96,7 +96,7 @@ def test_runs_list_uses_filters_and_warns_on_invalid_files(monkeypatch, tmp_path
     assert "eta_left" in captured.out
     assert "path_consistent" not in captured.out
     assert "closed_cleanly" not in captured.out
-    assert "start_time" not in captured.out
+    assert "start_time" in captured.out
     assert "last_seen" not in captured.out
     assert "run_id" not in captured.out
     assert "run_a" in captured.out
@@ -376,12 +376,12 @@ def test_runs_list_full_appends_extended_columns(monkeypatch, tmp_path, capsys):
         "dataset", "model_subfolder", "run_dir", "kept", "status", "epoch", "eta_left"
     ]
     assert columns[-6:] == [
-        "failure",
-        "path_consistent",
-        "closed_cleanly",
         "start_time",
         "last_seen",
         "run_id",
+        "failure",
+        "path_consistent",
+        "closed_cleanly",
     ]
     assert "false" in captured.out
     assert "01ARZ3NDEKTSV4RRFFQ69G5FAV" in captured.out

@@ -452,3 +452,34 @@ dataset:
 
     with pytest.raises(ValueError, match="different dataset references"):
         prepare_comparison_outputs([first, second], gt_reference="dataset")
+
+
+def test_comparison_uses_explicit_workspace_registry_not_process_default(tmp_path, monkeypatch):
+    """A→B→A graphs must not read a hidden process-global dataset registry."""
+    from lisai.config.workspace import initialize_workspace
+    from lisai.config.settings import Settings
+    from lisai.config.io.yaml import save_yaml
+    from lisai.infra.paths import Paths
+
+    evaluation = _evaluation(tmp_path, "two_contexts")
+    _write_timelapse_item(evaluation, indices=[0], values=[3], input_id="raw/cell.tif")
+    (evaluation.folder / "evaluation.yaml").write_text(
+        "version: 1\ndataset:\n  name: test_dataset\n  usage: evaluation\n"
+        "  data_type: recon\n  data_dir: /old/archived/path\n  input: raw\n"
+    )
+    contexts = []
+    for name, aux in (("A", "conf"), ("B", "widefield")):
+        root = tmp_path / name
+        initialize_workspace(root)
+        paths = Paths(Settings.from_workspace(root))
+        save_yaml({"test_dataset": {"usage": "evaluation", "data_format": "single",
+                    "outputs": {"recon": [
+                        {"key": "raw", "path": "raw", "role": "inp", "axes": "YX"},
+                        {"key": aux, "path": aux, "role": "aux", "axes": "YX"}
+                    ]}}}, paths.dataset_registry_path())
+        contexts.append((paths, aux))
+
+    for paths, expected_aux in (contexts[0], contexts[1], contexts[0]):
+        item = prepare_comparison_outputs([evaluation], paths=paths).items_for(evaluation)[0].item
+        assert item.dataset_outputs is not None
+        assert list(item.dataset_outputs.outputs) == [expected_aux]

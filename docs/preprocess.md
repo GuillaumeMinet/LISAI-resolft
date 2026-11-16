@@ -46,9 +46,8 @@ lisai configs schema refresh
 
 This updates `<config-root>/schema/*.schema.json` and does not modify experiment
 YAMLs. New files in `preprocess/local/` refer to
-`../../schema/preprocess.schema.json`. Patch E will call the same schema
-refresh and seed inference defaults from the workspace/dev initialization
-commands. Normal `Settings` loading never creates these files.
+`../../schema/preprocess.schema.json`. `workspace init` and `dev init` call the same schema refresh and seed
+inference defaults explicitly. Normal `Settings` loading never creates these files.
 
 ## Flow
 

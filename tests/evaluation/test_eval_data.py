@@ -134,7 +134,7 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
     source = data_mod.build_eval_source(
         saved_run,
         split='val',
-        crop_size=32,
+        crop_size=0,
         eval_gt='gt_folder',
         data_overrides={'subfolder': 'override_subfolder'},
      paths=FakePaths(data_root),)
@@ -144,7 +144,7 @@ def test_build_eval_source_resolves_data_and_applies_overrides(monkeypatch, tmp_
     assert cfg.data_dir == data_dir
     assert cfg.dataset_info['data_format'] == 'single'
     assert cfg.target == 'gt_folder'
-    assert cfg.initial_crop == 32
+    assert cfg.initial_crop == 0
     assert cfg.split == 'val'
     assert cfg.model_norm_prm['data_mean_gt'] == 0
     assert cfg.model_norm_prm['data_std_gt'] == 1
