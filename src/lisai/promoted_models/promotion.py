@@ -118,7 +118,7 @@ def build_promotion_plan(
     copy_files: list[PromotionFile] = [
         PromotionFile(config_path, "config_train.yaml"),
     ]
-    inference_config_path: Path | None = None
+    inference_config_path = None
     if inference_config is not None:
         inference_config_path = resolve_promoted_inference_config_source(inference_config, stg=paths.settings)
         copy_files.append(

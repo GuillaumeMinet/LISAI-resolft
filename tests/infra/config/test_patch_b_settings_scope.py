@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from shutil import copyfile
 from types import SimpleNamespace
 
 import pytest
@@ -12,6 +11,7 @@ from lisai.config import save_yaml
 from lisai.config.catalog import create_training_config_from_preset, discover_training_configs
 from lisai.config.cli import main as configs_main
 from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.config.io.resources import resource_directory
 from lisai.config.io.resolver import resolve_config_dict
 from lisai.config.json_schema.experiment import experiment_json_schema
 from lisai.config.json_schema.preprocess import preprocess_json_schema
@@ -24,8 +24,7 @@ from lisai.training import cli as training_cli
 
 def _build_tree(stg: Settings, label: str) -> None:
     root = stg.TRAINING_CONFIG_DIR
-    (root / "examples").mkdir(parents=True)
-    (root / "presets").mkdir(parents=True)
+    (root / "local").mkdir(parents=True)
     (stg.PREPROCESS_CONFIG_DIR).mkdir(parents=True)
     (stg.INFERENCE_CONFIG_DIR / "local").mkdir(parents=True)
 
@@ -33,9 +32,7 @@ def _build_tree(stg: Settings, label: str) -> None:
                "experiment": {"mode": "train", "exp_name": label},
                "data": {"dataset_name": label},
                "model": {"architecture": "unet", "parameters": {}}},
-              root / "examples" / "common.yml")
-    copyfile(Path("configs/training/presets/denoising_hdn_unsup.yml"),
-             root / "presets" / "denoising_hdn_unsup.yml")
+              root / "local" / "common.yml")
     save_yaml({"dataset_name": label, "pipeline": "single_recon", "data_type": "recon",
                "fmt": "single", "pipeline_cfg": {}},
               stg.PREPROCESS_CONFIG_DIR / "common.yml")
@@ -56,14 +53,13 @@ def test_operation_scoped_config_paths_and_registries(settings_factory, tmp_path
     for stg, label in ((a, "A"), (b, "B")):
         _build_tree(stg, label)
 
-    assert list(sorted(x.relative_path for x in discover_training_configs(stg=a))) == [
-        "examples/common.yml", "presets/denoising_hdn_unsup.yml",
-    ]
+    assert "local/common.yml" in [x.relative_path for x in discover_training_configs(stg=a)]
+    assert "presets/denoising_hdn_unsup.yml" in [x.relative_path for x in discover_training_configs(stg=a)]
     for stg, label in ((a, "A"), (b, "B"), (a, "A")):
         train_resolver = ConfigPathResolver("training", stg=stg)
         prep_resolver = ConfigPathResolver("preprocess", stg=stg)
         inf_resolver = ConfigPathResolver("inference", stg=stg)
-        assert train_resolver.resolve("examples/common").is_relative_to(stg.CONFIGS_ROOT)
+        assert train_resolver.resolve("local/common").is_relative_to(stg.CONFIGS_ROOT)
         assert prep_resolver.resolve("common").is_relative_to(stg.CONFIGS_ROOT)
         assert inf_resolver.resolve("common") == (stg.INFERENCE_CONFIG_DIR / "local" / "common.yml").resolve()
         with pytest.raises(ValueError, match="must be instantiated"):
@@ -86,7 +82,7 @@ def test_operation_scoped_config_paths_and_registries(settings_factory, tmp_path
 
         result = configs_main(["list", "--kind", "example"], settings=stg)
         assert result == 0
-        assert "examples/common.yml" in capsys.readouterr().out
+        assert "examples/continue_training.yml" in capsys.readouterr().out
 
         out, _ = create_training_config_from_preset(
             "denoising_hdn_unsup", exp_name=f"made_{label}", dataset_name=label,
@@ -112,7 +108,7 @@ def test_training_and_preprocess_command_resolve_one_selected_context(settings_f
 
     for stg in (a, b, a):
         training_cli.run_from_args(
-            argparse.Namespace(config="examples/common", config_option=None, progress_bar=None),
+            argparse.Namespace(config="local/common", config_option=None, progress_bar=None),
             argparse.ArgumentParser(), settings=stg,
         )
         preprocess_cli.run_from_args(

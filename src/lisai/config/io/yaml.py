@@ -1,19 +1,20 @@
 from pathlib import Path
+from importlib.resources.abc import Traversable
 
 import yaml
 
 
-def load_yaml(path: str | Path) -> dict:
-    """ Load yaml config file. """
-    path = Path(path)
-    if not path.is_file():
-        raise FileNotFoundError(f"YAML config not found: {path}")
+def load_yaml(path: str | Path | Traversable) -> dict:
+    """Load a YAML mapping from a regular file or a read-only package resource."""
+    source = Path(path) if isinstance(path, (str, Path)) else path
+    if not source.is_file():
+        raise FileNotFoundError(f"YAML config not found: {source}")
 
-    with open(path, "r") as f:
+    with source.open("r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
     if not isinstance(cfg, dict):
-        raise ValueError(f"Config {path} must be a dictionary")
+        raise ValueError(f"Config {source} must be a dictionary")
 
     return cfg
 

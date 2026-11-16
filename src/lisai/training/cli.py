@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from importlib.resources.abc import Traversable
+
+from lisai.config.io.yaml import load_yaml
+from lisai.config.io.metadata import split_config_metadata
 from typing import Sequence
 
 from lisai.config.io.config_paths import ConfigPathResolver
@@ -10,13 +14,28 @@ from lisai.config.settings import Settings, load_default_settings
 from .run_training import run_training
 
 def resolve_config_path(config_arg: str, *, resolver: ConfigPathResolver) -> Path:
-    resolved = resolver.resolve(config_arg)
-    assert resolved is not None
-    _ensure_trainable_config_path(resolved, resolver=resolver)
-    return resolved
+    source = resolver.resolve_reference(config_arg)
+    assert source is not None
+    if source.ownership == "built-in" and source.namespace in {"presets", "templates"}:
+        raise ValueError(
+            "Training presets and templates must be instantiated before training. "
+            "Use `lisai configs new ...` to create a local training config."
+        )
+    _ensure_trainable_config_path(source.location, resolver=resolver)
+    return source.location
 
 
-def _ensure_trainable_config_path(path: Path, *, resolver: ConfigPathResolver) -> None:
+def _ensure_trainable_config_path(path: Path | Traversable, *, resolver: ConfigPathResolver) -> None:
+    # Explicit absolute paths may point at a shipped preset; metadata still
+    # marks it as a config that must first be instantiated.
+    _, metadata = split_config_metadata(load_yaml(path))
+    if (metadata or {}).get("kind") in {"preset", "template"}:
+        raise ValueError(
+            "Training presets and templates must be instantiated before training. "
+            "Use `lisai configs new ...` to create a local training config."
+        )
+    if not isinstance(path, Path):
+        return
     root = resolver.root.resolve()
     try:
         relative = path.resolve().relative_to(root)

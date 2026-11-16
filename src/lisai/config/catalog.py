@@ -8,6 +8,8 @@ from typing import Any, Literal, Mapping
 import yaml
 
 from lisai.config.io.metadata import split_config_metadata, strip_config_metadata
+from lisai.config.io.config_paths import ConfigLocation, ConfigPathResolver
+from lisai.config.io.resources import iter_resource_files
 from lisai.config.io.yaml import load_yaml
 from lisai.config.models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
 from lisai.data.dataset_registry import (
@@ -60,9 +62,10 @@ class _IndentedSafeDumper(yaml.SafeDumper):
 
 @dataclass(frozen=True)
 class TrainingConfigEntry:
-    path: Path
+    path: ConfigLocation
     relative_path: str
     kind: TrainingConfigKind
+    ownership: str
     name: str
     task: str | None
     description: str | None
@@ -80,58 +83,51 @@ def training_config_root(*, stg: Settings) -> Path:
     return stg.TRAINING_CONFIG_DIR
 
 
-def resolve_training_config_path(config_ref: str | Path, *, stg: Settings) -> Path:
-    """Resolve an explicit training config path or training-root relative subpath."""
-    root = training_config_root(stg=stg)
-    config_path = Path(config_ref).expanduser()
-
-    candidates = list(_candidate_paths(config_path))
-    if not config_path.is_absolute():
-        candidates.extend(_candidate_paths(root / config_path))
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate.resolve()
-
-    raise FileNotFoundError(f"Training config not found: {config_ref}")
+def resolve_training_config_path(config_ref: str | Path, *, stg: Settings) -> ConfigLocation:
+    """Resolve a local/absolute config or a package-owned namespaced config."""
+    found = ConfigPathResolver("training", stg=stg).resolve(config_ref)
+    assert found is not None
+    return found
 
 
-def resolve_training_preset_path(preset_ref: str | Path, *, stg: Settings) -> Path:
+def resolve_training_preset_path(preset_ref: str | Path, *, stg: Settings) -> ConfigLocation:
     return _resolve_catalog_member_path(preset_ref, kind="preset", stg=stg)
 
 
-def resolve_training_template_path(template_ref: str | Path, *, stg: Settings) -> Path:
+def resolve_training_template_path(template_ref: str | Path, *, stg: Settings) -> ConfigLocation:
     return _resolve_catalog_member_path(template_ref, kind="template", stg=stg)
 
 
 def discover_training_configs(
-    *,
-    kind: TrainingConfigKind | None = None,
-    task: str | None = None,
-    stg: Settings,
+    *, kind: TrainingConfigKind | None = None, task: str | None = None, stg: Settings,
 ) -> list[TrainingConfigEntry]:
     root = training_config_root(stg=stg)
     kinds = [kind] if kind is not None else list(KIND_TO_FOLDER)
     entries: list[TrainingConfigEntry] = []
 
     for current_kind in kinds:
-        folder = root / KIND_TO_FOLDER[current_kind]
-        if not folder.exists():
-            continue
-        for path in sorted(_iter_yaml_files(folder)):
-            entry = _entry_from_path(path, root=root, fallback_kind=current_kind)
-            if task is not None and entry.task != task:
-                continue
-            entries.append(entry)
-
+        namespace = KIND_TO_FOLDER[current_kind]
+        if current_kind == "local":
+            folder = root / "local"
+            sources = ((f"local/{p.relative_to(folder).as_posix()}", p, "local")
+                       for p in sorted(_iter_yaml_files(folder)) if p.is_file()) if folder.is_dir() else ()
+        else:
+            sources = ((f"{namespace}/{name}", resource, "built-in")
+                       for name, resource in iter_resource_files("training", namespace))
+        for relative, source, ownership in sources:
+            entry = _entry_from_source(source, relative_path=relative,
+                                       fallback_kind=current_kind, ownership=ownership)
+            if task is None or entry.task == task:
+                entries.append(entry)
     return entries
 
 
-def load_training_config(config_ref: str | Path, *, stg: Settings) -> tuple[dict[str, Any], dict[str, Any] | None, Path]:
-    path = resolve_training_config_path(config_ref, stg=stg)
-    cfg = load_yaml(path)
-    body, metadata = split_config_metadata(cfg)
-    return body, metadata, path
+def load_training_config(
+    config_ref: str | Path, *, stg: Settings,
+) -> tuple[dict[str, Any], dict[str, Any] | None, ConfigLocation]:
+    source = resolve_training_config_path(config_ref, stg=stg)
+    body, metadata = split_config_metadata(load_yaml(source))
+    return body, metadata, source
 
 
 def validate_training_config_dict(cfg: dict[str, Any]):
@@ -347,28 +343,23 @@ def _candidate_paths(path: Path) -> tuple[Path, ...]:
     return (path,) + tuple(path.with_suffix(suffix) for suffix in TRAINING_SUFFIXES)
 
 
-def _resolve_catalog_member_path(config_ref: str | Path, *, kind: TrainingConfigKind, stg: Settings) -> Path:
-    folder_name = KIND_TO_FOLDER[kind]
-    ref_path = Path(config_ref).expanduser()
-    refs: list[Path]
-    if ref_path.is_absolute() or (ref_path.parts and ref_path.parts[0] == folder_name):
-        refs = [ref_path]
-    else:
-        refs = [Path(folder_name) / ref_path, ref_path]
-
-    for ref in refs:
-        try:
-            path = resolve_training_config_path(ref, stg=stg)
-        except FileNotFoundError:
-            continue
-        expected_root = (training_config_root(stg=stg) / folder_name).resolve()
-        try:
-            path.relative_to(expected_root)
-        except ValueError as exc:
-            raise ValueError(f"{kind.title()} config must live under {expected_root}: {path}") from exc
-        return path
-
-    raise FileNotFoundError(f"{kind.title()} config not found: {config_ref}")
+def _resolve_catalog_member_path(
+    config_ref: str | Path, *, kind: TrainingConfigKind, stg: Settings,
+) -> ConfigLocation:
+    namespace = KIND_TO_FOLDER[kind]
+    ref = Path(config_ref).expanduser()
+    if ref.is_absolute():
+        resolved = ConfigPathResolver("training", stg=stg).resolve(ref)
+        assert resolved is not None
+        return resolved
+    if ref.parts and ref.parts[0] in {"local", "presets", "templates", "examples"} and ref.parts[0] != namespace:
+        raise ValueError(f"Expected a {namespace}/ reference, got {config_ref}")
+    source = ConfigPathResolver("training", stg=stg).resolve_reference(
+        ref if ref.parts[0] == namespace else Path(namespace) / ref
+    )
+    if source is None or source.ownership != "built-in" or source.namespace != namespace:
+        raise ValueError(f"{kind.title()} must resolve from packaged {namespace}/ resources")
+    return source.location
 
 
 def _iter_yaml_files(root: Path):
@@ -376,15 +367,16 @@ def _iter_yaml_files(root: Path):
         yield from root.rglob(f"*{suffix}")
 
 
-def _entry_from_path(path: Path, *, root: Path, fallback_kind: TrainingConfigKind) -> TrainingConfigEntry:
+def _entry_from_source(
+    source: ConfigLocation, *, relative_path: str, fallback_kind: TrainingConfigKind,
+    ownership: str,
+) -> TrainingConfigEntry:
     metadata: dict[str, Any] = {}
     task = None
     description = None
-    name = path.stem
-
+    name = source.stem
     try:
-        raw = load_yaml(path)
-        body, parsed_metadata = split_config_metadata(raw)
+        body, parsed_metadata = split_config_metadata(load_yaml(source))
         metadata = parsed_metadata or {}
         name = str(metadata.get("name") or name)
         task = metadata.get("task") or _infer_task_name(body)
@@ -395,13 +387,9 @@ def _entry_from_path(path: Path, *, root: Path, fallback_kind: TrainingConfigKin
     except Exception as exc:
         kind = fallback_kind
         description = f"Could not read config: {exc}"
-
     return TrainingConfigEntry(
-        path=path.resolve(),
-        relative_path=path.relative_to(root).as_posix(),
-        kind=kind,
-        name=name,
-        task=str(task) if task is not None else None,
+        path=source, relative_path=relative_path, kind=kind, ownership=ownership,
+        name=name, task=str(task) if task is not None else None,
         description=str(description) if description is not None else None,
         metadata=metadata,
     )

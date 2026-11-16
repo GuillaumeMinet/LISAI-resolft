@@ -226,7 +226,7 @@ def describe_locations(locations: ResolvedLocations) -> str:
         f"  [{'present' if locations.data_config.is_file() else 'missing'}]",
         f"Experiment root:    {locations.experiment_config_root}  [{locations.config_root_origin}]",
         f"Local preferences:  {locations.local_config_path or '(none)'}",
-        "Built-in configs:   checkout YAMLs (packaging planned for Patch C)",
+        "Built-in configs:   LISAI installed package resources",
         f"Workspace status:   {'initialized' if workspace_present else 'not initialized'}",
         "Workspace init:     lisai workspace init <PATH>  (Patch E)" if not workspace_present else "",
     )).rstrip()

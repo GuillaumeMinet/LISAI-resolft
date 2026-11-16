@@ -4,6 +4,7 @@ import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from importlib.resources.abc import Traversable
 from typing import Any, Literal, Mapping
 
 from lisai.config import load_yaml
@@ -38,13 +39,13 @@ class ApplyOutputPolicy:
 
 def resolve_inference_config_path(
     config_arg: str | Path | None, *, stg: Settings,
-) -> Path | None:
+) -> Path | Traversable | None:
     return ConfigPathResolver("inference", stg=stg).resolve(config_arg)
 
 
 def load_inference_config(
     config_arg: str | Path | None = None, *, stg: Settings,
-) -> tuple[InferenceOverrides, Path | None]:
+) -> tuple[InferenceOverrides, Path | Traversable | None]:
     cfg_path = resolve_inference_config_path(config_arg, stg=stg)
     if cfg_path is None:
         return InferenceOverrides(), None

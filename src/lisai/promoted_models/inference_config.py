@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from importlib.resources.abc import Traversable
 
 from lisai.config import load_yaml
 from lisai.config.io.config_paths import ConfigPathResolver
@@ -12,7 +13,7 @@ PROMOTED_INFERENCE_CONFIG_FILENAME = "config_inference.yaml"
 
 def resolve_promoted_inference_config_source(
     config: str | Path, *, stg: Settings,
-) -> Path:
+) -> Path | Traversable:
     """Resolve and validate an inference config before attaching it to a model.
 
     Promoted-model inference configs are intentionally sparse, but they must

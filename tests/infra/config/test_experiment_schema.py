@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from lisai.config import load_yaml
+from lisai.config.io.resources import resource_directory
 import lisai.config.json_schema.experiment as experiment_schema_mod
 from lisai.config.json_schema import (
     continue_training_json_schema,
@@ -49,9 +50,9 @@ def _registry_entry(
 @pytest.mark.parametrize(
     ("config_path", "model_cls"),
     [
-        (Path("configs/training/examples/vim_hdn_unsup_betaKL05.yml"), ExperimentConfig),
-        (Path("configs/training/examples/continue_training.yml"), ContinueTrainingConfig),
-        (Path("configs/training/examples/retrain.yml"), RetrainConfig),
+        (resource_directory("configs", "training", "examples", "vim_hdn_unsup_betaKL05.yml"), ExperimentConfig),
+        (resource_directory("configs", "training", "examples", "continue_training.yml"), ContinueTrainingConfig),
+        (resource_directory("configs", "training", "examples", "retrain.yml"), RetrainConfig),
     ],
 )
 def test_training_yaml_examples_validate_against_mode_specific_authoring_schemas(config_path: Path, model_cls):
@@ -64,7 +65,7 @@ def test_training_yaml_examples_validate_against_mode_specific_authoring_schemas
 
 
 def test_current_upsamp_yaml_validates_timelapse_context_channels():
-    cfg = load_yaml(Path("configs/training/examples/vim_upsamp_multiframes_n5.yml"))
+    cfg = load_yaml(resource_directory("configs", "training", "examples", "vim_upsamp_multiframes_n5.yml"))
 
     validated = ExperimentConfig.model_validate(cfg)
 

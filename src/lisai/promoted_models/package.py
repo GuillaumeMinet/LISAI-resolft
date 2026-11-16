@@ -83,7 +83,11 @@ def _copy_plan_files(plan: PromotionPlan, model_dir: Path) -> None:
     for item in plan.copy_files:
         destination = model_dir / item.package_path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(item.source_path, destination)
+        if isinstance(item.source_path, Path):
+            shutil.copy2(item.source_path, destination)
+        else:
+            with item.source_path.open("rb") as reader, destination.open("wb") as writer:
+                shutil.copyfileobj(reader, writer)
 
 
 def _payload_paths(manifest: PromotedModelManifest) -> list[str]:
@@ -313,7 +317,7 @@ def set_promoted_model_config(
     if backup_destination.exists():
         backup_destination.unlink()
 
-    if source_path.resolve() == destination.resolve():
+    if isinstance(source_path, Path) and source_path.resolve() == destination.resolve():
         new_checksum = sha256_file(destination)
         checksums[package_path] = new_checksum
         if old_package_path is not None and old_package_path != package_path:
@@ -325,7 +329,11 @@ def set_promoted_model_config(
         )
         _write_manifest(promoted.model_dir, updated_manifest)
     else:
-        shutil.copy2(source_path, tmp_destination)
+        if isinstance(source_path, Path):
+            shutil.copy2(source_path, tmp_destination)
+        else:
+            with source_path.open("rb") as reader, tmp_destination.open("wb") as writer:
+                shutil.copyfileobj(reader, writer)
         new_checksum = sha256_file(tmp_destination)
         checksums[package_path] = new_checksum
         if old_package_path is not None and old_package_path != package_path:

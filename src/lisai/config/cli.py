@@ -18,6 +18,7 @@ from lisai.config.catalog import (
     validate_training_template_dict,
 )
 from lisai.config.io.resolver import resolve_config_dict
+from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.config.settings import Settings, load_default_settings
 from lisai.config.io.yaml import load_yaml
 
@@ -30,11 +31,11 @@ def run_list_from_args(
     if not entries:
         parser.exit(status=1, message="No training configs found.\n")
 
-    print("kind      task                    config")
-    print("--------  ----------------------  -------------------------------")
+    print("kind      owner      task                    config")
+    print("--------  ---------  ----------------------  -------------------------------")
     for entry in entries:
         task = entry.task or "-"
-        print(f"{entry.kind:<8}  {task:<22}  {entry.relative_path}")
+        print(f"{entry.kind:<8}  {entry.ownership:<9}  {task:<22}  {entry.relative_path}")
         if args.verbose and entry.description:
             print(f"          {entry.description}")
     return 0
@@ -59,7 +60,9 @@ def run_info_from_args(
             task = task_cfg
 
     metadata = metadata or {}
+    source = ConfigPathResolver("training", stg=stg).resolve_reference(args.config)
     print(f"path: {path}")
+    print(f"owner: {source.ownership if source is not None else 'unknown'}")
     print(f"kind: {metadata.get('kind', '-')}")
     print(f"name: {metadata.get('name', path.stem)}")
     print(f"task: {metadata.get('task', task or '-')}")
@@ -84,7 +87,8 @@ def run_validate_from_args(
         parser.exit(status=1, message=f"{exc}\n")
 
     mode = "template" if args.template else "training config"
-    print(f"Valid {mode}: {path}")
+    source = ConfigPathResolver("training", stg=stg).resolve_reference(args.config)
+    print(f"Valid {mode} ({source.ownership if source else 'unknown'}): {path}")
     return 0
 
 
@@ -98,6 +102,8 @@ def run_resolve_from_args(
     except (FileNotFoundError, ValueError, ValidationError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
 
+    source = ConfigPathResolver("training", stg=stg).resolve_reference(args.config)
+    print(f"# source: {source.ownership if source else 'unknown'}")
     print(yaml.safe_dump(cfg.model_dump(mode="json", exclude_none=True), sort_keys=False))
     return 0
 
@@ -153,7 +159,8 @@ def run_new_from_args(
     except (FileExistsError, FileNotFoundError, ValueError, ValidationError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
 
-    print(f"Created training config: {output_path}")
+    print(f"Created training config: {output_path}  [local]")
+    print(f"Source: built-in {'template' if args.custom else 'preset'}")
     for warning in warnings:
         print(f"Warning: {warning}")
     return 0
@@ -170,8 +177,8 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
 
     list_parser = config_subparsers.add_parser(
         "list",
-        help="List tracked and local training configs.",
-        description="List tracked and local training configs.",
+        help="List built-in and local training configs.",
+        description="List built-in and local training configs.",
     )
     list_parser.add_argument("--kind", choices=["preset", "template", "example", "local"])
     list_parser.add_argument("--task")

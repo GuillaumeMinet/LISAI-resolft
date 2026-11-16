@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from importlib.resources.abc import Traversable
 
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths
@@ -13,11 +14,13 @@ from .schema import PromotedNoiseModelArtifacts
 class PromotionFile:
     """One source file that should be copied verbatim into a promoted package."""
 
-    source_path: Path
+    source_path: Path | Traversable
     package_path: str
 
     def __post_init__(self):
-        source = Path(self.source_path)
+        source = Path(self.source_path) if isinstance(self.source_path, str) else self.source_path
+        if not hasattr(source, "is_file") or not hasattr(source, "open"):
+            raise TypeError("PromotionFile source must be a readable filesystem or package file")
         package = PurePosixPath(str(self.package_path).replace("\\", "/"))
         if package.is_absolute() or ".." in package.parts or package.as_posix() == ".":
             raise ValueError("package_path must be a safe relative path.")

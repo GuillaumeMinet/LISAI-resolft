@@ -11,6 +11,7 @@ import lisai.config.io.resolver as resolver_mod
 from lisai.config import cli as config_cli
 from lisai.config.catalog import validate_training_config_dict, validate_training_template_dict
 from lisai.config.io.yaml import load_yaml
+from lisai.config.io.resources import resource_directory
 
 
 def _registry_entry(
@@ -60,13 +61,13 @@ def test_root_cli_configs_dispatches(capsys: pytest.CaptureFixture[str]):
 
 
 def test_template_validation_accepts_placeholders():
-    cfg = load_yaml(Path("configs/training/templates/base_training.yml"))
+    cfg = load_yaml(resource_directory("configs", "training", "templates", "base_training.yml"))
 
     validate_training_template_dict(cfg)
 
 
 def test_training_validation_strips_metadata_from_preset():
-    cfg = load_yaml(Path("configs/training/presets/denoising_hdn_unsup.yml"))
+    cfg = load_yaml(resource_directory("configs", "training", "presets", "denoising_hdn_unsup.yml"))
 
     validated = validate_training_config_dict(cfg)
 

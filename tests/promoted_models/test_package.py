@@ -286,3 +286,23 @@ def test_set_config_clear_removes_promoted_model_config(tmp_path: Path, monkeypa
     assert cleared.inference_config_path is None
     assert "config_inference.yaml" not in cleared.manifest.checksums
     assert not (cleared.model_dir / "config_inference.yaml").exists()
+
+
+def test_set_config_from_packaged_inference_preset(tmp_path: Path, monkeypatch):
+    """A built-in preset is copied into the model, not linked to package storage."""
+    from lisai.config.io.resources import resource_directory
+
+    plan = _plan(tmp_path)
+    paths = FakePaths(tmp_path)
+    monkeypatch.setattr(package_module, "build_promotion_plan", lambda *args, **kwargs: plan)
+    package_module.promote_run(tmp_path / "run", name="demo-model", paths=paths)
+
+    updated = package_module.set_promoted_model_config(
+        "demo-model", "presets/hdn_sup", paths=paths,
+    )
+    expected = resource_directory("configs", "inference", "presets", "hdn_sup.yaml")
+    assert updated.inference_config_path is not None
+    assert updated.inference_config_path.read_bytes() == expected.read_bytes()
+    assert updated.manifest.checksums["config_inference.yaml"] == (
+        package_module.sha256_file(updated.inference_config_path)
+    )
