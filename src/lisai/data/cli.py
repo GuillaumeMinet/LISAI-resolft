@@ -39,6 +39,11 @@ def _paths() -> Paths:
     return Paths(load_default_settings())
 
 
+def _paths_for_args(args: argparse.Namespace) -> Paths:
+    selected = getattr(args, "_lisai_settings", None)
+    return Paths(selected) if selected is not None else _paths()
+
+
 def _as_mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
@@ -447,7 +452,7 @@ def run_list_from_args(args: argparse.Namespace) -> int:
     elif args.evaluation:
         usage = "evaluation"
     list_datasets(
-        paths=_paths(),
+        paths=_paths_for_args(args),
         usage=usage,
         full_description=args.full,
         include_description=not args.short,
@@ -484,16 +489,16 @@ def _add_dataset_list_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run_show_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    show_dataset(args.name, paths=_paths(), parser=parser)
+    show_dataset(args.name, paths=_paths_for_args(args), parser=parser)
     return 0
 
 
 def run_open_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    return open_dataset(args.name, paths=_paths(), parser=parser)
+    return open_dataset(args.name, paths=_paths_for_args(args), parser=parser)
 
 
 def run_open_readme_from_args(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
-    return open_dataset_readme(args.name, paths=_paths(), parser=parser)
+    return open_dataset_readme(args.name, paths=_paths_for_args(args), parser=parser)
 
 
 def run_rename_from_args(args: argparse.Namespace) -> int:
@@ -617,7 +622,7 @@ def run_download_from_args(args: argparse.Namespace, parser: argparse.ArgumentPa
 
     try:
         catalog = download_catalog.load_catalog()
-        paths = _paths()
+        paths = _paths_for_args(args)
         selected = (
             sorted(catalog.datasets, key=str.casefold)
             if args.all
@@ -703,7 +708,7 @@ def run_install_from_args(args: argparse.Namespace, parser: argparse.ArgumentPar
     source_path = Path(args.path).expanduser()
     try:
         catalog = _catalog_for_install_source(source_path)
-        paths = _paths()
+        paths = _paths_for_args(args)
         selected, source = discover_install_source(catalog, source_path)
         plan = resolve_dataset_plan(catalog, selected, paths=paths)
         validate_install_source(catalog, plan, source)

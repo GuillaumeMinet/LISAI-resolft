@@ -165,7 +165,7 @@ def run_from_args(args: argparse.Namespace) -> int:
         assume_yes=args.yes,
         force=args.force,
         progress_bar=getattr(args, "progress_bar", None),
-        settings=load_default_settings(),
+        settings=getattr(args, "_lisai_settings", None) or load_default_settings(),
     )
 
 

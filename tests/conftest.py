@@ -61,3 +61,5 @@ def _legacy_default_cli_config(settings, monkeypatch):
 
     settings_module = importlib.import_module("lisai.config.settings")
     monkeypatch.setattr(settings_module, "_legacy_checkout_configs_root", lambda: settings.CONFIGS_ROOT)
+    monkeypatch.setenv("LISAI_CONFIG_ROOT", str(settings.CONFIGS_ROOT))
+    monkeypatch.setenv("LISAI_HOME", str(Path(settings.local_cfg.infrastructure.data_root).resolve()))

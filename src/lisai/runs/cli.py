@@ -35,7 +35,8 @@ def _cli_paths(args: argparse.Namespace) -> Paths:
     """Load once for the current CLI action, never in scanner/lifecycle internals."""
     paths = getattr(args, "_lisai_paths", None)
     if paths is None:
-        paths = Paths(load_default_settings())
+        settings = getattr(args, "_lisai_settings", None) or load_default_settings()
+        paths = Paths(settings)
         args._lisai_paths = paths
     return paths
 

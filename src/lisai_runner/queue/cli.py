@@ -879,12 +879,17 @@ def _set_dotted_value(target: dict, dotted_key: str, value: object) -> None:
     cursor[keys[-1]] = value
 
 
+def _paths_for_args(args: argparse.Namespace) -> Paths:
+    return _command_paths(getattr(args, "_lisai_paths", None))
+
+
 def run_submit_from_args(args: argparse.Namespace) -> int:
     return submit_job(
         config=args.config,
         resource_class=args.resource_class,
         device=args.device,
         priority=args.priority,
+        paths=_paths_for_args(args),
     )
 
 
@@ -894,6 +899,7 @@ def run_submit_sweep_from_args(args: argparse.Namespace) -> int:
         resource_class=args.resource_class,
         device=args.device,
         priority=args.priority,
+        paths=_paths_for_args(args),
     )
 
 
@@ -901,6 +907,7 @@ def run_list_from_args(args: argparse.Namespace) -> int:
     return list_jobs(
         status=args.status,
         full=args.full,
+        paths=_paths_for_args(args),
     )
 
 
@@ -916,6 +923,7 @@ def run_show_from_args(args: argparse.Namespace) -> int:
         lines=args.lines,
         errors=args.errors,
         as_json=args.json,
+        paths=_paths_for_args(args),
     )
 
 
@@ -931,6 +939,7 @@ def run_logs_from_args(args: argparse.Namespace) -> int:
         lines=args.lines,
         follow=args.follow,
         errors=args.errors,
+        paths=_paths_for_args(args),
     )
 
 
@@ -951,6 +960,7 @@ def run_cancel_from_args(args: argparse.Namespace) -> int:
         assume_yes=args.yes,
         force=args.force,
         eval_override=eval_override,
+        paths=_paths_for_args(args),
     )
 
 
@@ -959,6 +969,7 @@ def run_worker_from_args(args: argparse.Namespace) -> int:
         poll_seconds=args.poll_seconds,
         safety_margin_mb=args.safety_margin_mb,
         once=args.once,
+        paths=_paths_for_args(args),
     )
 
 
@@ -969,23 +980,24 @@ def run_clean_from_args(args: argparse.Namespace) -> int:
         clean_all=args.all,
         assume_yes=args.yes,
         reset_selector=args.reset_selector,
+        paths=_paths_for_args(args),
     )
 
 
-def run_pause_from_args(_args: argparse.Namespace) -> int:
-    return pause_queue()
+def run_pause_from_args(args: argparse.Namespace) -> int:
+    return pause_queue(paths=_paths_for_args(args))
 
 
-def run_resume_from_args(_args: argparse.Namespace) -> int:
-    return resume_queue()
+def run_resume_from_args(args: argparse.Namespace) -> int:
+    return resume_queue(paths=_paths_for_args(args))
 
 
-def run_control_from_args(_args: argparse.Namespace) -> int:
-    return show_queue_control()
+def run_control_from_args(args: argparse.Namespace) -> int:
+    return show_queue_control(paths=_paths_for_args(args))
 
 
 def run_concurrency_from_args(args: argparse.Namespace) -> int:
-    return set_queue_concurrency(max_runs_per_gpu=args.max_runs_per_gpu)
+    return set_queue_concurrency(max_runs_per_gpu=args.max_runs_per_gpu, paths=_paths_for_args(args))
 
 
 def _add_queue_commands(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

@@ -116,7 +116,7 @@ def add_preprocess_subparser(subparsers: argparse._SubParsersAction[argparse.Arg
         description="Run dataset preprocessing from a YAML config",
     )
     add_preprocess_arguments(parser)
-    parser.set_defaults(handler=lambda args, p=parser: run_from_args(args, p))
+    parser.set_defaults(handler=lambda args, p=parser: run_from_args(args, p, settings=getattr(args, "_lisai_settings", None)))
     return parser
 
 

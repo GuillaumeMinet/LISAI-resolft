@@ -511,7 +511,7 @@ def add_apply_subparser(subparsers: argparse._SubParsersAction[argparse.Argument
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_apply_arguments(parser)
-    parser.set_defaults(handler=lambda args, p=parser: run_apply_from_args(args, p))
+    parser.set_defaults(handler=lambda args, p=parser: run_apply_from_args(args, p, settings=getattr(args, "_lisai_settings", None)))
     return parser
 
 
@@ -523,7 +523,7 @@ def add_evaluate_subparser(subparsers: argparse._SubParsersAction[argparse.Argum
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_evaluate_arguments(parser)
-    parser.set_defaults(handler=lambda args, p=parser: run_evaluate_from_args(args, p))
+    parser.set_defaults(handler=lambda args, p=parser: run_evaluate_from_args(args, p, settings=getattr(args, "_lisai_settings", None)))
     return parser
 
 

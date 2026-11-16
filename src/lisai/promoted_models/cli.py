@@ -34,9 +34,10 @@ _MODEL_LIST_HINT = "Use 'lisai models list' to inspect available promoted models
 
 def _paths_for_args(args: argparse.Namespace) -> Paths:
     """Load legacy defaults once per parsed models command, not during import/help."""
-    paths = getattr(args, "_model_paths", None)
+    paths = getattr(args, "_lisai_paths", None) or getattr(args, "_model_paths", None)
     if paths is None:
-        paths = Paths(load_default_settings())
+        settings = getattr(args, "_lisai_settings", None) or load_default_settings()
+        paths = Paths(settings)
         args._model_paths = paths
     return paths
 

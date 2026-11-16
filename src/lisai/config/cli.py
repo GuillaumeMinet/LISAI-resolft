@@ -159,6 +159,11 @@ def run_new_from_args(
     return 0
 
 
+def _selected_settings(args: argparse.Namespace, settings: Settings | None) -> Settings | None:
+    """Use the single settings object injected by the top-level CLI, if present."""
+    return settings if settings is not None else getattr(args, "_lisai_settings", None)
+
+
 def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
     config_subparsers = parser.add_subparsers(dest="configs_command")
     config_subparsers.required = True
@@ -171,7 +176,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     list_parser.add_argument("--kind", choices=["preset", "template", "example", "local"])
     list_parser.add_argument("--task")
     list_parser.add_argument("--verbose", action="store_true")
-    list_parser.set_defaults(handler=lambda args, p=list_parser, settings=None: run_list_from_args(args, p, settings=settings))
+    list_parser.set_defaults(handler=lambda args, p=list_parser, settings=None: run_list_from_args(args, p, settings=_selected_settings(args, settings)))
 
     info_parser = config_subparsers.add_parser(
         "info",
@@ -179,7 +184,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         description="Show metadata and inferred task information for a training config.",
     )
     info_parser.add_argument("config", help="Explicit path or configs/training-relative subpath.")
-    info_parser.set_defaults(handler=lambda args, p=info_parser, settings=None: run_info_from_args(args, p, settings=settings))
+    info_parser.set_defaults(handler=lambda args, p=info_parser, settings=None: run_info_from_args(args, p, settings=_selected_settings(args, settings)))
 
     validate_parser = config_subparsers.add_parser(
         "validate",
@@ -188,7 +193,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     )
     validate_parser.add_argument("config", help="Explicit path or configs/training-relative subpath.")
     validate_parser.add_argument("--template", action="store_true", help="Use relaxed template validation.")
-    validate_parser.set_defaults(handler=lambda args, p=validate_parser, settings=None: run_validate_from_args(args, p, settings=settings))
+    validate_parser.set_defaults(handler=lambda args, p=validate_parser, settings=None: run_validate_from_args(args, p, settings=_selected_settings(args, settings)))
 
     resolve_parser = config_subparsers.add_parser(
         "resolve",
@@ -196,7 +201,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         description="Print the fully resolved training config.",
     )
     resolve_parser.add_argument("config", help="Explicit path or configs/training-relative subpath.")
-    resolve_parser.set_defaults(handler=lambda args, p=resolve_parser, settings=None: run_resolve_from_args(args, p, settings=settings))
+    resolve_parser.set_defaults(handler=lambda args, p=resolve_parser, settings=None: run_resolve_from_args(args, p, settings=_selected_settings(args, settings)))
 
     new_parser = config_subparsers.add_parser(
         "new",
@@ -233,7 +238,7 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     new_parser.add_argument("--temporal-window", type=int)
     new_parser.add_argument("--output", help="Output path. Defaults to configs/training/local/<name>.yml.")
     new_parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing output config.")
-    new_parser.set_defaults(handler=lambda args, p=new_parser, settings=None: run_new_from_args(args, p, settings=settings))
+    new_parser.set_defaults(handler=lambda args, p=new_parser, settings=None: run_new_from_args(args, p, settings=_selected_settings(args, settings)))
     return parser
 
 
