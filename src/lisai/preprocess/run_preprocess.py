@@ -87,6 +87,8 @@ class PreprocessRun:
     @classmethod
     def from_cfg(cls, cfg: dict, *, paths: Paths) -> "PreprocessRun":
         pcfg = PreprocessConfig.model_validate(cfg)
+        if pcfg.dataset_name.strip() == "CHANGEME":
+            raise ValueError("Preprocess template is not executable: replace CHANGEME with a real dataset_name.")
 
         logger = logging.getLogger(f"lisai.preprocess.{pcfg.dataset_name}")
         registry = DatasetRegistry(paths.dataset_registry_path())

@@ -71,8 +71,8 @@ class ConfigPathResolver:
                                  for path in local_root.rglob(f"*{suffix}") if path.is_file())
         for namespace in BUILTIN_NAMESPACES.get(self.kind, ()):
             available.update(f"{namespace}/{name}" for name, _ in iter_resource_files(self.kind, namespace))
-        # Explicit legacy checkouts may still carry root-level preprocess configs;
-        # these are not packaged and will be converted to local files in Patch D.
+        # Older checkouts may still contain root-level dataset-specific files.
+        # Keep them addressable as explicit paths until guided migration in E.
         if self.kind == "preprocess":
             for suffix in self.suffixes:
                 available.update(p.name for p in self.root.glob(f"*{suffix}") if p.is_file())

@@ -1,0 +1,23 @@
+# Generic multi-SNR reconstructed-image workflow.
+# Edit gt_types and gt_avg_n_frames to match the actual acquisition.
+dataset_name: CHANGEME
+pipeline: recon_mltpl_snr
+data_type: recon
+fmt: mltpl_snr
+pipeline_cfg:
+  base_subfolder: ""
+  input_subfolder: ""
+  combine_subfolders: false
+  crop_size: null
+  first_low_inp: false
+  gt_avg_n_frames: 5
+  gt_types: [snr0, avg]
+log:
+  enabled: true
+split:
+  enabled: true
+  mode: random
+  random:
+    seed: 0
+    val_fraction: 0.2
+    test_fraction: 0.2

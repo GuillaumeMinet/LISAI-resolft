@@ -18,9 +18,15 @@ class PreprocessAbortedError(RuntimeError):
     pass
 
 def resolve_config_path(config_arg: str, *, resolver: ConfigPathResolver) -> Path:
-    resolved = resolver.resolve(config_arg)
-    assert resolved is not None
-    return resolved
+    reference = resolver.resolve_reference(config_arg)
+    assert reference is not None
+    if reference.ownership == "built-in":
+        raise ValueError(
+            "Preprocess templates cannot be run directly. Create an editable config "
+            f"with `lisai configs new preprocess {Path(config_arg).stem} --dataset YOUR_DATASET` "
+            "and then run `lisai preprocess local/YOUR_DATASET`."
+        )
+    return Path(reference.location)
 
 def _get_config_arg(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
     positional = getattr(args, "config", None)
@@ -58,6 +64,8 @@ def run_preprocess_config(
     interactive: bool | None = None,
 ):
     cfg = load_yaml(config_path)
+    if not isinstance(cfg, dict) or cfg.get("dataset_name") in (None, "", "CHANGEME"):
+        raise ValueError("Preprocess dataset_name must be set to a real dataset, not CHANGEME")
     active_reporter = ConsolePreprocessReporter() if reporter is None else reporter
 
     run = PreprocessRun.from_cfg(cfg, paths=paths)
@@ -83,7 +91,7 @@ def run_from_args(
     resolver = ConfigPathResolver("preprocess", stg=stg)
     try:
         run_preprocess_config(resolve_config_path(config_arg, resolver=resolver), paths=Paths(stg))
-    except (FileExistsError, PreprocessAbortedError) as exc:
+    except (FileNotFoundError, ValueError, FileExistsError, PreprocessAbortedError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     return 0
 

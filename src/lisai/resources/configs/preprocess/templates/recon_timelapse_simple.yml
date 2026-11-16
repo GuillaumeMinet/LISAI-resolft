@@ -1,0 +1,20 @@
+# Generic reconstructed timelapse workflow.
+dataset_name: CHANGEME
+pipeline: recon_timelapse_simple
+data_type: recon
+fmt: timelapse
+pipeline_cfg:
+  base_subfolder: ""
+  input_subfolder: ""
+  combine_subfolders: false
+  crop_size: null
+  remove_first: false
+log:
+  enabled: true
+split:
+  enabled: true
+  mode: random
+  random:
+    seed: 0
+    val_fraction: 0.2
+    test_fraction: 0.2

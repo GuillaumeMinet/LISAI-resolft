@@ -21,12 +21,33 @@ from lisai.config.io.resolver import resolve_config_dict
 from lisai.config.io.config_paths import ConfigPathResolver
 from lisai.config.settings import Settings, load_default_settings
 from lisai.config.io.yaml import load_yaml
+from lisai.preprocess.templates import (
+    create_preprocess_config_from_template, copy_legacy_preprocess_configs,
+)
+from lisai.config.user_configs import refresh_user_schemas
 
 
 def run_list_from_args(
     args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
 ) -> int:
     stg = load_default_settings() if settings is None else settings
+    if getattr(args, "domain", "training") != "training":
+        if args.task:
+            parser.error("--task only applies to training configs.")
+        domain = args.domain
+        resolver = ConfigPathResolver(domain, stg=stg)
+        entries = resolver.available()
+        if args.kind:
+            namespace = {"template": "templates", "preset": "presets", "example": "examples", "local": "local"}[args.kind]
+            entries = [entry for entry in entries if entry.startswith(namespace + "/")]
+        if not entries:
+            parser.exit(status=1, message=f"No {domain} configs found.\n")
+        print("owner      config")
+        print("---------  --------------------------------")
+        for name in entries:
+            owner = "built-in" if name.split("/", 1)[0] in ("templates", "presets", "examples") else "local" if name.startswith("local/") else "explicit"
+            print(f"{owner:<9}  {name}")
+        return 0
     entries = discover_training_configs(kind=args.kind, task=args.task, stg=stg)
     if not entries:
         parser.exit(status=1, message="No training configs found.\n")
@@ -112,6 +133,37 @@ def run_new_from_args(
     args: argparse.Namespace, parser: argparse.ArgumentParser, *, settings: Settings | None = None,
 ) -> int:
     stg = load_default_settings() if settings is None else settings
+    if args.preset == "preprocess":
+        if not args.preprocess_template:
+            parser.error("Specify a preprocess template (e.g. single_recon).")
+        forbidden = [
+            "--custom" if args.custom else None,
+            "--name" if args.name else None,
+            "--input" if args.input is not None else None,
+            "--target" if args.target is not None else None,
+            "--betaKL" if args.betaKL is not None else None,
+            "--loss" if args.loss is not None else None,
+            "--upsampling-factor" if args.upsampling_factor is not None else None,
+            "--sampling-ratio" if args.sampling_ratio is not None else None,
+            "--temporal-window" if args.temporal_window is not None else None,
+        ]
+        if any(forbidden):
+            parser.error("Preprocess creation does not accept training flags: " +
+                         ", ".join(flag for flag in forbidden if flag))
+        try:
+            output_path, warnings = create_preprocess_config_from_template(
+                args.preprocess_template, dataset_name=args.dataset,
+                output=args.output, overwrite=args.overwrite, stg=stg,
+            )
+        except (FileExistsError, FileNotFoundError, ValueError, ValidationError) as exc:
+            parser.exit(status=1, message=f"{exc}\n")
+        print(f"Created preprocess config: {output_path}  [local]")
+        print(f"Source: built-in preprocess template {args.preprocess_template}")
+        for warning in warnings:
+            print(f"Warning: {warning}")
+        return 0
+    if args.preprocess_template:
+        parser.error("The second positional argument is only valid for `new preprocess`.")
     if args.custom and args.preset:
         parser.error("Choose either a preset name or --custom, not both.")
     if not args.custom and not args.preset:
@@ -180,6 +232,8 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
         help="List built-in and local training configs.",
         description="List built-in and local training configs.",
     )
+    list_parser.add_argument("--domain", choices=["training", "preprocess", "inference"], default="training",
+                             help="List training configs, preprocess templates, or inference configs.")
     list_parser.add_argument("--kind", choices=["preset", "template", "example", "local"])
     list_parser.add_argument("--task")
     list_parser.add_argument("--verbose", action="store_true")
@@ -218,8 +272,9 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     new_parser.add_argument(
         "preset",
         nargs="?",
-        help="Preset to instantiate, such as denoising_hdn_unsup or upsamp_single_frame.",
+        help="Training preset, or `preprocess` followed by a preprocess template name.",
     )
+    new_parser.add_argument("preprocess_template", nargs="?", help="Template name after `preprocess`.")
     new_parser.add_argument(
         "--custom",
         action="store_true",
@@ -246,7 +301,51 @@ def _add_config_commands(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     new_parser.add_argument("--output", help="Output path. Defaults to configs/training/local/<name>.yml.")
     new_parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing output config.")
     new_parser.set_defaults(handler=lambda args, p=new_parser, settings=None: run_new_from_args(args, p, settings=_selected_settings(args, settings)))
+    import_parser = config_subparsers.add_parser(
+        "import-preprocess", help="Copy legacy root-level preprocess YAMLs into local/ without deleting originals."
+    )
+    import_parser.set_defaults(
+        handler=lambda args, p=import_parser, settings=None:
+            run_import_preprocess_from_args(args, p, settings=_selected_settings(args, settings))
+    )
+
+    schema_parser = config_subparsers.add_parser(
+        "schema", help="Explicitly manage editor JSON schemas under the selected config root."
+    )
+    schema_commands = schema_parser.add_subparsers(dest="schema_command", required=True)
+    refresh_parser = schema_commands.add_parser(
+        "refresh", help="Regenerate workspace-aware editor JSON schemas."
+    )
+    refresh_parser.set_defaults(
+        handler=lambda args, p=refresh_parser, settings=None:
+            run_schema_refresh_from_args(args, p, settings=_selected_settings(args, settings))
+    )
     return parser
+
+
+def run_import_preprocess_from_args(args, parser, *, settings: Settings | None = None) -> int:
+    stg = load_default_settings() if settings is None else settings
+    try:
+        copied, skipped = copy_legacy_preprocess_configs(stg=stg)
+    except (OSError, ValueError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+    print(f"Imported {len(copied)} legacy preprocess config(s) to {stg.PREPROCESS_CONFIG_DIR / 'local'}")
+    for target in copied:
+        print(f"  copied: {target.name}")
+    for target in skipped:
+        print(f"  kept existing: {target.name}")
+    print("Original root-level preprocess YAMLs were not changed.")
+    return 0
+
+
+def run_schema_refresh_from_args(args, parser, *, settings: Settings | None = None) -> int:
+    stg = load_default_settings() if settings is None else settings
+    try:
+        generated = refresh_user_schemas(stg=stg)
+    except (FileNotFoundError, ValueError, ValidationError) as exc:
+        parser.exit(status=1, message=f"{exc}\n")
+    print(f"Refreshed {len(generated)} editor schemas in {stg.CONFIGS_ROOT / 'schema'}")
+    return 0
 
 
 def add_configs_subparser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]):

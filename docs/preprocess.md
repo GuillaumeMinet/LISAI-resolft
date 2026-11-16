@@ -1,19 +1,54 @@
-﻿# Preprocess
+# Preprocess
 
 This page describes the current preprocessing flow used by LISAI.
 
-## Entry Point
+## Configurations and entry point (M2)
 
-Run preprocessing with either of these commands:
+Generic pipeline templates now ship as read-only LISAI package resources. A
+preprocess run uses a **user-owned YAML** in the active experiment config root,
+`<config-root>/preprocess/local/`. Create one explicitly:
 
 ```powershell
-lisai preprocess single
-lisai preprocess configs/preprocess/single.yml
+lisai configs list --domain preprocess
+lisai configs new preprocess single_recon --dataset my_dataset
+lisai configs new preprocess paired_single_recon --dataset paired_dataset
+lisai configs new preprocess recon_timelapse_simple --dataset my_timelapse
+lisai configs new preprocess recon_mltpl_snr --dataset my_snr_series
+lisai preprocess local/my_dataset
 ```
 
-The CLI resolves short config names from `configs/preprocess/` in the same way `lisai train ...` resolves training configs.
+The four template names are the pipeline names. The generated YAML contains
+pipeline defaults; edit its subfolders, splitting and any dataset-specific
+parameters before running. Without `--dataset`, the generated file has
+`dataset_name: CHANGEME` and will not run until it is filled in. `--output`
+chooses an alternative file path; `--overwrite` is required to replace a file.
+Packaged `templates/...` are not executable directly.
 
-Tracked example configs are `single.yml`, `mltpl_snr.yml`, and `timelapse.yml`.
+Earlier source checkouts may also contain dataset-specific root-level
+`configs/preprocess/single.yml`, `mltpl_snr.yml`, `timelapse.yml` and
+`test_dataset.yml`. Those remain readable as explicit legacy files. To copy them
+into `preprocess/local/` **without changing or deleting the originals**, run:
+
+```powershell
+lisai configs import-preprocess
+```
+
+Existing local files are never overwritten by this import. CLI selection of
+`--workspace` and `--config-root` follows the independent-root rules: the
+workspace contains datasets and global YAMLs; the config root contains these
+editable preprocess YAMLs.
+
+Editor schemas are generated *explicitly* in the selected writable config root:
+
+```powershell
+lisai configs schema refresh
+```
+
+This updates `<config-root>/schema/*.schema.json` and does not modify experiment
+YAMLs. New files in `preprocess/local/` refer to
+`../../schema/preprocess.schema.json`. Patch E will call the same schema
+refresh and seed inference defaults from the workspace/dev initialization
+commands. Normal `Settings` loading never creates these files.
 
 ## Flow
 
@@ -49,7 +84,7 @@ The saver owns file naming, folder creation, and writing processed outputs to di
 
 ### Preprocess Manifest
 
-Each preprocess run can write a YAML manifest under the preprocess folder, using the filenames configured in `configs/data_config.yml`. The manifest stores run metadata, source-to-output mappings, and split assignments.
+Each preprocess run can write a YAML manifest under the preprocess folder, using the filenames configured in the active workspace `configs/data.yml`. The manifest stores run metadata, source-to-output mappings, and split assignments.
 
 ## Dataset Usage
 

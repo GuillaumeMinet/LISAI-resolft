@@ -1,0 +1,21 @@
+# Generic single reconstructed-image workflow; edit dataset_name before running.
+dataset_name: CHANGEME
+pipeline: single_recon
+data_type: recon
+fmt: single
+pipeline_cfg:
+  base_subfolder: ""
+  input_subfolder: ""
+  # Omit output_subfolder to mirror non-empty input_subfolder; set null to flatten.
+  combine_subfolders: false
+  crop_size: null
+  auxiliary_subfolders: {}
+log:
+  enabled: true
+split:
+  enabled: true
+  mode: random
+  random:
+    seed: 0
+    val_fraction: 0.2
+    test_fraction: 0.2

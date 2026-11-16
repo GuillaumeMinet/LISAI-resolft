@@ -61,8 +61,10 @@ def _section_overrides(
     return None if section_raw is None else dict(section_raw)
 
 
-def _is_post_training_name(config: str | Path | None, path: Path | None = None) -> bool:
-    if path is not None and path.stem == POST_TRAINING_CONFIG_NAME:
+def _is_post_training_name(
+    config: str | Path | None, path: Path | Traversable | None = None,
+) -> bool:
+    if path is not None and Path(path.name).stem == POST_TRAINING_CONFIG_NAME:
         return True
     if config is None:
         return False

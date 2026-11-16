@@ -1,0 +1,23 @@
+# Generic paired reconstructed-image workflow (e.g. low/high images).
+# Set usage: evaluation and split.enabled: false for evaluation-only datasets.
+dataset_name: CHANGEME
+pipeline: paired_single_recon
+data_type: recon
+fmt: single
+usage: training
+pipeline_cfg:
+  base_subfolder: ""
+  input_subfolder: low
+  gt_subfolder: high
+  registration: false
+  crop_size: null
+  auxiliary_subfolders: {}
+log:
+  enabled: true
+split:
+  enabled: true
+  mode: random
+  random:
+    seed: 0
+    val_fraction: 0.2
+    test_fraction: 0.2
