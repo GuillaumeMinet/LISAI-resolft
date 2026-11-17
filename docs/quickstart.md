@@ -32,6 +32,7 @@ on import. The workspace owns persistent datasets, model bundles and authoritati
 
 ```powershell
 lisai workspace init D:/path/to/LISAI
+$env:LISAI_HOME = 'D:/path/to/LISAI'   # standalone PowerShell CLI only
 lisai settings show
 ```
 
@@ -160,11 +161,11 @@ Run preprocessing from a YAML config:
 ```powershell
 lisai configs list --domain preprocess
 lisai configs new preprocess single_recon --dataset my_dataset
-# Edit <config-root>/preprocess/local/my_dataset.yml
-lisai preprocess local/my_dataset
+# Edit <config-root>/preprocess/my_dataset.yml
+lisai preprocess my_dataset
 ```
 
-Generic preprocess templates are shipped as read-only package resources. Dataset-specific preprocess files belong in `<config-root>/preprocess/local/`; the corresponding dump folders must already exist in the selected workspace. Successful preprocessing updates the workspace dataset registry.
+Generic preprocess templates are shipped as read-only package resources. Dataset-specific preprocess files belong in `<config-root>/preprocess/`; the corresponding dump folders must already exist in the selected workspace. Successful preprocessing updates the workspace dataset registry.
 
 ## Where To Look Next
 

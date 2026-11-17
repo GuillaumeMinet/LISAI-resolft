@@ -119,9 +119,13 @@ The source directory is always required. Migration validates that the old
 existing ones or moving the user's data. To add the experiment scaffolding,
 run full `workspace init` explicitly afterward.
 
-## Queue worker (Patch F)
+## Queue worker
 
-Workspace and writable-config roots are already carried with queued jobs, but
-forwarding developer preferences explicitly to worker processes is addressed
-in the following patch. No compatibility layer for queued jobs from unreleased
-M2 layouts is planned.
+Submitted jobs carry the resolved workspace root and writable config root. For
+an activated developer checkout they also carry the explicit repository
+`configs/local.yml` path for permitted preferences. The worker reads those
+preferences at launch but never uses that file to reselect its submitted
+workspace or config root. Later edits to preferences may therefore affect an
+unstarted job; changing the active workspace cannot redirect it. Standalone
+jobs never read workspace-local `local.yml`. No queued-job migration or runner
+scheduling redesign is included in M2.

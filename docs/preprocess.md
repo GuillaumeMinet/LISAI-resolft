@@ -2,52 +2,46 @@
 
 This page describes the current preprocessing flow used by LISAI.
 
-## Configurations and entry point (M2)
+## Configurations and entry point
 
-Generic pipeline templates now ship as read-only LISAI package resources. A
-preprocess run uses a **user-owned YAML** in the active experiment config root,
-`<config-root>/preprocess/local/`. Create one explicitly:
+Generic preprocessing templates are shipped as read-only package resources. A
+preprocess run uses an editable YAML under the selected writable config root:
+`<config-root>/preprocess/`. The workflow is the same as for training configs:
 
 ```powershell
-lisai configs list --domain preprocess
+lisai configs list --domain preprocess --kind template
 lisai configs new preprocess single_recon --dataset my_dataset
 lisai configs new preprocess paired_single_recon --dataset paired_dataset
 lisai configs new preprocess recon_timelapse_simple --dataset my_timelapse
 lisai configs new preprocess recon_mltpl_snr --dataset my_snr_series
-lisai preprocess local/my_dataset
+lisai preprocess my_dataset
 ```
 
-The four template names are the pipeline names. The generated YAML contains
-pipeline defaults; edit its subfolders, splitting and any dataset-specific
-parameters before running. Without `--dataset`, the generated file has
-`dataset_name: CHANGEME` and will not run until it is filled in. `--output`
-chooses an alternative file path; `--overwrite` is required to replace a file.
-Packaged `templates/...` are not executable directly.
+The four template names match the pipeline names. Edit the generated YAML's
+source subfolders, splitting and any other dataset-specific parameters before
+running. Without `--dataset`, the generated file contains
+`dataset_name: CHANGEME` and cannot run until completed. `--output vimentin/recon` creates
+`<config-root>/preprocess/vimentin/recon.yml`; `--overwrite` must be specified
+to replace an existing file. Packaged `templates/...` are not runnable.
 
-Earlier source checkouts may also contain dataset-specific root-level
-`configs/preprocess/single.yml`, `mltpl_snr.yml`, `timelapse.yml` and
-`test_dataset.yml`. Those remain readable as explicit legacy files. To copy them
-into `preprocess/local/` **without changing or deleting the originals**, run:
+Configuration references use the same rules as training: `vimentin/recon`
+resolves within the selected writable preprocess directory, `local/recon` is a
+valid user subfolder name, and `./my_file.yml` or an absolute path selects an
+explicit filesystem file. Packaged `templates/` references are independent of
+the workspace; a user config needs a selected workspace.
 
-```powershell
-lisai configs import-preprocess
-```
-
-Existing local files are never overwritten by this import. CLI selection of
-`--workspace` and `--config-root` follows the independent-root rules: the
-workspace contains datasets and global YAMLs; the config root contains these
-editable preprocess YAMLs.
-
-Editor schemas are generated *explicitly* in the selected writable config root:
+Editor schemas are generated **explicitly** in the writable config root:
 
 ```powershell
 lisai configs schema refresh
 ```
 
-This updates `<config-root>/schema/*.schema.json` and does not modify experiment
-YAMLs. New files in `preprocess/local/` refer to
-`../../schema/preprocess.schema.json`. `workspace init` and `dev init` call the same schema refresh and seed
-inference defaults explicitly. Normal `Settings` loading never creates these files.
+This updates `<config-root>/schema/*.schema.json` without modifying experiment
+YAMLs. Newly created preprocess YAMLs have a `$schema` link computed relative
+to their actual folder (including nested folders). Full `workspace init` and
+`dev init` also seed editable inference files and generate schemas; normal
+`Settings` loading creates nothing. `workspace init PATH --core-only` creates
+only the global settings and persistent infrastructure.
 
 ## Flow
 
