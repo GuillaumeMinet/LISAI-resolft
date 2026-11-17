@@ -5,6 +5,10 @@ configs/local_config.yml
 configs/training/local/*
 configs/training/sweeps/*
 
+# Ignore local preprocess configs
+configs/preprocess/local/*
+!configs/inference/local/.gitkeep
+
 # Ignore personal inference defaults and workflow overrides
 configs/inference/local/*
 !configs/inference/local/.gitkeep
@@ -74,6 +78,10 @@ AGENTS.md
 # Common OS artifacts
 .DS_Store
 Thumbs.db
+
+# Generated editor schemas (workspace-dependent)
+/configs/schema/
+!/configs/schema/.gitkeep
 
 # Developer-local workspace selection and preferences (never commit)
 /configs/local.yml
