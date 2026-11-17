@@ -51,8 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_parser.add_argument("--from-legacy", required=True, metavar="CONFIGS", help="Old configs/ directory.")
     dev_parser = subparsers.add_parser("dev", help="Explicit editable-checkout developer setup.")
     dev_actions = dev_parser.add_subparsers(dest="dev_action", required=True)
-    dev_init = dev_actions.add_parser("init", help="Activate source checkout using local.yml.")
-    dev_init.add_argument("--yes", action="store_true", help="Confirm initializing an absent workspace and developer configuration.")
+    dev_actions.add_parser("init", help="Prepare developer configs; select a workspace separately with settings set.")
 
     add_train_subparser(subparsers)
     add_continue_subparser(subparsers)
@@ -128,77 +127,68 @@ def _run_setup(args: argparse.Namespace) -> int:
         describe_workspace_update, open_workspace, plan_workspace_update, update_workspace,
     )
     try:
-        # Explicit lifecycle targets never consult (or modify) the active
-        # selection. This also permits setup while local.yml is incomplete.
+        if args.command == "dev":
+            from lisai.config.selection import developer_setup_status
+
+            source = _source_checkout_for_import()
+            if source is None:
+                raise ValueError("Developer setup requires a verified editable LISAI checkout.")
+            created = initialize_developer(source)
+            status = developer_setup_status(source)
+            for path in created:
+                print(f"Created: {path}")
+            print(f"Developer config initialized: {source / 'configs'}")
+            if not status.complete:
+                print(
+                    f"Developer setup incomplete ({status.reason}).\n"
+                    "Select an initialized workspace using:\n"
+                    "  lisai settings set --workspace PATH\n"
+                    "If needed, initialize it first with 'lisai workspace init PATH --core-only'.\n"
+                    "After selection, run 'lisai configs schema refresh' for registry-aware schemas."
+                )
+            else:
+                print(f"Developer selection already complete: {status.local.workspace.root}")
+            return 0
+
+        # Explicit workspace lifecycle targets never change the active selection.
         explicit_path = (
-            args.command == "workspace" and
-            (args.workspace_action == "init" or getattr(args, "path", None) is not None)
+            args.workspace_action == "init" or getattr(args, "path", None) is not None
         )
         locations = None if explicit_path else resolve_cli_locations(require_workspace=False)
         root = (Path(args.path).expanduser().resolve() if explicit_path
                 else locations.workspace_root)
-        if args.command == "workspace":
-            if args.workspace_action == "open":
-                if root is None:
-                    raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
-                opened = open_workspace(root)
-                print(f"Opened workspace: {opened}")
-                return 0
-            if args.workspace_action == "init":
-                created = initialize_workspace(root, core_only=args.core_only)
-            elif args.workspace_action == "migrate":
-                if root is None:
-                    raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
-                created = migrate_legacy_workspace(args.from_legacy, root)
-            else:
-                if root is None:
-                    raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
-                plan = plan_workspace_update(
-                    root, include_inference=args.include_inference,
-                    external_config_root=args.external_config_root,
-                )
-                # A --yes flag never hides what is going to change.
-                print(describe_workspace_update(plan))
-                if not plan.requires_writes:
-                    return 0
-                if not args.yes:
-                    answer = input("Apply the displayed workspace update? [y/N] ").strip().lower()
-                    if answer not in {"y", "yes"}:
-                        print("Cancelled; no files changed.")
-                        return 0
-                backups = update_workspace(plan)
-                for original, backup in backups:
-                    print(f"Backup: {original} -> {backup}")
-                print(f"Updated workspace defaults in {root} (revision recorded in workspace.yml)")
-                return 0
-        else:
-            source = _source_checkout_for_import()
-            if source is None:
-                raise ValueError(
-                    "Developer setup requires a verified editable LISAI checkout."
-                )
-            proposal = input(
-                f"Developer workspace path{f' [{root}]' if root else ''}: "
-            ).strip()
-            if proposal:
-                root = Path(proposal).expanduser().resolve()
+        if args.workspace_action == "open":
             if root is None:
-                raise ValueError("dev init requires an explicit workspace path; none was selected")
-            if not (root / "configs/workspace.yml").is_file() or not (root / "configs/data.yml").is_file():
-                if not args.yes:
-                    answer = input(f"Initialize workspace core in {root}? [y/N] ").strip().lower()
-                    if answer not in {"y", "yes"}:
-                        print("Cancelled; no files changed.")
-                        return 0
-                initialize_workspace(root, core_only=True)
+                raise ValueError("No workspace selected. Set LISAI_HOME or complete developer setup with settings set.")
+            opened = open_workspace(root)
+            print(f"Opened workspace: {opened}")
+            return 0
+        if args.workspace_action == "init":
+            created = initialize_workspace(root, core_only=args.core_only)
+        elif args.workspace_action == "migrate":
+            if root is None:
+                raise ValueError("No workspace selected. Set LISAI_HOME or complete developer setup with settings set.")
+            created = migrate_legacy_workspace(args.from_legacy, root)
+        else:
+            if root is None:
+                raise ValueError("No workspace selected. Set LISAI_HOME or complete developer setup with settings set.")
+            plan = plan_workspace_update(
+                root, include_inference=args.include_inference,
+                external_config_root=args.external_config_root,
+            )
+            print(describe_workspace_update(plan))
+            if not plan.requires_writes:
+                return 0
             if not args.yes:
-                answer = input(
-                    f"Configure developer settings in {source / 'configs'} for workspace {root}? [y/N] "
-                ).strip().lower()
+                answer = input("Apply the displayed workspace update? [y/N] ").strip().lower()
                 if answer not in {"y", "yes"}:
-                    print("Cancelled; developer settings unchanged.")
+                    print("Cancelled; no files changed.")
                     return 0
-            created = initialize_developer(source, root)
+            backups = update_workspace(plan)
+            for original, backup in backups:
+                print(f"Backup: {original} -> {backup}")
+            print(f"Updated workspace defaults in {root} (revision recorded in workspace.yml)")
+            return 0
         for path in created:
             print(f"Created: {path}")
         print(f"Workspace: {root}; created {len(created)} new paths; existing files preserved.")

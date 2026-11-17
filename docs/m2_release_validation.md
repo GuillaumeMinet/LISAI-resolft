@@ -45,10 +45,15 @@ and `LISAI_CONFIG_ROOT` are ignored without warnings or fallback selection.
 
 ## 2. Developer checkout and multiple workspaces
 
-In a verified editable LISAI checkout:
+In a verified editable LISAI checkout, first verify the incomplete state:
 
 ```powershell
-lisai dev init           # explicitly asks which workspace to select
+lisai dev init           # creates developer configs without selecting a workspace
+lisai settings show      # reports incomplete setup until workspace.root is set
+# A workspace-dependent command must fail here even if LISAI_HOME is set.
+lisai workspace init F:/lisai --core-only  # skip if already initialized
+lisai settings set --workspace F:/lisai --config-mode repo
+lisai configs schema refresh
 lisai settings show
 lisai settings set --workspace F:/lisai-other --config-mode workspace
 lisai settings show

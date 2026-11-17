@@ -36,7 +36,7 @@ $env:LISAI_HOME = 'D:/path/to/LISAI'   # standalone PowerShell CLI only
 lisai settings show
 ```
 
-For editable developer checkouts, run `lisai dev init` and provide the workspace path when prompted.
+For editable developer checkouts, run `lisai dev init`, then explicitly select an initialized workspace with `lisai settings set --workspace PATH` (and `lisai workspace init PATH --core-only` beforehand if needed). Refresh dataset-aware schemas with `lisai configs schema refresh`.
 This selects that workspace while keeping local experiment configs in the repo.
 Package presets remain read-only; local experiment configurations are editable.
 See [Workspaces and migration](workspaces.md) for developer activation, defaults

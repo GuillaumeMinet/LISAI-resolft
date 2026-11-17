@@ -120,13 +120,13 @@ def test_developer_local_schema_hint_survives_settings_edit(settings_factory, tm
     (checkout / "src/lisai").mkdir(parents=True)
     (checkout / "src/lisai/__init__.py").touch()
     (checkout / "pyproject.toml").write_text('[project]\nname="lisai"\n')
-    initialize_developer(checkout, work)
+    initialize_developer(checkout)
     local = checkout / "configs/local.yml"
     assert _schema_target(local) == checkout / "configs/schema/local-config.schema.json"
     assert _schema_target(local).is_file()
     from lisai.config import selection
     monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: checkout)
-    args = Namespace(workspace=None, config_mode="workspace", config_root=None, yes=True)
+    args = Namespace(workspace=str(work), config_mode="workspace", config_root=None, yes=True)
     assert settings_cli.set_developer_settings(args) == 0
     assert _schema_target(local) == checkout / "configs/schema/local-config.schema.json"
     assert load_yaml(local)["config"]["mode"] == "workspace"

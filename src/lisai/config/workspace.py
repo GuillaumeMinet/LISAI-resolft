@@ -24,6 +24,7 @@ from lisai.config.settings import (
     CURRENT_DEFAULTS_REVISION, Settings, WorkspaceFileConfig,
     _legacy_project_templates,
 )
+from lisai.config.selection import developer_setup_status
 from lisai.config.user_configs import (
     inference_seed_files, refresh_user_schemas, seed_inference_local_configs,
 )
@@ -55,7 +56,7 @@ def _validate_globals(workspace: Path) -> None:
     Settings.from_workspace(workspace)
 
 
-def _scaffold_root(config_root: Path, *, workspace: Path) -> list[Path]:
+def _scaffold_root(config_root: Path, *, workspace: Path | None) -> list[Path]:
     created = []
     for relative in ("training", "preprocess", "inference", "schema"):
         folder = config_root / relative
@@ -63,9 +64,20 @@ def _scaffold_root(config_root: Path, *, workspace: Path) -> list[Path]:
             folder.mkdir(parents=True)
             created.append(folder)
     created.extend(seed_inference_local_configs(config_root))
-    # Explicit initialization also refreshes generated schemas. This is a cache,
-    # not user-authored config. Use the authoritative workspace registry.
-    refresh_user_schemas(stg=Settings.from_workspace(workspace, config_root=config_root))
+    if workspace is not None:
+        # Registry-aware schemas require a selected and initialized workspace.
+        refresh_user_schemas(stg=Settings.from_workspace(workspace, config_root=config_root))
+    else:
+        # `dev init` is valid before workspace selection; generate only schemas
+        # that have no workspace dependency. Refresh all after `settings set`.
+        from lisai.config.json_schema import (
+            write_inference_defaults_json_schema, write_inference_json_schema,
+            write_local_config_json_schema,
+        )
+        schema = config_root / "schema"
+        write_local_config_json_schema(schema / "local-config.schema.json")
+        write_inference_defaults_json_schema(schema / "inference-defaults.schema.json")
+        write_inference_json_schema(schema / "inference.schema.json")
     return created
 
 
@@ -106,29 +118,33 @@ def initialize_workspace(workspace: str | Path, *, core_only: bool = False) -> l
     return created
 
 
-def initialize_developer(source_root: str | Path, workspace: str | Path) -> list[Path]:
-    """Explicit developer configuration for a verified checkout, no env writes."""
+def initialize_developer(source_root: str | Path) -> list[Path]:
+    """Initialize developer-owned configs, without selecting or creating a workspace.
+
+    A new checkout activates developer mode but deliberately leaves
+    workspace.root unset. The user completes selection with `settings set`.
+    Repeated init preserves all existing preferences and experiment files.
+    """
     source = Path(source_root).resolve()
-    root = Path(workspace).expanduser().resolve()
     if not (source / "pyproject.toml").is_file() or not (source / "src/lisai/__init__.py").is_file():
         raise ValueError(f"Not a LISAI source checkout: {source}")
-    _validate_globals(root)
     config_root = source / "configs"
     target = config_root / "local.yml"
-    contents = _yaml_text({"dev": {"enabled": True}, "workspace": {"root": str(root)},
-                           "config": {"mode": "repo"}})
+    # The repo mode is the default ownership rule; no workspace is selected.
+    contents = _yaml_text({"dev": {"enabled": True}, "config": {"mode": "repo"}})
     DeveloperLocalConfig.model_validate(yaml.safe_load(contents))
     header = schema_header(target, config_root / "schema", "local-config.schema.json")
     if header:
         contents = header + "\n" + contents
-    created = [target] if _write_new(target, contents) else []
     if target.is_file():
-        local = DeveloperLocalConfig.model_validate(load_yaml(target))
-        if not local.dev.enabled:
+        status = developer_setup_status(source)
+        if not status.enabled:
             raise ValueError(f"Developer activation is disabled in existing {target}; edit it explicitly")
-        if local.workspace.root != str(root):
-            raise ValueError(f"Existing {target} selects {local.workspace.root!r}, not {str(root)!r}; edit it explicitly")
-    created.extend(_scaffold_root(config_root, workspace=root))
+    created = [target] if _write_new(target, contents) else []
+    # Developer initialization is deliberately workspace-independent, even if
+    # a complete selection already exists. Registry-aware schemas are refreshed
+    # separately with `lisai configs schema refresh` after workspace selection.
+    created.extend(_scaffold_root(config_root, workspace=None))
     return created
 
 

@@ -69,8 +69,13 @@ lisai settings show
 ```
 
 Its authoritative settings live in `<workspace>/configs/workspace.yml` and
-`<workspace>/configs/data.yml`. For editable development, use `lisai dev init`
-so experiments remain under the source checkout's `configs/`. Use `lisai settings set` to persist developer selection; ordinary commands have no live `--workspace` or `--config-root` overrides.
+`<workspace>/configs/data.yml`. For editable development, run `lisai dev init`
+to create the checkout-owned configuration files, then **separately** run
+`lisai settings set --workspace PATH` to complete developer setup. If the
+workspace does not exist, first run `lisai workspace init PATH --core-only`.
+`dev init` never selects or creates a workspace. Run `lisai configs schema refresh`
+after selection for dataset-aware editor schemas. Ordinary commands have no
+live `--workspace` or `--config-root` overrides.
 Neither imports nor ordinary CLI commands prompt or write configuration.
 See [workspace setup and migration](docs/workspaces.md).
 

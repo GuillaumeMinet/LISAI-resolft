@@ -9,7 +9,7 @@ from lisai.config import load_yaml
 from lisai.config.settings import Settings
 
 
-DATA_YAML = Path("configs/data_config.yml")
+DATA_YAML = Path(__file__).resolve().parents[2] / "fixtures/legacy_configs/data_config.yml"
 TEMPLATE_VALUES = {
     "sample_id": "sample_name",
     "snr_level": "snr_10",

@@ -185,7 +185,7 @@ def test_explicit_loader_does_not_run_legacy_migration(tmp_path: Path):
 
     config_dir = tmp_path / "configs"
     config_dir.mkdir()
-    repo_configs = Path(__file__).resolve().parents[2] / "configs"
+    repo_configs = Path(__file__).resolve().parents[1] / "fixtures/legacy_configs"
     for name in ("project_config.yml", "data_config.yml"):
         copyfile(repo_configs / name, config_dir / name)
     local_path = config_dir / "local_config.yml"

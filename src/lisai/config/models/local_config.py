@@ -142,17 +142,9 @@ class DeveloperLocalConfig(LocalConfig):
     workspace: DeveloperWorkspaceSelector = Field(default_factory=DeveloperWorkspaceSelector)
     config: DeveloperConfigSelector | None = None
 
-    @model_validator(mode="after")
-    def _validate_active_selection(self):
-        if self.dev.enabled:
-            if self.workspace.root is None:
-                raise ValueError("workspace.root is required when dev.enabled is true")
-            if self.config is None:
-                raise ValueError(
-                    "config.mode is required in an activated developer local.yml; "
-                    "add config: {mode: repo} or use lisai settings set --config-mode repo"
-                )
-        return self
+    # The developer file may deliberately be incomplete after `dev init`.
+    # CLI selection checks readiness through `developer_setup_status`; ordinary
+    # commands must not treat an incomplete developer setup as standalone.
 
 
 __all__ = [

@@ -44,17 +44,37 @@ YAMLs, datasets, checkpoints, models and other user files.
 
 ## Editable developer checkout
 
-In a verified editable LISAI checkout, run:
+In a verified editable LISAI checkout, initialize the repository and then
+select a workspace **separately**:
 
 ```sh
 lisai dev init
+lisai workspace init /data/lisai --core-only    # only if needed
+lisai settings set --workspace /data/lisai
 lisai settings show
+lisai configs schema refresh
 ```
 
-`dev init` **asks which workspace to use**. If it is not initialized, LISAI
-offers a separately confirmed core-only workspace initialization. It prepares
-repo-owned experiment folders and seeds repo `configs/local.yml` with
-`dev.enabled: true` and `config.mode: repo`. It never edits your shell environment.
+`dev init` never asks for or selects a workspace, and does not initialize one.
+It creates missing repo-owned experiment folders, seeds editable inference
+`defaults.yml` and `post_training.yml`, and writes a developer `configs/local.yml`
+with `dev.enabled: true` and default `config.mode: repo` if none exists.
+An already selected workspace/config mode is preserved when running it again.
+
+**Developer setup is complete** when developer mode is enabled and both
+`workspace.root` and `config.mode` are valid. A fresh `dev init` deliberately
+leaves `workspace.root` unset and displays the `lisai settings set --workspace
+PATH` command. Workspace-dependent CLI commands fail with this instruction
+until selection is complete, even if `LISAI_HOME` happens to be defined.
+The selected workspace must separately contain valid `configs/workspace.yml`
+and `configs/data.yml`; create them with `workspace init PATH --core-only` if
+missing. Read-only `settings show`, `settings set`, explicit workspace setup and
+packaged catalog commands remain available during incomplete setup.
+
+`dev init` can generate workspace-independent editor schemas before selection.
+Run `lisai configs schema refresh` after selecting a workspace to generate the
+registry-aware experiment/preprocess schemas. Initialization never modifies the
+shell environment or rewrites user-authored configurations.
 
 A developer can choose the persisted experiment-config ownership:
 
@@ -123,7 +143,10 @@ lisai workspace init /absolute/old/data/root
 ```
 
 You may omit the destination when an active workspace has already been selected.
-The source directory is always required. Migration validates that the old
+The old `project_config.yml` and `data_config.yml` are no longer shipped in the
+repository `configs/` directory; historical test copies live under
+`tests/fixtures/legacy_configs/`. The source directory is always required.
+Migration validates that the old
 `infrastructure.data_root` matches the destination, converts path templates to
 `{workspace_root}`, and creates workspace-global YAMLs without overwriting
 existing ones or moving the user's data. To add the experiment scaffolding,

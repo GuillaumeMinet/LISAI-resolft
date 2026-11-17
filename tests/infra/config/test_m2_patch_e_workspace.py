@@ -16,7 +16,7 @@ from lisai.config.workspace import (
     revision_warning, plan_workspace_update, update_workspace,
 )
 
-ROOT = Path(__file__).resolve().parents[3]
+LEGACY = Path(__file__).resolve().parents[2] / "fixtures/legacy_configs"
 
 
 def test_workspace_explicit_init_is_idempotent_and_preserves_assets(tmp_path):
@@ -49,16 +49,23 @@ def test_developer_init_uses_repo_scaffold_not_workspace(tmp_path):
     root = tmp_path / "space"
     initialize_workspace(root, core_only=True)
     assert not (root / "configs/training").exists()
-    created = initialize_developer(source, root)
+    created = initialize_developer(source)
     assert source / "configs/local.yml" in created
-    assert load_yaml(source / "configs/local.yml")["dev"]["enabled"] is True
+    local = load_yaml(source / "configs/local.yml")
+    assert local == {"dev": {"enabled": True}, "config": {"mode": "repo"}}
     assert (source / "configs/inference/defaults.yml").exists()
-    assert (source / "configs/schema/preprocess.schema.json").exists()
+    assert (source / "configs/inference/post_training.yml").exists()
+    assert (source / "configs/schema/local-config.schema.json").exists()
+    assert not (source / "configs/schema/preprocess.schema.json").exists()
     assert not (root / "configs/training").exists()
-    assert initialize_developer(source, root) == []
-    initialize_workspace(tmp_path / "other", core_only=True)
-    with pytest.raises(ValueError, match="selects"):
-        initialize_developer(source, tmp_path / "other")
+    assert initialize_developer(source) == []
+    # Even with a selected workspace, re-running developer init never loads it
+    # or generates registry-dependent schemas. Schema refresh is explicit.
+    save_yaml({"dev": {"enabled": True}, "config": {"mode": "repo"},
+               "workspace": {"root": str(root)}}, source / "configs/local.yml")
+    initialize_developer(source)
+    assert not (source / "configs/schema/preprocess.schema.json").exists()
+    assert load_yaml(source / "configs/local.yml")["workspace"]["root"] == str(root)
 
 
 def test_update_backs_up_both_yaml_and_preserves_user_configs(tmp_path):
@@ -115,7 +122,7 @@ def _legacy_config_dir(tmp_path: Path, workspace: Path) -> Path:
               root / "local_config.yml")
     for source, target in (("project_config.yml", "project_config.yml"),
                            ("data_config.yml", "data_config.yml")):
-        (root / target).write_bytes((ROOT / "configs" / source).read_bytes())
+        (root / target).write_bytes((LEGACY / source).read_bytes())
     return root
 
 
@@ -188,27 +195,35 @@ def test_import_and_help_do_not_initialize(tmp_path, capsys, monkeypatch):
     assert not root.exists()
 
 
-def test_cli_dev_init_core_only_and_explicit_activation(tmp_path, monkeypatch, capsys):
-    monkeypatch.delenv("LISAI_CONFIG_ROOT", raising=False)
+def test_cli_dev_init_does_not_select_or_initialize_a_workspace(tmp_path, monkeypatch, capsys):
     root = tmp_path / "workspace"
     source = tmp_path / "checkout"
     (source / "src/lisai").mkdir(parents=True)
     (source / "src/lisai/__init__.py").touch()
     (source / "pyproject.toml").write_text('[project]\nname="lisai"\n')
     monkeypatch.setattr("lisai.config.selection._source_checkout_for_import", lambda: source)
-    # Explicit --yes approves core-only bootstrap in the selected workspace.
-    monkeypatch.setattr("builtins.input", lambda *_: str(root))
-    assert main(["dev", "init", "--yes"]) == 0
-    assert (root / "configs/workspace.yml").is_file()
-    assert not (root / "configs/training").exists()
+    monkeypatch.setenv("LISAI_HOME", str(root))
+    monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("dev init prompted"))
+    assert main(["dev", "init"]) == 0
+    assert not root.exists()
+    assert (source / "configs/inference/defaults.yml").is_file()
+    assert (source / "configs/inference/post_training.yml").is_file()
     assert (source / "configs/local.yml").is_file()
-    assert (source / "configs/training").is_dir()
-    monkeypatch.setattr("builtins.input", lambda *_: str(root))
-    assert main(["dev", "init", "--yes"]) == 0
+    from lisai.config.selection import developer_setup_status
+    assert not developer_setup_status(source).complete
+    assert main(["dev", "init"]) == 0
     assert main(["settings", "show"]) == 0
     output = capsys.readouterr().out
-    assert "Developer" in output
-    assert "config.mode=repo" in output
+    assert "Developer setup incomplete" in output
+    assert "lisai settings set --workspace PATH" in output
+
+    assert main(["workspace", "init", str(root), "--core-only"]) == 0
+    assert main(["settings", "set", "--workspace", str(root), "--yes"]) == 0
+    assert developer_setup_status(source).complete
+    assert main(["settings", "show"]) == 0
+    assert "Workspace status:   valid" in capsys.readouterr().out
+    assert main(["dev", "init"]) == 0
+    assert not (source / "configs/schema/preprocess.schema.json").exists()
 
 
 def test_cli_legacy_migration_command(tmp_path, monkeypatch):

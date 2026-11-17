@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+LEGACY_CONFIGS = ROOT / "tests/fixtures/legacy_configs"
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
@@ -23,14 +24,14 @@ def settings_factory(tmp_path):
         configs_root = tmp_path / name / "configs"
         configs_root.mkdir(parents=True)
         for filename in ("project_config.yml", "data_config.yml"):
-            shutil.copy2(ROOT / "configs" / filename, configs_root / filename)
+            shutil.copy2(LEGACY_CONFIGS / filename, configs_root / filename)
         workspace = (data_root or tmp_path / name / "data").resolve()
         save_yaml({"infrastructure": {"data_root": str(workspace)}},
                   configs_root / "local_config.yml")
         # M2 workspace global YAMLs exist independently of the user's configs.
         workspace_configs = workspace / "configs"
         workspace_configs.mkdir(parents=True, exist_ok=True)
-        project = load_yaml(ROOT / "configs" / "project_config.yml")
+        project = load_yaml(LEGACY_CONFIGS / "project_config.yml")
         for section in ("roots", "templates"):
             project["paths"][section] = {
                 key: value.replace("{data_root}", "{workspace_root}").replace(
@@ -39,7 +40,7 @@ def settings_factory(tmp_path):
                 for key, value in project["paths"][section].items()
             }
         save_yaml(project, workspace_configs / "workspace.yml")
-        shutil.copy2(ROOT / "configs" / "data_config.yml", workspace_configs / "data.yml")
+        shutil.copy2(LEGACY_CONFIGS / "data_config.yml", workspace_configs / "data.yml")
         return Settings.from_config_dir(configs_root)
     return create
 

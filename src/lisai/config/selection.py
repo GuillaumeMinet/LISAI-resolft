@@ -12,10 +12,13 @@ import subprocess
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 from urllib.parse import unquote, urlparse
 
 import yaml
+
+if TYPE_CHECKING:
+    from lisai.config.models.local_config import DeveloperLocalConfig
 
 
 @dataclass(frozen=True)
@@ -106,19 +109,40 @@ def _source_checkout_for_import() -> Path | None:
     return repo if editable_root == repo.resolve() else None
 
 
-def _read_local_selector(path: Path):
-    """Only the verified source checkout can activate developer selection.
 
-    An inactive file is not a selector. Active files are validated strictly,
-    including config.mode, workspace.root and the allowed preference fields.
+@dataclass(frozen=True)
+class DeveloperSetupStatus:
+    """Whether a checkout's local.yml activates a *complete* developer selection.
+
+    This is a selection-readiness check, not workspace initialization: normal
+    commands separately load/validate workspace.yml and data.yml.
+    """
+
+    enabled: bool
+    complete: bool
+    local: DeveloperLocalConfig | None = None
+    reason: str | None = None
+
+
+def developer_setup_status(
+    source_root: str | Path, *, document: Mapping[str, object] | None = None,
+) -> DeveloperSetupStatus:
+    """Inspect developer selection without reading the environment or writing files.
+
+    An activated-but-incomplete checkout must never fall back to LISAI_HOME.
+    ``document`` lets `settings set` assess a proposed selector before writing.
     """
     from lisai.config.models.local_config import DeveloperLocalConfig
 
-    if not path.is_file():
-        return None
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path = Path(source_root).resolve() / "configs" / "local.yml"
+    if document is None:
+        if not path.is_file():
+            return DeveloperSetupStatus(False, False, reason="local.yml is absent")
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    else:
+        raw = document
     if raw is None:
-        return None
+        return DeveloperSetupStatus(False, False, reason="local.yml is empty")
     if not isinstance(raw, dict):
         raise ValueError(f"Expected mapping in {path}")
     dev = raw.get("dev", {})
@@ -128,8 +152,19 @@ def _read_local_selector(path: Path):
     if not isinstance(enabled, bool):
         raise ValueError(f"dev.enabled must be boolean in {path}")
     if not enabled:
-        return None
-    return DeveloperLocalConfig.model_validate(raw)
+        return DeveloperSetupStatus(False, False, reason="dev.enabled is not true")
+    # Strict validation still rejects wrong paths, unsupported keys and invalid
+    # configuration modes. Missing selection fields alone are allowed at init.
+    local = DeveloperLocalConfig.model_validate(raw)
+    missing = []
+    if local.workspace.root is None:
+        missing.append("workspace.root")
+    if local.config is None:
+        missing.append("config.mode")
+    return DeveloperSetupStatus(
+        True, not missing, local,
+        f"Missing {', '.join(missing)}" if missing else None,
+    )
 
 
 def resolve_cli_locations(
@@ -159,7 +194,14 @@ def resolve_cli_locations(
 
     if source is not None:
         candidate = source / "configs" / "local.yml"
-        local = _read_local_selector(candidate)
+        setup = developer_setup_status(source)
+        if setup.enabled and not setup.complete:
+            raise ValueError(
+                f"Developer setup is incomplete ({setup.reason}) in {candidate}. "
+                "Run 'lisai settings set --workspace PATH' to complete selection "
+                "(and --config-mode repo|workspace|custom if needed)."
+            )
+        local = setup.local if setup.complete else None
         if local is not None:
             assert local.config is not None and local.workspace.root is not None
             developer_mode = True
@@ -187,8 +229,8 @@ def resolve_cli_locations(
     if selected_workspace is None and require_workspace:
         raise ValueError(
             "No LISAI workspace selected. Set LISAI_HOME to an initialized workspace "
-            "(standalone CLI), or run 'lisai dev init' from a verified editable "
-            "checkout to select a developer workspace."
+            "(standalone CLI), or use 'lisai dev init' then "
+            "'lisai settings set --workspace PATH' in a verified editable checkout."
         )
 
     return ResolvedLocations(

@@ -15,14 +15,14 @@ from lisai.infra.paths import Paths
 from lisai.runs.lifecycle import stored_run_path
 
 
-REPO = Path(__file__).resolve().parents[3]
+LEGACY = Path(__file__).resolve().parents[2] / "fixtures/legacy_configs"
 
 
 def make_workspace(tmp_path: Path, name: str, *, inference_mode: str = "default") -> Path:
     root = tmp_path / name
     cfg_dir = root / "configs"
     cfg_dir.mkdir(parents=True)
-    old = load_yaml(REPO / "configs" / "project_config.yml")
+    old = load_yaml(LEGACY / "project_config.yml")
     for section in ("roots", "templates"):
         old["paths"][section] = {
             key: (value.replace("{data_root}", "{workspace_root}")
@@ -33,7 +33,7 @@ def make_workspace(tmp_path: Path, name: str, *, inference_mode: str = "default"
     old["inference"] = {"output": {"mode": inference_mode, "save_input_mode": "never"}}
     old["console"] = {"progress_bar": False}
     save_yaml(old, cfg_dir / "workspace.yml")
-    save_yaml(load_yaml(REPO / "configs" / "data_config.yml"), cfg_dir / "data.yml")
+    save_yaml(load_yaml(LEGACY / "data_config.yml"), cfg_dir / "data.yml")
     return root
 
 

@@ -39,8 +39,9 @@ lisai configs schema refresh
 This updates `<config-root>/schema/*.schema.json` without modifying experiment
 YAMLs. Newly created preprocess YAMLs have a `$schema` link computed relative
 to their actual folder (including nested folders). Full `workspace init` and
-`dev init` also seed editable inference files and generate schemas; normal
-`Settings` loading creates nothing. `workspace init PATH --core-only` creates
+`dev init` also seeds editable inference files and workspace-independent schemas.
+Run `lisai settings set --workspace PATH` and `lisai configs schema refresh`
+for registry-aware schemas. Normal `Settings` loading creates nothing. `workspace init PATH --core-only` creates
 only the global settings and persistent infrastructure.
 
 ## Flow

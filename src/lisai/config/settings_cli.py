@@ -17,7 +17,7 @@ import yaml
 
 from lisai.config.models.local_config import DeveloperLocalConfig
 from lisai.config.io.schema_hints import schema_header
-from lisai.config.selection import resolve_cli_locations
+from lisai.config.selection import developer_setup_status, resolve_cli_locations
 from lisai.config.settings import Settings
 
 
@@ -59,7 +59,7 @@ def _input_path(value: str, *, label: str) -> str:
     return str(Path(value).expanduser().resolve())
 
 
-def _new_selection(raw: dict[str, Any], args: Any) -> DeveloperLocalConfig:
+def _new_selection(raw: dict[str, Any], args: Any, *, source: Path) -> DeveloperLocalConfig:
     updated = copy.deepcopy(raw)
     if args.workspace is not None:
         new_workspace = updated.get("workspace")
@@ -88,7 +88,14 @@ def _new_selection(raw: dict[str, Any], args: Any) -> DeveloperLocalConfig:
         # Switching out of custom mode intentionally forgets its old root.
         existing.pop("root", None)
     updated["config"] = existing
-    return DeveloperLocalConfig.model_validate(updated)
+    proposed = DeveloperLocalConfig.model_validate(updated)
+    status = developer_setup_status(source, document=updated)
+    if not status.complete:
+        raise ValueError(
+            f"Developer selection is incomplete ({status.reason}). "
+            "Specify --workspace PATH and --config-mode as needed."
+        )
+    return proposed
 
 
 def _root_for_mode(source: Path, selection: DeveloperLocalConfig) -> tuple[Path, Path]:
@@ -143,7 +150,7 @@ def set_developer_settings(args: Any) -> int:
     except (ValueError, OSError) as exc:
         old_state = f"Invalid or incomplete: {exc}"
 
-    proposed = _new_selection(raw, args)
+    proposed = _new_selection(raw, args, source=source)
     workspace, config_root = _root_for_mode(source, proposed)
     if config_root.exists() and not config_root.is_dir():
         raise ValueError(f"Experiment config root is not a directory: {config_root}")
