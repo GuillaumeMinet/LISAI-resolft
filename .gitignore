@@ -1,24 +1,12 @@
-# Local machine config
-configs/local_config.yml
-
-# Ignore local training configs directly inside configs/training/
-configs/training/local/*
-configs/training/sweeps/*
-
-# Ignore local preprocess configs
-configs/preprocess/local/*
-!configs/inference/local/.gitkeep
-
-# Ignore personal inference defaults and workflow overrides
-configs/inference/local/*
-!configs/inference/local/.gitkeep
-
-# But keep subdirectories visible to Git rules and track tracked config sources
-!configs/training/local/.gitkeep
-!configs/training/*/
-!configs/training/templates/**
-!configs/training/examples/**
-!configs/training/presets/**
+# Machine-local selection, developer configurations and generated editor schemas.
+# All writable experiment configurations are user-managed; immutable presets,
+# templates and examples live under src/lisai/resources/configs instead.
+/configs/local.yml
+/configs/local_config.yml
+/configs/training/
+/configs/preprocess/
+/configs/inference/
+/configs/schema/
 
 # Keep graph development private except publication scripts/utilities
 graphs/*
@@ -78,10 +66,3 @@ AGENTS.md
 # Common OS artifacts
 .DS_Store
 Thumbs.db
-
-# Generated editor schemas (workspace-dependent)
-/configs/schema/
-!/configs/schema/.gitkeep
-
-# Developer-local workspace selection and preferences (never commit)
-/configs/local.yml

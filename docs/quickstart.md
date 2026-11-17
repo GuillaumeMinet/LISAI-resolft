@@ -32,10 +32,10 @@ on import. The workspace owns persistent datasets, model bundles and authoritati
 
 ```powershell
 lisai workspace init D:/path/to/LISAI
-lisai --workspace D:/path/to/LISAI config show
+lisai settings show
 ```
 
-For editable developer checkouts, run `lisai --workspace D:/path/to/LISAI dev init`.
+For editable developer checkouts, run `lisai dev init` and provide the workspace path when prompted.
 This selects that workspace while keeping local experiment configs in the repo.
 Package presets remain read-only; local experiment configurations are editable.
 See [Workspaces and migration](workspaces.md) for developer activation, defaults
@@ -77,14 +77,14 @@ Create a local editable config from a preset:
 ```powershell
 lisai configs new denoising_hdn_unsup --name my_hdn
 # or to specify the configs subfolder:
-lisai configs new denoising_hdn_unsup --output local/my_hdn
+lisai configs new denoising_hdn_unsup --output my_hdn
 
 # Registered datasets can also pre-fill dataset-dependent fields:
-lisai configs new denoising_hdn_unsup --output local/my_hdn --dataset <dataset>
+lisai configs new denoising_hdn_unsup --output my_hdn --dataset <dataset>
 
-# Edit configs/training/local/my_hdn.yml and replace CHANGEME values.
-lisai configs validate local/my_hdn
-lisai configs resolve local/my_hdn
+# Edit configs/training/my_hdn.yml and replace CHANGEME values.
+lisai configs validate my_hdn
+lisai configs resolve my_hdn
 ```
 
 To start from the generic base template instead:
@@ -98,7 +98,7 @@ If `configs new` warns about `CHANGEME`, those fields must be edited before `con
 Run a local config or a public example config:
 
 ```powershell
-lisai train local/my_hdn
+lisai train my_hdn
 lisai train examples/vim_denoising_unet
 ```
 

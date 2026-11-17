@@ -11,7 +11,7 @@ from lisai.config.settings import Settings
 from lisai.config.user_configs import (
     inference_seed_files, refresh_user_schemas, seed_inference_local_configs,
 )
-from lisai.config.workspace import update_workspace
+from lisai.config.workspace import plan_workspace_update, update_workspace
 from lisai.evaluation.defaults import resolve_apply_config, resolve_evaluate_config
 
 
@@ -67,7 +67,8 @@ def test_update_inference_generation_matches_initial_seed(settings_factory, tmp_
     expected = inference_seed_files(external)
     # Patch E will add explicit preview/confirmation; here test only that
     # the current update helper uses the same schema-aware seed source.
-    update_workspace(work, config_root=external, replace_editable_defaults=True)
+    update_workspace(plan_workspace_update(
+        work, include_inference=True, external_config_root=external))
     assert {p: p.read_text(encoding="utf-8") for p in expected} == expected
     for path in expected:
         assert _schema_target(path) == external / "schema" / (

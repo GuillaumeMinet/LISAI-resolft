@@ -64,13 +64,13 @@ explicit workspace. Initialize it once, without modifying the installed package:
 
 ```bash
 lisai workspace init D:/path/to/lisai-workspace
-lisai --workspace D:/path/to/lisai-workspace config show
+export LISAI_HOME=D:/path/to/lisai-workspace
+lisai settings show
 ```
 
 Its authoritative settings live in `<workspace>/configs/workspace.yml` and
 `<workspace>/configs/data.yml`. For editable development, use `lisai dev init`
-so experiments remain under the source checkout's `configs/`. Selecting
-`--workspace` does not override an independently selected `--config-root`.
+so experiments remain under the source checkout's `configs/`. Use `lisai settings set` to persist developer selection; ordinary commands have no live `--workspace` or `--config-root` overrides.
 Neither imports nor ordinary CLI commands prompt or write configuration.
 See [workspace setup and migration](docs/workspaces.md).
 
@@ -128,8 +128,8 @@ Raw datasets can be converted into the standard LISAI training/evaluation layout
 ```bash
 lisai configs list --domain preprocess
 lisai configs new preprocess single_recon --dataset <dataset-name>
-# Edit the generated <config-root>/preprocess/local/<dataset-name>.yml
-lisai preprocess local/<dataset-name>
+# Edit the generated <config-root>/preprocess/<dataset-name>.yml
+lisai preprocess <dataset-name>
 ```
 
 Successful preprocessing registers the resulting dataset automatically.
@@ -140,7 +140,7 @@ Training presets provide starting points for the main supported tasks:
 
 ```bash
 lisai configs list --kind preset
-lisai configs new denoising_hdn_unsup --output local/my_hdn
+lisai configs new denoising_hdn_unsup --output my_hdn
 ```
 
 Available presets include supervised and unsupervised HDN denoising, CARE and UNet-RCAN denoising, and single- or multi-frame upsampling.
@@ -148,20 +148,20 @@ Available presets include supervised and unsupervised HDN denoising, CARE and UN
 Or, to start from the generic base template instead of a preset:
 
 ```bash
-lisai configs new --custom --name my_experiment --output local/my_experiment
+lisai configs new --custom --name my_experiment --output my_experiment
 ```
 
 For registered dataset, you can include the dataset name at creation to pre-fill input/ground-truth fields:
 
 ```bash
-lisai configs new denoising_hdn_unsup --output local/my_hdn --dataset <dataset-name>
+lisai configs new denoising_hdn_unsup --output my_hdn --dataset <dataset-name>
 ```
 
 You can then edit the configuration file: experiment name, saving parameters, training parameters, etc. You can validate the config and resolve it to see the final resolve config before launching training:
 
 ```
-lisai configs validate local/my_hdn
-lisai configs resolve local/my_hdn
+lisai configs validate my_hdn
+lisai configs resolve my_hdn
 ```
 
 > *Note*: To help edit configuration, YAML config files include JSON Schema definitions for autocompletion, type/value suggestions, inline validation, and documentation in compatible editors such as VS Code.
@@ -172,7 +172,7 @@ lisai configs resolve local/my_hdn
 Finally, you can run the training:
 
 ```
-lisai train local/my_hdn
+lisai train my_hdn
 ```
 
 To inspect ongoing or finished runs:
@@ -223,7 +223,7 @@ lisai apply <run-selector> /path/to/images
 Machine-local defaults live in:
 
 ```bash
-configs/inference/local/defaults.yml
+configs/inference/defaults.yml
 ```
 
 Additional sparse configurations can be stored under `configs/inference/`, including task-specific presets such as the HDN inference settings.
@@ -232,7 +232,7 @@ Configuration is resolved in the following order, with later values taking prece
 
 ```text
 built-in defaults
-    < local/defaults.yml
+    < inference/defaults.yml
     < promoted-model inference config
     < selected inference config
     < explicit CLI options
@@ -332,17 +332,17 @@ All main workflows are configured with YAML files:
 - `<workspace>/configs/workspace.yml`: authoritative paths, run layout, naming, recovery and queue defaults
 - `<workspace>/configs/data.yml`: supported data formats and filename templates
 - `lisai` package resources: read-only training presets/templates/examples, inference presets and generic preprocess templates
-- `<config-root>/training/local/*.yml`: editable training experiments
-- `<config-root>/preprocess/local/*.yml`: editable preprocessing configurations
-- `<config-root>/inference/local/*.yml`: editable inference defaults and post-training settings
+- `<config-root>/training/*.yml`: editable training experiments
+- `<config-root>/preprocess/*.yml`: editable preprocessing configurations
+- `<config-root>/inference/*.yml`: editable inference defaults and post-training settings
 - `<config-root>/schema/*.json`: explicitly refreshed, registry-aware editor schemas
 
 The writable config root defaults to `<workspace>/configs`, but can be the
 verified editable checkout's `configs/` in developer mode.
 
-Short config names are resolved from their workflow folder. For example, `lisai train examples/vim_denoising_unet` selects a packaged example, while `lisai train local/my_training` selects an editable YAML from the selected writable root. Preprocess templates must first be instantiated with `lisai configs new preprocess <template> --dataset <name>`. Inference `local/` files are editable, and `presets/` refer to packaged inference resources. Explicit values in the selected inference config override `local/defaults.yml`, and explicit CLI options override both.
+Short config names are resolved from their workflow folder. For example, `lisai train examples/vim_denoising_unet` selects a packaged example, while `lisai train my_training` selects an editable YAML from the selected writable root. Preprocess templates must first be instantiated with `lisai configs new preprocess <template> --dataset <name>`. Inference user files are editable, and `presets/` refer to packaged inference resources. Explicit values in the selected inference config override `defaults.yml`, and explicit CLI options override both.
 
-Training presets and templates are catalog inputs, not direct training inputs. Use `lisai configs new ...` to instantiate a preset or template into `configs/training/local/`, then train the local config.
+Training presets and templates are catalog inputs, not direct training inputs. Use `lisai configs new ...` to instantiate a preset or template into `configs/training/`, then train the local config.
 
 
 ### Data Preparation
@@ -351,7 +351,7 @@ LISAI supports two training-data paths:
 
 - Unprepared data: use this when the data has not been written by the LISAI preprocessing step. In the training config, set `data.prep_before: false`. The loader scans the configured dataset folder and creates a file-level split manifest during training. This path is currently intended for unpaired datasets.
 
-- Preprocessed data: run a local preprocessing configuration first, for example `lisai preprocess local/my_preprocess`. The preprocess step writes the dataset into the expected training layout, can create `train`/`val`/`test` splits, and registers the result in the dataset registry under `<workspace_root>/datasets/dataset_registry.yml`. Training configs for this path use `data.prep_before: true` and `data.already_split: true`.
+- Preprocessed data: run a local preprocessing configuration first, for example `lisai preprocess my_preprocess`. The preprocess step writes the dataset into the expected training layout, can create `train`/`val`/`test` splits, and registers the result in the dataset registry under `<workspace_root>/datasets/dataset_registry.yml`. Training configs for this path use `data.prep_before: true` and `data.already_split: true`.
 
 See [Preprocessing](docs/preprocess.md) and [Data organization](docs/data_organization.md) for the detailed folder semantics.
 

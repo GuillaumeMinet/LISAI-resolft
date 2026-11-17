@@ -22,8 +22,13 @@ def _condition_for_pipeline(schema: dict, pipeline_name: str) -> dict:
     raise AssertionError(f"Did not find preprocess schema condition for pipeline '{pipeline_name}'.")
 
 
-def test_preprocess_yaml_example_validates_against_preprocess_config_model():
-    cfg = load_yaml(Path("configs/preprocess/single.yml"))
+def test_preprocess_yaml_example_validates_against_preprocess_config_model(settings):
+    from lisai.preprocess.templates import create_preprocess_config_from_template
+
+    created, _ = create_preprocess_config_from_template(
+        "single_recon", dataset_name="ExampleDataset", stg=settings,
+    )
+    cfg = load_yaml(created)
 
     validated = PreprocessConfig.model_validate(cfg)
 

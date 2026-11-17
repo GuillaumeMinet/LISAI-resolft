@@ -1,110 +1,127 @@
-# LISAI v0.1: workspaces and developer setup
+# LISAI v0.1 — Workspaces and developer setup
 
-Persistent data belongs to a **workspace**, not the LISAI package or source checkout.
-A workspace has authoritative `configs/workspace.yml` and `configs/data.yml`, plus
-`datasets/`, `models/`, `noise_models/`, `inference/`, `tensorboard/` and `.lisai/queue/`.
-Dataset training runs remain inside each dataset's `runs/` directory.
+A **workspace** owns persistent data, model bundles, queues and authoritative
+`configs/workspace.yml` and `configs/data.yml` settings. The separate **writable
+experiment-config root** contains editable training, preprocessing and inference
+YAML files. Immutable presets, templates and examples live in the LISAI package.
 
-## Standalone
+## Standalone CLI
 
 ```sh
 lisai workspace init /absolute/path/to/LISAI
-lisai --workspace /absolute/path/to/LISAI config show
-lisai --workspace /absolute/path/to/LISAI configs list
+export LISAI_HOME=/absolute/path/to/LISAI
+lisai settings show
+lisai configs list
 ```
 
-`workspace init [PATH]` is **explicit** and idempotent. It creates missing global
-settings, directories, local inference defaults, editor schemas and empty local
-config directories. It never overwrites existing YAMLs, models, datasets or
-runs. After setup, edit experiment YAMLs under `configs/training/local/` and
-`configs/preprocess/local/`; package presets/templates stay read-only.
+On PowerShell, set the variable for the current terminal with
+`$env:LISAI_HOME = 'D:/LISAI'`. The standalone CLI requires `LISAI_HOME` for
+workspace-dependent commands; it does **not** choose `~/LISAI` automatically.
+Initializing a workspace does not select it or change any environment variable.
 
-The default workspace is `LISAI_HOME` (absolute path) or `~/LISAI`.
-
-## Editable checkout
-
-From `pip install -e '.[dev]'` in a verified source checkout:
+For a workspace that will use experiment files in a developer repository, only
+the workspace-global infrastructure may be needed:
 
 ```sh
-lisai --workspace /absolute/path/to/LISAI dev init
-lisai config show
+lisai workspace init /absolute/path/to/LISAI --core-only
 ```
 
-`dev init` asks before creating an absent workspace core. For unattended setup,
-pass `--yes` to consent. It initializes the workspace **core only**, and writes
-`configs/local.yml`, editable inference defaults and local experiment folders
-into the **repo**. The local file is gitignored and contains only the workspace
-selector and developer activation flag. No environment variable is modified.
-An already existing conflicting `local.yml` is never overwritten; edit it
-explicitly instead.
+**Core-only** creates missing global `workspace.yml` and `data.yml` files plus
+`datasets/`, `models/`, `noise_models/`, `inference/`, `tensorboard/`, and
+`.lisai/queue/`. It does *not* create experiment-configuration folders, inference
+YAMLs or generated editor schemas. Such a workspace is valid: operations require
+only the files they actually use.
 
-With developer activation, `--workspace X` changes persistent settings and data
-but retains the repo experiment-config root. To use X's configs as well, add
-`--config-root X/configs` (or set `LISAI_CONFIG_ROOT` to an absolute path).
+The default (full) `workspace init PATH` adds missing `configs/training/`,
+`preprocess/`, `inference/defaults.yml`, `inference/post_training.yml` and
+`schema/` under the named workspace. You can run full initialization after
+core-only initialization. Both operations are idempotent and preserve existing
+YAMLs, datasets, checkpoints, models and other user files.
 
-## Updating defaults
+## Editable developer checkout
+
+In a verified editable LISAI checkout, run:
 
 ```sh
-lisai --workspace /absolute/path/to/LISAI workspace update
-lisai --workspace /absolute/path/to/LISAI workspace update --include-inference
+lisai dev init
+lisai settings show
 ```
 
-Settings reads, imports and ordinary commands never auto-update. An outdated
-`defaults_revision` in `workspace.yml` causes a warning. `workspace update`
-requires confirmation (or explicit `--yes`), backs up the existing
-`workspace.yml` and `data.yml` with timestamped `.bak` filenames, and installs
-current packaged defaults. The `--include-inference` flag additionally backs up
-and replaces the editable inference defaults in the **selected config root**.
-Never use update to edit user training/preprocess/experiment files or registries.
-`lisai configs schema refresh` explicitly refreshes editor schema caches.
+`dev init` **asks which workspace to use**. If it is not initialized, LISAI
+offers a separately confirmed core-only workspace initialization. It prepares
+repo-owned experiment folders and seeds repo `configs/local.yml` with
+`dev.enabled: true` and `config.mode: repo`. It never edits your shell environment.
 
-## Legacy M1 migration
+A developer can choose the persisted experiment-config ownership:
 
 ```sh
-lisai --workspace /absolute/old/data/root workspace migrate \
+lisai settings set --config-mode repo
+lisai settings set --workspace /data/test --config-mode workspace
+lisai settings set --config-mode custom --config-root /data/custom-configs
+```
+
+`repo` means the editable checkout's `configs/`; `workspace` means the selected
+workspace's `configs/`; `custom` means the explicitly specified path.
+`settings set` previews and confirms changes to repository `configs/local.yml`.
+Ordinary CLI commands have no live `--workspace` or `--config-root` override.
+The optional `LISAI_CONFIG_ROOT` environment variable is ignored. A standalone
+workspace-local `configs/local.yml` is also ignored.
+
+Editable experiment configurations have a flat layout, for example
+`<config-root>/training/my_hdn.yml`, `<config-root>/preprocess/vim.yml` and
+`<config-root>/inference/defaults.yml`. `local/` may be used as an ordinary nested
+folder name, but is not required. Repo-owned editable configs and schemas are
+Git-ignored; packaged presets/templates/examples are tracked in package resources.
+
+## Updating workspace defaults
+
+```sh
+lisai workspace update                          # selected workspace
+lisai workspace update /data/other-workspace    # explicit target; no selection change
+lisai workspace update --include-inference
+lisai workspace update /data/other-workspace --include-inference \
+  --external-config-root /data/custom-configs
+```
+
+**Every update lists exact paths and proposed diffs before modifying files.**
+It then requests confirmation. `--yes` skips only confirmation, not the preview.
+Cancellation and no-op updates create no backups or writes. Changed existing
+files receive a unique backup, and replacements are written atomically per file.
+
+By default `workspace update` affects **only the target workspace's**
+`configs/workspace.yml` and `configs/data.yml`. With `--include-inference`, it
+also refreshes that same workspace's `configs/inference/defaults.yml` and
+`post_training.yml`. It never infers an external experiment-config root from
+active developer selection. Updating an external root requires *both*
+`--include-inference` and `--external-config-root PATH`, and the preview clearly
+labels the external target. Training/preprocessing configurations, datasets,
+models and runs are never changed by workspace updates. JSON-schema regeneration
+is a separate explicit operation (`lisai configs schema refresh`).
+
+An outdated `defaults_revision` prints a warning during normal CLI execution;
+settings loading never automatically updates files.
+
+## Older three-file global settings migration
+
+The optional `workspace migrate` command only converts older M1-style global
+configuration files. It does **not** migrate an unreleased M2 layout:
+
+```sh
+lisai workspace migrate /absolute/old/data/root \
   --from-legacy /path/to/old/checkout/configs
-lisai --workspace /absolute/old/data/root workspace init
+lisai workspace init /absolute/old/data/root
 ```
 
-The first command reads the legacy `local_config.yml`, `project_config.yml` and
-`data_config.yml` and creates the new workspace-global files. It requires the
-legacy `infrastructure.data_root` to equal the selected workspace root. It
-converts old path templates to `{workspace_root}`, preserving run paths, and
-retains old inference/console preferences as workspace defaults. The original
-YAMLs, weights and data are not altered, deleted, or moved. It refuses to
-overwrite an existing `workspace.yml` or `data.yml`.
+You may omit the destination when an active workspace has already been selected.
+The source directory is always required. Migration validates that the old
+`infrastructure.data_root` matches the destination, converts path templates to
+`{workspace_root}`, and creates workspace-global YAMLs without overwriting
+existing ones or moving the user's data. To add the experiment scaffolding,
+run full `workspace init` explicitly afterward.
 
-After migration, explicitly run `workspace init` to add any missing directories,
-local inference configs and editor schemas, and `dev init` separately if using
-source-checkout-local experiment configs. Developer `local.yml` is deliberately
-not auto-generated from legacy settings: it is an independent, opt-in selection.
+## Queue worker (Patch F)
 
-## Runtime queue, TensorBoard and provenance (M2 Patch F)
-
-`lisai-runner` uses `<workspace>/.lisai/queue/` by default; `LISAI_QUEUE_ROOT`
-remains an explicit override when intentionally sharing a queue. A submitted
-job records **both** its workspace root and its writable experiment-config root
-and the worker forwards both to its child. The worker's current directory
-and any developer activation in that process do not choose job settings.
-
-```sh
-lisai-runner --workspace /absolute/path/to/LISAI \
-  --config-root /absolute/path/to/checkout/configs queue submit --config local/my_train
-lisai-runner --workspace /absolute/path/to/LISAI \
-  --config-root /absolute/path/to/checkout/configs queue worker
-```
-
-Run checkpoints and training metadata remain under
-`<workspace>/datasets/training/<dataset>/runs/...`; TensorBoard uses
-`<workspace>/tensorboard/<dataset>/<tensorboard_subfolder>/`.
-
-Run provenance always records the installed LISAI version if available. Git
-metadata is recorded only when LISAI can verify its **own imported editable
-checkout**, not by scanning an arbitrary Git repository above the workspace.
-Promoted-model manifests copy provenance from the original training-run
-metadata, rather than collecting it again on the machine doing the promotion.
-
-Jobs created before this change can still be launched using their explicit
-legacy three-file config directory (`--settings-config-dir` internally). A
-legacy job with no recoverable configuration identity must be resubmitted; no
-workspace is silently inferred from the worker's current directory.
+Workspace and writable-config roots are already carried with queued jobs, but
+forwarding developer preferences explicitly to worker processes is addressed
+in the following patch. No compatibility layer for queued jobs from unreleased
+M2 layouts is planned.

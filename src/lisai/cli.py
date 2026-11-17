@@ -39,10 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     workspace_actions = workspace_parser.add_subparsers(dest="workspace_action", required=True)
     init_parser = workspace_actions.add_parser("init", help="Initialize a workspace without replacing existing files.")
     init_parser.add_argument("path", help="Workspace directory to initialize (does not select it).")
+    init_parser.add_argument("--core-only", action="store_true", help="Initialize only global settings and workspace data infrastructure.")
     update_parser = workspace_actions.add_parser("update", help="Back up and update workspace defaults explicitly.")
     update_parser.add_argument("path", nargs="?", help="Target workspace; defaults to selected workspace.")
     update_parser.add_argument("--yes", action="store_true", help="Confirm replacing generated defaults.")
-    update_parser.add_argument("--include-inference", action="store_true", help="Also back up and replace seeded local inference defaults.")
+    update_parser.add_argument("--include-inference", action="store_true", help="Also preview and update editable inference defaults in the target workspace.")
+    update_parser.add_argument("--external-config-root", metavar="PATH", help="Explicitly update inference defaults in this external root (requires --include-inference).")
     migrate_parser = workspace_actions.add_parser("migrate", help="Convert legacy three-file settings without moving data.")
     migrate_parser.add_argument("path", nargs="?", help="Target workspace; defaults to selected workspace.")
     migrate_parser.add_argument("--from-legacy", required=True, metavar="CONFIGS", help="Old configs/ directory.")
@@ -122,7 +124,7 @@ def _run_setup(args: argparse.Namespace) -> int:
     from lisai.config.selection import _source_checkout_for_import
     from lisai.config.workspace import (
         initialize_developer, initialize_workspace, migrate_legacy_workspace,
-        update_workspace,
+        describe_workspace_update, plan_workspace_update, update_workspace,
     )
     try:
         # Explicit lifecycle targets never consult (or modify) the active
@@ -136,7 +138,7 @@ def _run_setup(args: argparse.Namespace) -> int:
                 else locations.workspace_root)
         if args.command == "workspace":
             if args.workspace_action == "init":
-                created = initialize_workspace(root)
+                created = initialize_workspace(root, core_only=args.core_only)
             elif args.workspace_action == "migrate":
                 if root is None:
                     raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
@@ -144,17 +146,20 @@ def _run_setup(args: argparse.Namespace) -> int:
             else:
                 if root is None:
                     raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
+                plan = plan_workspace_update(
+                    root, include_inference=args.include_inference,
+                    external_config_root=args.external_config_root,
+                )
+                # A --yes flag never hides what is going to change.
+                print(describe_workspace_update(plan))
+                if not plan.requires_writes:
+                    return 0
                 if not args.yes:
-                    answer = input(
-                        f"Back up and replace generated workspace defaults in {root}? [y/N] "
-                    ).strip().lower()
+                    answer = input("Apply the displayed workspace update? [y/N] ").strip().lower()
                     if answer not in {"y", "yes"}:
                         print("Cancelled; no files changed.")
                         return 0
-                backups = update_workspace(
-                    root, config_root=root / "configs",
-                    replace_editable_defaults=args.include_inference,
-                )
+                backups = update_workspace(plan)
                 for original, backup in backups:
                     print(f"Backup: {original} -> {backup}")
                 print(f"Updated workspace defaults in {root} (revision recorded in workspace.yml)")

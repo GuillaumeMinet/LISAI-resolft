@@ -13,7 +13,7 @@ from lisai.config.selection import resolve_cli_locations
 from lisai.config.settings import Settings
 from lisai.config.workspace import (
     initialize_developer, initialize_workspace, migrate_legacy_workspace,
-    revision_warning, update_workspace,
+    revision_warning, plan_workspace_update, update_workspace,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -75,7 +75,8 @@ def test_update_backs_up_both_yaml_and_preserves_user_configs(tmp_path):
     weights.write_bytes(b"weights")
     with global_cfg.open("a") as fp:
         fp.write("\n# personal change\n")
-    backups = update_workspace(root)
+    data_cfg.write_text(data_cfg.read_text() + "\n# another personal change\n")
+    backups = update_workspace(plan_workspace_update(root))
     assert len(backups) == 2
     for original, backup in backups:
         assert backup.exists()
@@ -96,9 +97,10 @@ def test_update_local_inference_opt_in_and_backup(tmp_path):
     custom.write_text("my: previous defaults\n")
     post = external / "inference/post_training.yml"
     post.write_text("user: previous override\n")
-    update_workspace(root, config_root=external)
+    update_workspace(plan_workspace_update(root))
     assert custom.read_text() == "my: previous defaults\n"
-    backups = update_workspace(root, config_root=external, replace_editable_defaults=True)
+    backups = update_workspace(plan_workspace_update(
+        root, include_inference=True, external_config_root=external))
     assert {p for p, _ in backups} >= {custom, post}
     assert custom.read_text().startswith("# yaml-language-server:")
     assert next(backup for p, backup in backups if p == custom).read_text() == "my: previous defaults\n"
@@ -150,7 +152,7 @@ def test_revision_outdated_warning_without_auto_update(tmp_path):
     assert "lisai workspace update" in revision_warning(root)
     assert Settings.from_workspace(root).DEFAULTS_REVISION == 0
     assert config.read_bytes() == snapshot
-    update_workspace(root)
+    update_workspace(plan_workspace_update(root))
     assert revision_warning(root) is None
 
 
@@ -162,6 +164,8 @@ def test_cli_init_and_show_and_update_confirm(tmp_path, monkeypatch, capsys):
     shown = capsys.readouterr().out
     assert "Defaults revision:  1" in shown
     old = (root / "configs/workspace.yml").read_bytes()
+    with (root / "configs/workspace.yml").open("a") as handle:
+        handle.write("\n# local change\n")
     monkeypatch.setattr("builtins.input", lambda *args: "n")
     assert main(["workspace", "update", str(root)]) == 0
     assert not list((root / "configs").glob("workspace.yml.bak.*"))

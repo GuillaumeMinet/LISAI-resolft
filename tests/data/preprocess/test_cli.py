@@ -68,19 +68,29 @@ def _write_config(path: Path, dataset_name: str) -> None:
     )
 
 
-def test_resolve_config_path_supports_preprocess_short_name(settings):
+@pytest.fixture
+def selected_single_config(settings):
+    """The M2 layout has no shipped user preprocess YAMLs; create one explicitly."""
+    for root in (settings.PREPROCESS_CONFIG_DIR,
+                 settings.WORKSPACE_ROOT / "configs/preprocess"):
+        root.mkdir(parents=True, exist_ok=True)
+        _write_config(root / "single.yml", "ExampleDataset")
+    return (settings.PREPROCESS_CONFIG_DIR / "single.yml").resolve()
+
+
+def test_resolve_config_path_supports_preprocess_short_name(settings, selected_single_config):
     expected = (settings.PREPROCESS_CONFIG_DIR / "single.yml").resolve()
 
     assert preprocess_cli.resolve_config_path("single.yml", resolver=ConfigPathResolver("preprocess", stg=settings)) == expected
 
 
-def test_resolve_config_path_supports_preprocess_short_name_without_extension(settings):
+def test_resolve_config_path_supports_preprocess_short_name_without_extension(settings, selected_single_config):
     expected = (settings.PREPROCESS_CONFIG_DIR / "single.yml").resolve()
 
     assert preprocess_cli.resolve_config_path("single", resolver=ConfigPathResolver("preprocess", stg=settings)) == expected
 
 
-def test_resolve_config_path_lists_available_configs_when_missing(settings):
+def test_resolve_config_path_lists_available_configs_when_missing(settings, selected_single_config):
     with pytest.raises(FileNotFoundError, match="Preprocess config not found: missing_preprocess_config") as exc_info:
         preprocess_cli.resolve_config_path("missing_preprocess_config", resolver=ConfigPathResolver("preprocess", stg=settings))
 
@@ -156,7 +166,7 @@ def test_run_preprocess_config_requires_explicit_overwrite_in_non_interactive_mo
         )
 
 
-def test_preprocess_cli_main_accepts_extensionless_config_name(monkeypatch: pytest.MonkeyPatch):
+def test_preprocess_cli_main_accepts_extensionless_config_name(monkeypatch: pytest.MonkeyPatch, selected_single_config):
     captured = {}
 
     def fake_run_preprocess_config(config_path, *, paths=None):
@@ -170,7 +180,7 @@ def test_preprocess_cli_main_accepts_extensionless_config_name(monkeypatch: pyte
     assert captured["config_path"].name == "single.yml"
 
 
-def test_root_cli_preprocess_dispatches_extensionless_config_to_preprocess(monkeypatch: pytest.MonkeyPatch):
+def test_root_cli_preprocess_dispatches_extensionless_config_to_preprocess(monkeypatch: pytest.MonkeyPatch, selected_single_config):
     captured = {}
 
     def fake_run_preprocess_config(config_path, *, paths=None):

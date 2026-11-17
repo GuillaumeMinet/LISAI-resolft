@@ -5,6 +5,9 @@ Never called during Settings construction, imports or normal command execution.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import difflib
+import os
+import tempfile
 from datetime import datetime, timezone
 from importlib.resources import files
 from pathlib import Path
@@ -14,7 +17,7 @@ import yaml
 
 from lisai.config.io.yaml import load_yaml
 from lisai.config.io.schema_hints import schema_header
-from lisai.config.models import DeveloperLocalConfig
+from lisai.config.models import DataConfig, DeveloperLocalConfig
 from lisai.config.settings import (
     CURRENT_DEFAULTS_REVISION, Settings, WorkspaceFileConfig,
     _legacy_project_templates,
@@ -67,8 +70,8 @@ def _scaffold_root(config_root: Path, *, workspace: Path) -> list[Path]:
 def initialize_workspace(workspace: str | Path, *, core_only: bool = False) -> list[Path]:
     """Create missing workspace infrastructure, never replace existing files/data.
 
-    core_only is used exclusively by dev init. Workspace init always scaffolds
-    the workspace's own editable configs, even in activated developer mode.
+    Core-only init is also public. Full init always scaffolds the workspace's
+    own editable configs, even in activated developer mode.
     """
     root = Path(workspace).expanduser().resolve()
     created: list[Path] = []
@@ -113,38 +116,143 @@ def initialize_developer(source_root: str | Path, workspace: str | Path) -> list
     return created
 
 
-def _backup(path: Path) -> Path:
-    # Never overwrite earlier backups, even for repeated updates in one second.
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    candidate = path.with_name(path.name + f".bak.{stamp}")
-    shutil.copy2(path, candidate)
-    return candidate
+@dataclass(frozen=True)
+class WorkspaceUpdateChange:
+    """A proposed replacement, preserving the bytes reviewed by the caller."""
+
+    path: Path
+    previous: bytes | None
+    replacement: bytes
+
+    @property
+    def action(self) -> str:
+        if self.previous is None:
+            return "CREATE"
+        return "UNCHANGED" if self.previous == self.replacement else "REPLACE"
+
+    def diff(self) -> str:
+        old = self.previous.decode("utf-8").splitlines(keepends=True) if self.previous is not None else []
+        new = self.replacement.decode("utf-8").splitlines(keepends=True)
+        return "".join(difflib.unified_diff(
+            old, new, fromfile=str(self.path) + " (current)",
+            tofile=str(self.path) + " (proposed)",
+        ))
 
 
-def update_workspace(workspace: str | Path, *, config_root: str | Path | None = None,
-                     replace_editable_defaults: bool = False) -> list[tuple[Path, Path]]:
-    """Explicitly replace generated defaults with backups; never touch user experiments.
+@dataclass(frozen=True)
+class WorkspaceUpdatePlan:
+    workspace: Path
+    inference_root: Path | None
+    changes: tuple[WorkspaceUpdateChange, ...]
 
-    User may choose to replace seeded inference files in the specified writable
-    config root, but those files are otherwise untouched.
+    @property
+    def requires_writes(self) -> bool:
+        return any(change.action != "UNCHANGED" for change in self.changes)
+
+
+def plan_workspace_update(
+    workspace: str | Path,
+    *,
+    include_inference: bool = False,
+    external_config_root: str | Path | None = None,
+) -> WorkspaceUpdatePlan:
+    """Validate and preview all changes without creating anything.
+
+    Workspace-global files always belong to *workspace*. Inference files are
+    workspace-owned unless an external root was deliberately supplied together
+    with ``include_inference``. Active developer settings are never consulted.
     """
+    if external_config_root is not None and not include_inference:
+        raise ValueError("--external-config-root requires --include-inference")
     root = Path(workspace).expanduser().resolve()
     _validate_globals(root)
     replacements: dict[Path, str] = {}
-    for filename in ("workspace.yml", "data.yml"):
-        path = root / "configs" / filename
-        replacements[path] = _resource(filename).read_text(encoding="utf-8")
-    if replace_editable_defaults:
-        editable = Path(config_root).expanduser().resolve() if config_root else root / "configs"
+    for name in ("workspace.yml", "data.yml"):
+        source = _workspace_default(name)
+        if name == "workspace.yml":
+            WorkspaceFileConfig.model_validate(source)
+        else:
+            DataConfig.model_validate(source)
+        replacements[root / "configs" / name] = _resource(name).read_text(encoding="utf-8")
+    editable = None
+    if include_inference:
+        editable = (Path(external_config_root).expanduser().resolve()
+                    if external_config_root is not None else root / "configs")
         replacements.update(inference_seed_files(editable))
-    # Write backups before replacing any file. Missing generated files are added.
-    backups = []
-    for path, contents in replacements.items():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists():
-            backup = _backup(path)
-            backups.append((path, backup))
-        path.write_text(contents, encoding="utf-8")
+    changes = []
+    for path, text in replacements.items():
+        if path.exists() and not path.is_file():
+            raise ValueError(f"Update target is not a file: {path}")
+        previous = path.read_bytes() if path.is_file() else None
+        changes.append(WorkspaceUpdateChange(path, previous, text.encode("utf-8")))
+    return WorkspaceUpdatePlan(root, editable, tuple(changes))
+
+
+def describe_workspace_update(plan: WorkspaceUpdatePlan) -> str:
+    """Exact targets and readable diffs, including unchanged files."""
+    lines = [f"Workspace update target: {plan.workspace}"]
+    if plan.inference_root is not None:
+        owner = "external (explicit)" if plan.inference_root != plan.workspace / "configs" else "workspace"
+        lines.append(f"Inference config root: {plan.inference_root} [{owner}]")
+    for change in plan.changes:
+        lines.append(f"{change.action}: {change.path}")
+        if change.action != "UNCHANGED":
+            lines.append(change.diff().rstrip("\n"))
+    if not plan.requires_writes:
+        lines.append("No changes required.")
+    return "\n".join(lines)
+
+
+def _backup(path: Path) -> Path:
+    """Create a uniquely named backup without overwriting earlier backups."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    for suffix in range(100):
+        candidate = path.with_name(f"{path.name}.bak.{stamp}.{suffix}")
+        try:
+            with candidate.open("xb") as out, path.open("rb") as inp:
+                shutil.copyfileobj(inp, out)
+            shutil.copystat(path, candidate)
+            return candidate
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"Unable to allocate a unique backup for {path}")
+
+
+def _atomic_write(path: Path, contents: bytes) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb", dir=path.parent, prefix=f".{path.name}.",
+            suffix=".tmp", delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
+            handle.write(contents)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+
+
+def update_workspace(plan: WorkspaceUpdatePlan) -> list[tuple[Path, Path]]:
+    """Apply a previously previewed plan. Caller is responsible for approval.
+
+    Detect concurrent changes *before* any writes. Back up all changing existing
+    files before starting replacements, then replace each file atomically.
+    """
+    for change in plan.changes:
+        current = change.path.read_bytes() if change.path.is_file() else None
+        if current != change.previous:
+            raise ValueError(f"{change.path} changed since update preview; retry the update")
+    updates = [change for change in plan.changes if change.action != "UNCHANGED"]
+    backups: list[tuple[Path, Path]] = []
+    for change in updates:
+        if change.previous is not None:
+            backups.append((change.path, _backup(change.path)))
+    for change in updates:
+        change.path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_write(change.path, change.replacement)
     return backups
 
 
