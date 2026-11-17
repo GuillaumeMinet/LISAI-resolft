@@ -20,10 +20,6 @@ from lisai.config.models.inference import (
     InferenceOverrides,
     ResolvedInferenceConfig,
 )
-from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
-
-POST_TRAINING_CONFIG_NAME = "post_training"
-
 # Backward-compatible aliases kept while the clearer inference model names settle in.
 InferenceConfig = InferenceOverrides
 InferenceDefaults = ResolvedInferenceConfig
@@ -61,17 +57,6 @@ def _section_overrides(
     return None if section_raw is None else dict(section_raw)
 
 
-def _is_post_training_name(
-    config: str | Path | None, path: Path | Traversable | None = None,
-) -> bool:
-    if path is not None and Path(path.name).stem == POST_TRAINING_CONFIG_NAME:
-        return True
-    if config is None:
-        return False
-    config_path = Path(config)
-    return config_path.parent == Path(".") and config_path.stem == POST_TRAINING_CONFIG_NAME
-
-
 def _merge_section_config(
     section: Literal["apply", "evaluate"],
     base: dict[str, Any],
@@ -107,44 +92,22 @@ def _load_local_defaults_section(
     return _section_overrides(cfg, section)
 
 
-def _load_selected_config(
-    config: str | Path, *, stg: Settings,
-) -> tuple[InferenceOverrides | None, Path | None]:
-    try:
-        return load_inference_config(config, stg=stg)
-    except FileNotFoundError:
-        if _is_post_training_name(config):
-            return None, None
-        raise
-
-
 def _explicit_selected_section(
     config: str | Path,
     section: Literal["apply", "evaluate"], *, stg: Settings,
 ) -> dict[str, Any]:
-    """Return only values explicitly supplied by one selected inference config."""
-    selected_cfg, cfg_path = _load_selected_config(config, stg=stg)
-    explicit: dict[str, Any] = {}
+    """Load the selected inference YAML as an ordinary, explicit override.
 
+    Missing selected files are errors, even for automatic post-training
+    evaluation; only the optional defaults.yml may be absent.
+    """
+    selected_cfg, cfg_path = load_inference_config(config, stg=stg)
     if cfg_path is None:
-        preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
-        preset_section = _section_overrides(preset_cfg, section)
-        if preset_section is None:
-            raise ValueError(
-                f"Built-in post-training preset does not define a '{section}' section."
-            )
-        return preset_section
-
-    if _is_post_training_name(config, cfg_path):
-        preset_cfg = InferenceOverrides.model_validate(POST_TRAINING_OVERRIDES)
-        preset_section = _section_overrides(preset_cfg, section)
-        if preset_section:
-            explicit = _merge_section_config(section, explicit, preset_section)
-
-    selected_section = _section_overrides(selected_cfg, section) if selected_cfg is not None else None
+        raise FileNotFoundError(f"Selected inference config not found: {config}")
+    selected_section = _section_overrides(selected_cfg, section)
     if selected_section is None:
         raise ValueError(f"Inference config '{cfg_path}' does not define a '{section}' section.")
-    return _merge_section_config(section, explicit, selected_section)
+    return selected_section
 
 
 def _explicit_model_section(
@@ -176,7 +139,7 @@ def _resolve_section_nested(
     stg: Settings,
 ) -> ApplyDefaults | EvaluateDefaults:
     # Base config precedence is intentionally one-way:
-    # canonical typed defaults < local/defaults.yml < promoted-model config
+    # canonical typed defaults < inference/defaults.yml < promoted-model config
     # < selected config. Typed invocation overrides are layered by the public
     # section resolvers below. Every authored config may therefore stay sparse.
     resolved_section = deepcopy(ResolvedInferenceConfig().model_dump()[section])

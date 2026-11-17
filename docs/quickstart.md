@@ -104,7 +104,7 @@ lisai train examples/vim_denoising_unet
 
 For an explicitly selected user YAML file, pass its absolute path; built-in examples use the `examples/` namespace.
 
-Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into `configs/training/local/` before training. Example configs assume the referenced datasets already exist in the selected workspace.
+Training resolves the config, creates a run directory, saves `config_train.yaml`, and writes checkpoints and logs under the run folder. Presets and templates must be instantiated into the selected writable `configs/training/` directory before training. Example configs assume the referenced datasets already exist in the selected workspace.
 
 ## Evaluation and Apply
 
@@ -123,11 +123,13 @@ Both commands accept `--config <name>` for settings under `configs/inference/`. 
 
 ```text
 built-in typed defaults
-    < configs/inference/local/defaults.yml
+    < configs/inference/defaults.yml
     < promoted-model inference config (apply --model only)
     < selected inference config
     < explicit CLI options
 ```
+
+Automatic post-training evaluation loads the user-editable `configs/inference/post_training.yml` as an ordinary inference configuration. The file is seeded at explicit full initialization, and a missing file raises an error when post-training evaluation is requested.
 
 `tiling_size: auto` uses the saved model default, a positive integer forces a tile size, and `tiling_size: off` or `--no-tiling` disables tiling.
 

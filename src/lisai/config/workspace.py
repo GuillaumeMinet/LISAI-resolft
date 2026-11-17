@@ -13,12 +13,15 @@ import shutil
 import yaml
 
 from lisai.config.io.yaml import load_yaml
+from lisai.config.io.schema_hints import schema_header
 from lisai.config.models import DeveloperLocalConfig
 from lisai.config.settings import (
     CURRENT_DEFAULTS_REVISION, Settings, WorkspaceFileConfig,
     _legacy_project_templates,
 )
-from lisai.config.user_configs import refresh_user_schemas, seed_inference_local_configs
+from lisai.config.user_configs import (
+    inference_seed_files, refresh_user_schemas, seed_inference_local_configs,
+)
 
 
 def _resource(name: str):
@@ -96,6 +99,9 @@ def initialize_developer(source_root: str | Path, workspace: str | Path) -> list
     contents = _yaml_text({"dev": {"enabled": True}, "workspace": {"root": str(root)},
                            "config": {"mode": "repo"}})
     DeveloperLocalConfig.model_validate(yaml.safe_load(contents))
+    header = schema_header(target, config_root / "schema", "local-config.schema.json")
+    if header:
+        contents = header + "\n" + contents
     created = [target] if _write_new(target, contents) else []
     if target.is_file():
         local = DeveloperLocalConfig.model_validate(load_yaml(target))
@@ -129,14 +135,8 @@ def update_workspace(workspace: str | Path, *, config_root: str | Path | None = 
         path = root / "configs" / filename
         replacements[path] = _resource(filename).read_text(encoding="utf-8")
     if replace_editable_defaults:
-        from lisai.config.models.inference import ResolvedInferenceConfig
-        from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
-        from lisai.config.user_configs import INFERENCE_DEFAULTS_HINT, INFERENCE_OVERRIDES_HINT
         editable = Path(config_root).expanduser().resolve() if config_root else root / "configs"
-        replacements[editable / "inference/defaults.yml"] = (
-            INFERENCE_DEFAULTS_HINT + "\n" + _yaml_text(ResolvedInferenceConfig().model_dump(mode="json")))
-        replacements[editable / "inference/post_training.yml"] = (
-            INFERENCE_OVERRIDES_HINT + "\n" + _yaml_text(POST_TRAINING_OVERRIDES))
+        replacements.update(inference_seed_files(editable))
     # Write backups before replacing any file. Missing generated files are added.
     backups = []
     for path, contents in replacements.items():

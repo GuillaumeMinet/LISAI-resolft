@@ -171,6 +171,11 @@ def test_resolve_evaluate_config_returns_typed_nested_config(inference_config_di
         "evaluate:\n  inference:\n    tiling_size: 256\n",
     )
 
+    _write(
+        inference_config_dir / "post_training.yml",
+        "evaluate:\n  checkpoint:\n    best_or_last: both\n  metrics: [psnr, ssim]\n"
+        "  saving:\n    overwrite: true\n",
+    )
     resolved = resolve_evaluate_config(
         config="post_training",
         overrides=EvaluateOverrides(
@@ -438,19 +443,19 @@ def test_typed_output_override_has_highest_priority(inference_config_dir: Path):
     assert policy.mode == "folder_inside"
 
 
-def test_builtin_post_training_preset_is_used_if_local_file_is_missing(inference_config_dir: Path, inference_stg):
+def test_post_training_requires_a_real_user_yaml(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: 256\n")
-
-    resolved = resolve_evaluate_config(config="post_training", stg=inference_stg)
-
-    assert resolved.inference.tiling_size == 256
-    assert resolved.checkpoint.best_or_last == "both"
-    assert resolved.metrics == ["psnr", "ssim"]
-    assert resolved.saving.overwrite is True
+    with pytest.raises(FileNotFoundError, match="post_training"):
+        resolve_evaluate_config(config="post_training", stg=inference_stg)
+    # The defaults file is optional; explicitly selected configs are not.
+    assert resolve_evaluate_config(stg=inference_stg).inference.tiling_size == 256
 
 
-def test_local_post_training_overrides_builtin_and_inherits_local_defaults(inference_config_dir: Path, inference_stg):
-    _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: 384\n")
+def test_post_training_is_an_ordinary_user_config(inference_config_dir: Path, inference_stg):
+    _write_local_defaults(
+        inference_config_dir,
+        "evaluate:\n  inference:\n    tiling_size: 384\n  checkpoint:\n    best_or_last: last\n",
+    )
     _write(
         inference_config_dir / "post_training.yml",
         "evaluate:\n  metrics:\n    - custom_metric\n",
@@ -459,9 +464,22 @@ def test_local_post_training_overrides_builtin_and_inherits_local_defaults(infer
     resolved = resolve_evaluate_config(config="post_training", stg=inference_stg)
 
     assert resolved.inference.tiling_size == 384
-    assert resolved.checkpoint.best_or_last == "both"
+    assert resolved.checkpoint.best_or_last == "last"  # from defaults, not built-in preset
     assert resolved.metrics == ["custom_metric"]
-    assert resolved.saving.overwrite is True
+    assert resolved.saving.overwrite is False  # canonical typed default
+
+
+def test_explicit_same_basename_receives_no_special_post_training_defaults(
+    inference_config_dir: Path, inference_stg, tmp_path: Path,
+):
+    external = tmp_path / "external" / "post_training.yml"
+    _write(external, "evaluate:\n  metrics: [external_metric]\n")
+    resolved = resolve_evaluate_config(config=external, stg=inference_stg)
+    assert resolved.metrics == ["external_metric"]
+    assert resolved.checkpoint.best_or_last == "best"
+    assert resolved.saving.overwrite is False
+    with pytest.raises(ValueError, match="does not define a 'apply' section"):
+        resolve_apply_config(config=external, stg=inference_stg)
 
 
 def test_promoted_model_config_layers_between_local_defaults_and_explicit_config(

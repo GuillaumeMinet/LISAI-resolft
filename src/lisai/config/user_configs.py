@@ -11,27 +11,43 @@ import yaml
 from lisai.config.models.inference import ResolvedInferenceConfig
 from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
 from lisai.config.settings import Settings
+from lisai.config.io.schema_hints import schema_header
 
-INFERENCE_DEFAULTS_HINT = "# yaml-language-server: $schema=../schema/inference-defaults.schema.json"
-INFERENCE_OVERRIDES_HINT = "# yaml-language-server: $schema=../schema/inference.schema.json"
+
+def inference_seed_files(config_root: str | Path) -> dict[Path, str]:
+    """Produce both editable inference files without writing anything.
+
+    The same content is used by explicit initialization and workspace updates;
+    the editor hints always point at the selected writable config root.
+    """
+    config_root = Path(config_root).expanduser().resolve()
+    folder = config_root / "inference"
+    schema_root = config_root / "schema"
+    contents = (
+        ("defaults.yml", ResolvedInferenceConfig().model_dump(mode="json"),
+         "inference-defaults.schema.json"),
+        ("post_training.yml", POST_TRAINING_OVERRIDES, "inference.schema.json"),
+    )
+    result: dict[Path, str] = {}
+    for filename, values, schema_name in contents:
+        target = folder / filename
+        header = schema_header(target, schema_root, schema_name)
+        text = yaml.safe_dump(values, sort_keys=False)
+        result[target] = f"{header}\n{text}" if header else text
+    return result
 
 
 def seed_inference_local_configs(config_root: str | Path) -> list[Path]:
     """Create *missing* flat user-editable inference files, never overwrite existing ones."""
-    root = Path(config_root).expanduser().resolve() / "inference"
-    candidates = (
-        (root / "defaults.yml", ResolvedInferenceConfig().model_dump(mode="json"), INFERENCE_DEFAULTS_HINT),
-        (root / "post_training.yml", POST_TRAINING_OVERRIDES, INFERENCE_OVERRIDES_HINT),
-    )
     created: list[Path] = []
-    for target, values, schema_hint in candidates:
+    for target, text in inference_seed_files(config_root).items():
         if target.exists():
             continue
-        root.mkdir(parents=True, exist_ok=True)
-        # Exclusive creation protects against accidental overwrite even in a
-        # simultaneous explicit initialization by two processes.
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # Exclusive creation protects against accidental overwrite even during
+        # simultaneous explicit initialization by different processes.
         with target.open("x", encoding="utf-8") as handle:
-            handle.write(schema_hint + "\n" + yaml.safe_dump(values, sort_keys=False))
+            handle.write(text)
         created.append(target)
     return created
 

@@ -16,6 +16,7 @@ from typing import Any
 import yaml
 
 from lisai.config.models.local_config import DeveloperLocalConfig
+from lisai.config.io.schema_hints import schema_header
 from lisai.config.selection import resolve_cli_locations
 from lisai.config.settings import Settings
 
@@ -170,6 +171,13 @@ def set_developer_settings(args: Any) -> int:
     # settings accepted by DeveloperLocalConfig. Do not add default fields.
     contents = (old_bytes.decode("utf-8") if unchanged else
                 yaml.safe_dump(proposed_raw, sort_keys=False, allow_unicode=True))
+    if not unchanged:
+        # safe_dump does not retain comments. Restore the editor hint on every
+        # deliberate edit so local.yml continues to validate against the
+        # generated developer selector schema.
+        header = schema_header(path, path.parent / "schema", "local-config.schema.json")
+        if header:
+            contents = header + "\n" + contents
     if not contents.endswith("\n"):
         contents += "\n"
 
