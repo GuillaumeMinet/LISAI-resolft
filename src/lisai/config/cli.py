@@ -366,9 +366,23 @@ def run_schema_refresh_from_args(args, parser, *, settings: Settings | None = No
     stg = load_default_settings() if settings is None else settings
     try:
         generated = refresh_user_schemas(stg=stg)
+        # The developer selector always lives in the verified checkout, even
+        # when config.mode selects a workspace or custom experiment root.
+        # Refresh its schema there too, rather than leaving an old schema
+        # behind after switching config roots.
+        locations = getattr(args, "_lisai_locations", None)
+        local = (locations.local_config_path if locations is not None and
+                 locations.developer_mode else None)
+        if local is not None:
+            from lisai.config.json_schema import write_local_config_json_schema
+            developer_schema = local.parent / "schema" / "local-config.schema.json"
+            if developer_schema not in generated:
+                generated.append(write_local_config_json_schema(developer_schema))
     except (FileNotFoundError, ValueError, ValidationError) as exc:
         parser.exit(status=1, message=f"{exc}\n")
     print(f"Refreshed {len(generated)} editor schemas in {stg.CONFIGS_ROOT / 'schema'}")
+    if local is not None and developer_schema != stg.CONFIGS_ROOT / "schema/local-config.schema.json":
+        print(f"Developer selector schema: {developer_schema}")
     return 0
 
 

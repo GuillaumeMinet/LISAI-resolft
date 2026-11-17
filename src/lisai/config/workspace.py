@@ -7,6 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import difflib
 import os
+import subprocess
+import sys
 import tempfile
 from datetime import datetime, timezone
 from importlib.resources import files
@@ -65,6 +67,20 @@ def _scaffold_root(config_root: Path, *, workspace: Path) -> list[Path]:
     # not user-authored config. Use the authoritative workspace registry.
     refresh_user_schemas(stg=Settings.from_workspace(workspace, config_root=config_root))
     return created
+
+
+def open_workspace(workspace: str | Path) -> Path:
+    """Open a selected workspace in the native file explorer, without modifying it."""
+    root = Path(workspace).expanduser().resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"Selected workspace directory does not exist: {root}")
+    if sys.platform == "win32":
+        os.startfile(str(root))
+    elif sys.platform == "darwin":
+        subprocess.Popen(["open", str(root)])
+    else:
+        subprocess.Popen(["xdg-open", str(root)])
+    return root
 
 
 def initialize_workspace(workspace: str | Path, *, core_only: bool = False) -> list[Path]:

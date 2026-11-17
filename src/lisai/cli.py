@@ -35,8 +35,9 @@ def build_parser() -> argparse.ArgumentParser:
     set_parser.add_argument("--config-root", metavar="PATH", help="Custom experiment-config root (custom mode only).")
     set_parser.add_argument("--yes", action="store_true", help="Apply the displayed validated proposal without prompting.")
 
-    workspace_parser = subparsers.add_parser("workspace", help="Explicitly initialize, update or migrate workspaces.")
+    workspace_parser = subparsers.add_parser("workspace", help="Open, initialize, update or migrate workspaces.")
     workspace_actions = workspace_parser.add_subparsers(dest="workspace_action", required=True)
+    workspace_actions.add_parser("open", help="Open the selected workspace in the file explorer.")
     init_parser = workspace_actions.add_parser("init", help="Initialize a workspace without replacing existing files.")
     init_parser.add_argument("path", help="Workspace directory to initialize (does not select it).")
     init_parser.add_argument("--core-only", action="store_true", help="Initialize only global settings and workspace data infrastructure.")
@@ -124,19 +125,25 @@ def _run_setup(args: argparse.Namespace) -> int:
     from lisai.config.selection import _source_checkout_for_import
     from lisai.config.workspace import (
         initialize_developer, initialize_workspace, migrate_legacy_workspace,
-        describe_workspace_update, plan_workspace_update, update_workspace,
+        describe_workspace_update, open_workspace, plan_workspace_update, update_workspace,
     )
     try:
         # Explicit lifecycle targets never consult (or modify) the active
         # selection. This also permits setup while local.yml is incomplete.
         explicit_path = (
             args.command == "workspace" and
-            (args.workspace_action == "init" or args.path is not None)
+            (args.workspace_action == "init" or getattr(args, "path", None) is not None)
         )
         locations = None if explicit_path else resolve_cli_locations(require_workspace=False)
         root = (Path(args.path).expanduser().resolve() if explicit_path
                 else locations.workspace_root)
         if args.command == "workspace":
+            if args.workspace_action == "open":
+                if root is None:
+                    raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
+                opened = open_workspace(root)
+                print(f"Opened workspace: {opened}")
+                return 0
             if args.workspace_action == "init":
                 created = initialize_workspace(root, core_only=args.core_only)
             elif args.workspace_action == "migrate":

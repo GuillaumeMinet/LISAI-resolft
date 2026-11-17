@@ -19,6 +19,10 @@ On PowerShell, set the variable for the current terminal with
 workspace-dependent commands; it does **not** choose `~/LISAI` automatically.
 Initializing a workspace does not select it or change any environment variable.
 
+Open the currently selected workspace in the native file explorer with
+`lisai workspace open` (Windows Explorer, Finder or your Linux file manager).
+This command is read-only and works for developer and standalone selection.
+
 For a workspace that will use experiment files in a developer repository, only
 the workspace-global infrastructure may be needed:
 
@@ -72,6 +76,12 @@ Editable experiment configurations have a flat layout, for example
 `<config-root>/inference/defaults.yml`. `local/` may be used as an ordinary nested
 folder name, but is not required. Repo-owned editable configs and schemas are
 Git-ignored; packaged presets/templates/examples are tracked in package resources.
+
+If your editor reports that `config.mode` is disallowed in developer
+`configs/local.yml`, regenerate the editor schemas with
+`lisai configs schema refresh`. This also refreshes the checkout-owned
+`configs/schema/local-config.schema.json` when `config.mode` is `workspace`
+or `custom`, even though the writable experiment root is elsewhere.
 
 ## Updating workspace defaults
 

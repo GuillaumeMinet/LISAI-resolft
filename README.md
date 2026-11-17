@@ -339,6 +339,7 @@ All main workflows are configured with YAML files:
 
 The writable config root defaults to `<workspace>/configs`, but can be the
 verified editable checkout's `configs/` in developer mode.
+Open the active workspace directory with `lisai workspace open`.
 
 Short config names are resolved from their workflow folder. For example, `lisai train examples/vim_denoising_unet` selects a packaged example, while `lisai train my_training` selects an editable YAML from the selected writable root. Preprocess templates must first be instantiated with `lisai configs new preprocess <template> --dataset <name>`. Inference user files are editable, and `presets/` refer to packaged inference resources. Explicit values in the selected inference config override `defaults.yml`, and explicit CLI options override both.
 
