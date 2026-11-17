@@ -11,8 +11,6 @@ from lisai_runner.queue.cli import add_queue_subparser
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lisai-runner", description="LISAI RUNNER command line interface.")
-    parser.add_argument("--workspace", metavar="PATH", help="Select LISAI workspace.")
-    parser.add_argument("--config-root", metavar="PATH", help="Select writable experiment configs.")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True
 
@@ -24,7 +22,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
     try:
-        locations = resolve_cli_locations(workspace=args.workspace, config_root=args.config_root)
+        locations = resolve_cli_locations()
         settings = load_settings_for_selected_locations(locations)
     except (FileNotFoundError, ValueError) as exc:
         print(f"LISAI runner configuration: {exc}", file=sys.stderr)

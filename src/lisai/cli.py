@@ -22,23 +22,23 @@ from lisai.training.continue_cli import add_continue_subparser
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="lisai", description="LISAI command line interface.")
-    parser.add_argument("--workspace", metavar="PATH", help="Select workspace data and global settings.")
-    parser.add_argument("--config-root", metavar="PATH", help="Select writable experiment configuration root.")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True
 
-    config_parser = subparsers.add_parser("config", help="Inspect selected configuration locations.")
-    config_commands = config_parser.add_subparsers(dest="config_command", required=True)
-    config_commands.add_parser("show", help="Show selected roots and their origins.")
+    settings_parser = subparsers.add_parser("settings", help="Inspect persistent LISAI selection.")
+    settings_commands = settings_parser.add_subparsers(dest="settings_command", required=True)
+    settings_commands.add_parser("show", help="Show selected roots and their origins (read-only).")
 
     workspace_parser = subparsers.add_parser("workspace", help="Explicitly initialize, update or migrate workspaces.")
     workspace_actions = workspace_parser.add_subparsers(dest="workspace_action", required=True)
     init_parser = workspace_actions.add_parser("init", help="Initialize a workspace without replacing existing files.")
-    init_parser.add_argument("path", nargs="?", help="Workspace path (defaults to the selected workspace).")
+    init_parser.add_argument("path", help="Workspace directory to initialize (does not select it).")
     update_parser = workspace_actions.add_parser("update", help="Back up and update workspace defaults explicitly.")
+    update_parser.add_argument("path", nargs="?", help="Target workspace; defaults to selected workspace.")
     update_parser.add_argument("--yes", action="store_true", help="Confirm replacing generated defaults.")
     update_parser.add_argument("--include-inference", action="store_true", help="Also back up and replace seeded local inference defaults.")
     migrate_parser = workspace_actions.add_parser("migrate", help="Convert legacy three-file settings without moving data.")
+    migrate_parser.add_argument("path", nargs="?", help="Target workspace; defaults to selected workspace.")
     migrate_parser.add_argument("--from-legacy", required=True, metavar="CONFIGS", help="Old configs/ directory.")
     dev_parser = subparsers.add_parser("dev", help="Explicit editable-checkout developer setup.")
     dev_actions = dev_parser.add_subparsers(dest="dev_action", required=True)
@@ -67,10 +67,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             or args.command == "datasets" and getattr(args, "datasets_command", None) == "catalog"):
         return args.handler(args)
     try:
-        locations = resolve_cli_locations(workspace=args.workspace, config_root=args.config_root)
-        if args.command == "config" and args.config_command == "show":
+        if args.command == "settings" and args.settings_command == "show":
+            try:
+                locations = resolve_cli_locations(require_workspace=False)
+            except ValueError as exc:
+                # Diagnostics must remain usable to explain/repair an invalid
+                # developer selector; settings set adds repair in Patch B.
+                print(f"Selection status:   invalid\nSelection error:    {exc}")
+                return 0
             print(describe_locations(locations))
             return 0
+        locations = resolve_cli_locations()
         settings = load_settings_for_selected_locations(locations)
         from lisai.config.workspace import revision_warning
         warning = revision_warning(locations.workspace_root)
@@ -94,15 +101,21 @@ def _run_setup(args: argparse.Namespace) -> int:
         update_workspace,
     )
     try:
-        locations = resolve_cli_locations(workspace=args.workspace, config_root=args.config_root)
+        locations = resolve_cli_locations(require_workspace=False)
         root = locations.workspace_root
         if args.command == "workspace":
+            if args.workspace_action in {"update", "migrate"} and args.path:
+                root = Path(args.path).expanduser().resolve()
             if args.workspace_action == "init":
-                root = Path(args.path).expanduser().resolve() if args.path else root
+                root = Path(args.path).expanduser().resolve()
                 created = initialize_workspace(root)
             elif args.workspace_action == "migrate":
+                if root is None:
+                    raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
                 created = migrate_legacy_workspace(args.from_legacy, root)
             else:
+                if root is None:
+                    raise ValueError("No workspace selected. Set LISAI_HOME or activate developer mode.")
                 if not args.yes:
                     answer = input(
                         f"Back up and replace generated workspace defaults in {root}? [y/N] "
@@ -122,9 +135,15 @@ def _run_setup(args: argparse.Namespace) -> int:
             source = _source_checkout_for_import()
             if source is None:
                 raise ValueError(
-                    "Developer setup requires a verified editable LISAI checkout; "
-                    "use --config-root or LISAI_CONFIG_ROOT for explicit configuration selection."
+                    "Developer setup requires a verified editable LISAI checkout."
                 )
+            proposal = input(
+                f"Developer workspace path{f' [{root}]' if root else ''}: "
+            ).strip()
+            if proposal:
+                root = Path(proposal).expanduser().resolve()
+            if root is None:
+                raise ValueError("dev init requires an explicit workspace path; none was selected")
             if not (root / "configs/workspace.yml").is_file() or not (root / "configs/data.yml").is_file():
                 if not args.yes:
                     answer = input(f"Initialize workspace core in {root}? [y/N] ").strip().lower()

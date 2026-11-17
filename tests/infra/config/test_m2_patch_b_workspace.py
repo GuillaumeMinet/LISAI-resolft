@@ -90,7 +90,7 @@ def test_two_workspaces_are_isolated_even_with_shared_writable_configs(tmp_path)
         assert stg.CONFIGS_ROOT == shared
         assert stg.WORKSPACE_ROOT == root
         assert stg.INFERENCE_OUTPUT_MODE == expected_mode
-        assert stg.LOCAL_PROGRESS_BAR is True
+        assert stg.LOCAL_PROGRESS_BAR is False  # no implicit external local.yml
         assert paths.dataset_registry_path().is_relative_to(root)
         assert paths.promoted_model_registry_path().is_relative_to(root)
         assert paths.inference_output_dir(source_name="d", model_name="m").is_relative_to(root)
@@ -112,15 +112,16 @@ def test_developer_local_prefs_only_authored_fields_override(tmp_path):
     external = tmp_path / "repo" / "configs"
     external.mkdir(parents=True)
     save_yaml({"dev": {"enabled": True}, "workspace": {"root": str(root)},
+               "config": {"mode": "repo"},
                "inference": {"output": {"mode": "in_place"}},
                "console": {"progress_bar": True}}, external / "local.yml")
-    stg = Settings.from_workspace(root, config_root=external)
+    stg = Settings.from_workspace(root, config_root=external, local_config=external / "local.yml")
     assert stg.INFERENCE_OUTPUT_MODE == "in_place"
     assert stg.INFERENCE_SAVE_INPUT_MODE == "never"  # inherited, NOT Pydantic default
     assert stg.LOCAL_PROGRESS_BAR is True
     custom = tmp_path / "custom_predictions"
     save_yaml({"inference": {"inference_dir": str(custom)}}, external / "local.yml")
-    stg = Settings.from_workspace(root, config_root=external)
+    stg = Settings.from_workspace(root, config_root=external, local_config=external / "local.yml")
     assert stg.INFERENCE_OUTPUT_MODE == "folder_inside"
     assert stg.INFERENCE_SAVE_INPUT_MODE == "never"
     assert Paths(stg).inference_root() == custom
@@ -143,7 +144,7 @@ def test_local_unknown_keys_and_invalid_roots_rejected(tmp_path, bad):
     ext.mkdir(parents=True)
     save_yaml(bad, ext / "local.yml")
     with pytest.raises(ValidationError):
-        Settings.from_workspace(root, config_root=ext)
+        Settings.from_workspace(root, config_root=ext, local_config=ext / "local.yml")
 
 
 def test_default_python_api_does_not_activate_external_configs(tmp_path, monkeypatch):
@@ -164,10 +165,11 @@ def test_selected_cli_location_two_roots_load_and_errors(tmp_path):
     root = make_workspace(tmp_path, "workspace")
     external = tmp_path / "repo" / "configs"
     external.mkdir(parents=True)
-    save_yaml({"dev": {"enabled": True}, "workspace": {"root": str(tmp_path / "wrong")},
+    source = external.parent
+    save_yaml({"dev": {"enabled": True}, "workspace": {"root": str(root)},
+               "config": {"mode": "repo"},
                "inference": {"output": {"mode": "in_place"}}}, external / "local.yml")
-    locations = resolve_cli_locations(
-        workspace=root, config_root=external, environ={}, editable_source_root=None)
+    locations = resolve_cli_locations(environ={}, editable_source_root=source)
     stg = load_settings_for_selected_locations(locations)
     assert stg.WORKSPACE_ROOT == root
     assert stg.CONFIGS_ROOT == external

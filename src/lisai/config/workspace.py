@@ -93,7 +93,8 @@ def initialize_developer(source_root: str | Path, workspace: str | Path) -> list
     _validate_globals(root)
     config_root = source / "configs"
     target = config_root / "local.yml"
-    contents = _yaml_text({"dev": {"enabled": True}, "workspace": {"root": str(root)}})
+    contents = _yaml_text({"dev": {"enabled": True}, "workspace": {"root": str(root)},
+                           "config": {"mode": "repo"}})
     DeveloperLocalConfig.model_validate(yaml.safe_load(contents))
     created = [target] if _write_new(target, contents) else []
     if target.is_file():

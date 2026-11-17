@@ -20,21 +20,24 @@ import yaml
 
 @dataclass(frozen=True)
 class ResolvedLocations:
-    workspace_root: Path
-    experiment_config_root: Path
+    """CLI-boundary selection, including the intentionally unselected state."""
+
+    workspace_root: Path | None
+    experiment_config_root: Path | None
     workspace_origin: str
     config_root_origin: str
     local_config_path: Path | None = None
     source_root: Path | None = None
     developer_mode: bool = False
+    config_mode: str | None = None
 
     @property
-    def workspace_config(self) -> Path:
-        return self.workspace_root / "configs" / "workspace.yml"
+    def workspace_config(self) -> Path | None:
+        return self.workspace_root / "configs" / "workspace.yml" if self.workspace_root else None
 
     @property
-    def data_config(self) -> Path:
-        return self.workspace_root / "configs" / "data.yml"
+    def data_config(self) -> Path | None:
+        return self.workspace_root / "configs" / "data.yml" if self.workspace_root else None
 
 
 def _absolute(value: str | os.PathLike[str], *, label: str, from_file: bool = False) -> Path:
@@ -103,142 +106,167 @@ def _source_checkout_for_import() -> Path | None:
     return repo if editable_root == repo.resolve() else None
 
 
-def _read_local_selector(path: Path) -> tuple[bool, Path | None]:
-    """Read only selector fields; full preference validation happens on Settings load."""
+def _read_local_selector(path: Path):
+    """Only the verified source checkout can activate developer selection.
+
+    An inactive file is not a selector. Active files are validated strictly,
+    including config.mode, workspace.root and the allowed preference fields.
+    """
+    from lisai.config.models.local_config import DeveloperLocalConfig
+
     if not path.is_file():
-        return False, None
+        return None
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     if raw is None:
-        raw = {}
+        return None
     if not isinstance(raw, dict):
         raise ValueError(f"Expected mapping in {path}")
     dev = raw.get("dev", {})
-    workspace = raw.get("workspace", {})
-    if not isinstance(dev, dict) or not isinstance(workspace, dict):
-        raise ValueError(f"dev and workspace must be mappings in {path}")
+    if not isinstance(dev, dict):
+        raise ValueError(f"dev must be a mapping in {path}")
     enabled = dev.get("enabled", False)
     if not isinstance(enabled, bool):
         raise ValueError(f"dev.enabled must be boolean in {path}")
-    root = workspace.get("root")
-    if root is not None and (not isinstance(root, str) or not root.strip()):
-        raise ValueError(f"workspace.root must be a nonempty absolute path in {path}")
-    resolved = _absolute(root, label=f"{path}: workspace.root", from_file=True) if root else None
-    return enabled, resolved
+    if not enabled:
+        return None
+    return DeveloperLocalConfig.model_validate(raw)
 
 
 def resolve_cli_locations(
     *,
-    workspace: str | os.PathLike[str] | None = None,
-    config_root: str | os.PathLike[str] | None = None,
     environ: Mapping[str, str] | None = None,
     editable_source_root: Path | None | bool = False,
+    require_workspace: bool = True,
 ) -> ResolvedLocations:
-    """Resolve two *independent* roots without loading workspace YAML or writing.
+    """Resolve persistent CLI selection once, without settings reads or writes.
 
-    ``editable_source_root=False`` (the default) requests verified discovery;
-    ``None`` disables discovery, and a Path supplies a verified source root for
-    deterministic tests/callers. This is a boundary helper, not a global context.
+    ``editable_source_root=False`` requests verified discovery; ``None``
+    disables it; a Path supplies a verified root for deterministic tests.
+    No explicit command-line root overrides or config-root environment variable
+    participate in this selection.
     """
     env = os.environ if environ is None else environ
     source = _source_checkout_for_import() if editable_source_root is False else editable_source_root
     source = Path(source).resolve() if source is not None else None
 
-    external_root: Path | None = None
-    root_origin: str | None = None
-    if config_root is not None:
-        external_root = _absolute(config_root, label="--config-root")
-        root_origin = "--config-root"
-    elif env.get("LISAI_CONFIG_ROOT"):
-        external_root = _absolute(env["LISAI_CONFIG_ROOT"], label="LISAI_CONFIG_ROOT")
-        root_origin = "LISAI_CONFIG_ROOT"
-    elif source is not None:
-        candidate = source / "configs"
-        active, _ = _read_local_selector(candidate / "local.yml")
-        if active:
-            external_root, root_origin = candidate.resolve(), "developer activation"
+    selected_workspace: Path | None = None
+    experiment_root: Path | None = None
+    local_path: Path | None = None
+    developer_mode = False
+    config_mode: str | None = None
+    workspace_origin = "LISAI_HOME (unset)"
+    config_origin = "workspace default (unavailable)"
 
-    local_path = external_root / "local.yml" if external_root is not None else None
-    local_root: Path | None = None
-    local_dev = False
-    if local_path is not None:
-        local_dev, local_root = _read_local_selector(local_path)
+    if source is not None:
+        candidate = source / "configs" / "local.yml"
+        local = _read_local_selector(candidate)
+        if local is not None:
+            assert local.config is not None and local.workspace.root is not None
+            developer_mode = True
+            local_path = candidate
+            selected_workspace = Path(local.workspace.root)
+            config_mode = local.config.mode
+            workspace_origin = f"{candidate}: workspace.root"
+            if config_mode == "repo":
+                experiment_root = source / "configs"
+                config_origin = "developer config.mode=repo"
+            elif config_mode == "workspace":
+                experiment_root = selected_workspace / "configs"
+                config_origin = "developer config.mode=workspace"
+            else:
+                assert local.config.root is not None
+                experiment_root = Path(local.config.root)
+                config_origin = "developer config.mode=custom"
 
-    if workspace is not None:
-        selected_workspace = _absolute(workspace, label="--workspace")
-        workspace_origin = "--workspace"
-    elif local_root is not None:
-        selected_workspace = local_root
-        workspace_origin = f"{local_path}: workspace.root"
-    elif env.get("LISAI_HOME"):
+    if not developer_mode and env.get("LISAI_HOME"):
         selected_workspace = _absolute(env["LISAI_HOME"], label="LISAI_HOME")
+        experiment_root = selected_workspace / "configs"
         workspace_origin = "LISAI_HOME"
-    else:
-        selected_workspace = (Path.home() / "LISAI").resolve()
-        workspace_origin = "~/LISAI"
+        config_origin = "workspace default"
 
-    if external_root is None:
-        external_root = selected_workspace / "configs"
-        root_origin = "workspace default"
-    assert root_origin is not None
+    if selected_workspace is None and require_workspace:
+        raise ValueError(
+            "No LISAI workspace selected. Set LISAI_HOME to an initialized workspace "
+            "(standalone CLI), or run 'lisai dev init' from a verified editable "
+            "checkout to select a developer workspace."
+        )
+
     return ResolvedLocations(
         workspace_root=selected_workspace,
-        experiment_config_root=external_root,
+        experiment_config_root=experiment_root,
         workspace_origin=workspace_origin,
-        config_root_origin=root_origin,
+        config_root_origin=config_origin,
         local_config_path=local_path,
         source_root=source,
-        developer_mode=bool(
-            source is not None and external_root == source / "configs" and local_dev
-        ),
+        developer_mode=developer_mode,
+        config_mode=config_mode,
     )
 
 
 def load_settings_for_selected_locations(locations: ResolvedLocations):
-    """Load both selected roots once at the CLI boundary, with no fallback."""
+    """Load already selected W/R and optional D preferences exactly once."""
     from lisai.config.settings import Settings
 
+    if locations.workspace_root is None or locations.experiment_config_root is None:
+        raise ValueError("No LISAI workspace selected; set LISAI_HOME or activate developer mode")
     return Settings.from_workspace(
         locations.workspace_root,
         config_root=locations.experiment_config_root,
-        local_config=locations.local_config_path if (
-            locations.local_config_path is not None and locations.local_config_path.is_file()
-        ) else None,
+        local_config=locations.local_config_path if locations.developer_mode else None,
     )
 
 
-
 def describe_locations(locations: ResolvedLocations) -> str:
+    """Read-only diagnostics, including an unselected/uninitialized workspace."""
     from importlib.metadata import PackageNotFoundError, version
 
     try:
         package_version = version("lisai")
     except PackageNotFoundError:
         package_version = "source checkout (no installed metadata)"
-    workspace_present = locations.workspace_config.is_file() and locations.data_config.is_file()
-    from lisai.config.settings import CURRENT_DEFAULTS_REVISION
+
+    workspace = locations.workspace_root
+    workspace_config = locations.workspace_config
+    data_config = locations.data_config
+    present = bool(workspace_config and data_config and workspace_config.is_file() and data_config.is_file())
     revision_status = "unavailable"
-    if locations.workspace_config.is_file():
+    if workspace_config is not None and workspace_config.is_file():
         try:
             from lisai.config.io.yaml import load_yaml
-            revision = load_yaml(locations.workspace_config).get("defaults_revision", 0)
+            from lisai.config.settings import CURRENT_DEFAULTS_REVISION
+
+            revision = load_yaml(workspace_config).get("defaults_revision", 0)
             revision_status = f"{revision} (packaged: {CURRENT_DEFAULTS_REVISION})"
             if isinstance(revision, int) and revision < CURRENT_DEFAULTS_REVISION:
                 revision_status += " — update available (lisai workspace update)"
         except (OSError, ValueError):
             revision_status = "invalid workspace.yml"
-    return "\n".join((
-        f"Mode:               {'Developer' if locations.developer_mode else 'Normal'}",
+
+    validation = "no workspace selected" if workspace is None else "not initialized"
+    if present:
+        try:
+            load_settings_for_selected_locations(locations)
+            validation = "valid"
+        except (OSError, ValueError) as exc:
+            validation = f"invalid: {exc}"
+
+    rows = [
+        f"Mode:               {'Developer' if locations.developer_mode else 'Standalone'}",
         f"LISAI version:      {package_version}",
         f"LISAI package:      {Path(__file__).resolve().parents[1]}",
-        f"Workspace:          {locations.workspace_root}  [{locations.workspace_origin}]",
-        f"Global settings:    {locations.workspace_config}"
-        f"  [{'present' if locations.workspace_config.is_file() else 'missing'}]",
-        f"Data settings:      {locations.data_config}"
-        f"  [{'present' if locations.data_config.is_file() else 'missing'}]",
-        f"Experiment root:    {locations.experiment_config_root}  [{locations.config_root_origin}]",
+        f"Workspace:          {workspace or '(not selected)'}  [{locations.workspace_origin}]",
+        f"Global settings:    {workspace_config or '(not selected)'}"
+        f"  [{'present' if workspace_config and workspace_config.is_file() else 'missing'}]",
+        f"Data settings:      {data_config or '(not selected)'}"
+        f"  [{'present' if data_config and data_config.is_file() else 'missing'}]",
+        f"Experiment root:    {locations.experiment_config_root or '(not selected)'}"
+        f"  [{locations.config_root_origin}]",
+        f"Config mode:        {locations.config_mode or '(standalone)'}",
         f"Local preferences:  {locations.local_config_path or '(none)'}",
         "Built-in configs:   LISAI installed package resources",
         f"Defaults revision:  {revision_status}",
-        f"Workspace status:   {'initialized' if workspace_present else 'not initialized'}",
-        "Workspace init:     lisai workspace init <PATH>" if not workspace_present else "",
-    )).rstrip()
+        f"Workspace status:   {validation}",
+    ]
+    if not present:
+        rows.append("Workspace init:     lisai workspace init <PATH>")
+    return "\n".join(rows)

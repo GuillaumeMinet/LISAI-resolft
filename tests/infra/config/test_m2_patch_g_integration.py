@@ -45,29 +45,30 @@ def test_a_b_a_separate_data_models_runs_queue_and_inference(tmp_path):
                     ("from_A", "model_from_A")]
 
 
-def test_external_experiment_configs_remain_selected_with_workspace_override(tmp_path):
+def test_developer_custom_mode_separates_workspace_root_and_pref_source(tmp_path):
     a, b = _prepared(tmp_path)
     source = tmp_path / "checkout"
-    editable = source / "configs"
+    editable = tmp_path / "external_configs"
     editable.mkdir(parents=True)
-    save_yaml({"dev": {"enabled": True}, "workspace": {"root": str(a)},
-               "console": {"progress_bar": False}}, editable / "local.yml")
+    local = source / "configs/local.yml"
+    local.parent.mkdir(parents=True)
+    save_yaml({"dev": {"enabled": True}, "workspace": {"root": str(b)},
+               "config": {"mode": "custom", "root": str(editable)},
+               "console": {"progress_bar": False}}, local)
 
-    selected = resolve_cli_locations(workspace=b, environ={}, editable_source_root=source)
+    selected = resolve_cli_locations(environ={}, editable_source_root=source)
     assert selected.workspace_root == b
     assert selected.experiment_config_root == editable
     assert selected.developer_mode
-    configured = Settings.from_workspace(b, config_root=selected.experiment_config_root)
+    configured = Settings.from_workspace(b, config_root=selected.experiment_config_root,
+                                         local_config=selected.local_config_path)
     assert configured.CONFIGS_ROOT == editable
     assert configured.local_cfg.console.progress_bar is False
     assert Paths(configured).dataset_registry_path() == b / "datasets/dataset_registry.yml"
 
-    forced = resolve_cli_locations(workspace=b, config_root=b / "configs", environ={},
-                                   editable_source_root=source)
-    assert forced.experiment_config_root == b / "configs"
-    assert not forced.developer_mode
-    assert Settings.from_workspace(b, config_root=forced.experiment_config_root).local_cfg.console.progress_bar is None
-
+    # Python integrations are never activated by this file implicitly.
+    plain = Settings.from_workspace(b, config_root=editable)
+    assert plain.local_cfg.console.progress_bar is None
 
 def test_python_api_ignores_cli_config_root_and_developer_flag(tmp_path, monkeypatch):
     a, b = _prepared(tmp_path)

@@ -60,10 +60,16 @@ def _legacy_checkout_configs_root() -> Path:
 def load_default_settings() -> Settings:
     """Python API default: workspace selection, never CLI developer activation.
 
-    Unlike the CLI this does not read LISAI_CONFIG_ROOT or a checkout local.yml.
-    No file or folder is created by this loader.
+    Only LISAI_HOME is considered; developer selection is CLI-only. No reads
+    create or modify files, and there is no implicit home-directory workspace.
     """
-    workspace = Path(os.environ.get("LISAI_HOME", str(Path.home() / "LISAI"))).expanduser()
+    selected = os.environ.get("LISAI_HOME")
+    if not selected:
+        raise ValueError(
+            "LISAI_HOME is not set. Set it to an initialized workspace, "
+            "or pass Settings.from_workspace(path) explicitly."
+        )
+    workspace = Path(selected).expanduser()
     if not workspace.is_absolute():
         raise ValueError("LISAI_HOME must be an absolute workspace path")
     return Settings.from_workspace(workspace)
@@ -217,9 +223,9 @@ class Settings:
     ) -> Settings:
         """Load workspace.yml + data.yml from workspace, user YAMLs from config_root.
 
-        External local.yml is considered only when the caller explicitly chose
-        a non-workspace config root, or supplied local_config directly. This
-        avoids accidental developer-mode activation in the Python API.
+        Only an explicitly provided local_config is loaded for optional
+        developer preferences. Neither workspace nor config_root is searched
+        for local.yml, and this constructor never performs CLI selection.
         """
         instance = cls.__new__(cls)
         instance.WORKSPACE_ROOT = Path(workspace).expanduser().resolve()
@@ -230,10 +236,6 @@ class Settings:
         instance._local_yaml_path = None
         if local_config is not None:
             instance._local_yaml_path = Path(local_config).expanduser().resolve()
-        elif instance.CONFIGS_ROOT != owned:
-            candidate = instance.CONFIGS_ROOT / "local.yml"
-            if candidate.is_file():
-                instance._local_yaml_path = candidate
 
         source = instance._load_required(instance._project_yaml_path)
         workspace_file = WorkspaceFileConfig.model_validate(source)

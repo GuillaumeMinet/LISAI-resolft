@@ -156,28 +156,31 @@ def test_revision_outdated_warning_without_auto_update(tmp_path):
 
 def test_cli_init_and_show_and_update_confirm(tmp_path, monkeypatch, capsys):
     root = tmp_path / "space"
-    assert main(["--workspace", str(root), "workspace", "init"]) == 0
-    assert main(["--workspace", str(root), "config", "show"]) == 0
+    assert main(["workspace", "init", str(root)]) == 0
+    monkeypatch.setenv("LISAI_HOME", str(root))
+    assert main(["settings", "show"]) == 0
     shown = capsys.readouterr().out
     assert "Defaults revision:  1" in shown
     old = (root / "configs/workspace.yml").read_bytes()
     monkeypatch.setattr("builtins.input", lambda *args: "n")
-    assert main(["--workspace", str(root), "workspace", "update"]) == 0
+    assert main(["workspace", "update", str(root)]) == 0
     assert not list((root / "configs").glob("workspace.yml.bak.*"))
     monkeypatch.setattr("builtins.input", lambda *args: "y")
-    assert main(["--workspace", str(root), "workspace", "update"]) == 0
+    assert main(["workspace", "update", str(root)]) == 0
     assert list((root / "configs").glob("workspace.yml.bak.*"))
     assert (root / "configs/workspace.yml").read_bytes() == old
 
 
-def test_import_and_help_do_not_initialize(tmp_path, capsys):
+def test_import_and_help_do_not_initialize(tmp_path, capsys, monkeypatch):
     root = tmp_path / "absent"
+    monkeypatch.delenv("LISAI_HOME", raising=False)
+    monkeypatch.setattr("lisai.config.selection._source_checkout_for_import", lambda: None)
     with pytest.raises(SystemExit) as result:
-        main(["--workspace", str(root), "workspace", "--help"])
+        main(["workspace", "--help"])
     assert result.value.code == 0
     assert not root.exists()
-    assert main(["--workspace", str(root), "config", "show"]) == 0
-    assert "not initialized" in capsys.readouterr().out
+    assert main(["settings", "show"]) == 0
+    assert "no workspace selected" in capsys.readouterr().out
     assert not root.exists()
 
 
@@ -190,25 +193,25 @@ def test_cli_dev_init_core_only_and_explicit_activation(tmp_path, monkeypatch, c
     (source / "pyproject.toml").write_text('[project]\nname="lisai"\n')
     monkeypatch.setattr("lisai.config.selection._source_checkout_for_import", lambda: source)
     # Explicit --yes approves core-only bootstrap in the selected workspace.
-    assert main(["--workspace", str(root), "dev", "init", "--yes"]) == 0
+    monkeypatch.setattr("builtins.input", lambda *_: str(root))
+    assert main(["dev", "init", "--yes"]) == 0
     assert (root / "configs/workspace.yml").is_file()
     assert not (root / "configs/training").exists()
     assert (source / "configs/local.yml").is_file()
     assert (source / "configs/training/local").is_dir()
-    assert main(["--workspace", str(root), "dev", "init", "--yes"]) == 0
-    assert main(["--workspace", str(root), "config", "show"]) == 0
+    monkeypatch.setattr("builtins.input", lambda *_: str(root))
+    assert main(["dev", "init", "--yes"]) == 0
+    assert main(["settings", "show"]) == 0
     output = capsys.readouterr().out
     assert "Developer" in output
-    assert "developer activation" in output
+    assert "config.mode=repo" in output
 
 
 def test_cli_legacy_migration_command(tmp_path, monkeypatch):
     root = tmp_path / "space"
     old = _legacy_config_dir(tmp_path, root)
     monkeypatch.setattr("lisai.config.selection._source_checkout_for_import", lambda: None)
-    assert main(["--workspace", str(root), "workspace", "migrate",
-                 "--from-legacy", str(old)]) == 0
+    assert main(["workspace", "migrate", str(root), "--from-legacy", str(old)]) == 0
     assert (root / "configs/workspace.yml").exists()
     assert (root / "configs/data.yml").exists()
-    assert main(["--workspace", str(root), "workspace", "migrate",
-                 "--from-legacy", str(old)]) == 2
+    assert main(["workspace", "migrate", str(root), "--from-legacy", str(old)]) == 2

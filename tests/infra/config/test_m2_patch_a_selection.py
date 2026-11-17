@@ -1,148 +1,238 @@
-"""M2 A: selection is independent, deterministic and side-effect-free."""
+"""M2 follow-up Patch A: persistent selection and explicit preference ownership."""
 from __future__ import annotations
 
 import json
-import os
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from pydantic import ValidationError
 
 from lisai import cli as root_cli
 from lisai.config import selection
+from lisai.config.io.yaml import save_yaml
+from lisai.config.models.local_config import DeveloperLocalConfig
+from lisai.config.settings import Settings, load_default_settings
 from lisai_runner import cli as runner_cli
 
 
-def _local(folder: Path, *, dev: bool | None = None, workspace: Path | None = None) -> Path:
-    folder.mkdir(parents=True, exist_ok=True)
-    lines = []
-    if dev is not None:
-        lines.extend(["dev:", f"  enabled: {str(dev).lower()}"])
-    if workspace is not None:
-        lines.extend(["workspace:", f"  root: '{workspace}'"])
-    target = folder / "local.yml"
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return target
+def _local(repo: Path, workspace: Path, *, mode: str = "repo", custom_root: Path | None = None,
+           enabled: bool = True, preferences: dict | None = None) -> Path:
+    path = repo / "configs/local.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"dev": {"enabled": enabled}, "workspace": {"root": str(workspace)},
+            "config": {"mode": mode}}
+    if custom_root is not None:
+        data["config"]["root"] = str(custom_root)
+    data.update(preferences or {})
+    save_yaml(data, path)
+    return path
 
 
-def test_standalone_defaults(monkeypatch, tmp_path):
-    monkeypatch.setattr(selection.Path, "home", lambda: tmp_path / "home")
-    chosen = selection.resolve_cli_locations(environ={}, editable_source_root=None)
-    assert chosen.workspace_root == tmp_path / "home" / "LISAI"
-    assert chosen.experiment_config_root == chosen.workspace_root / "configs"
-    assert chosen.local_config_path is None
-    assert chosen.workspace_origin == "~/LISAI"
-    assert chosen.config_root_origin == "workspace default"
-    assert not chosen.workspace_root.exists()
+def test_standalone_requires_home_but_can_be_inspected_without_selection(tmp_path):
+    with pytest.raises(ValueError, match="LISAI_HOME"):
+        selection.resolve_cli_locations(environ={}, editable_source_root=None)
+    loc = selection.resolve_cli_locations(environ={}, editable_source_root=None,
+                                          require_workspace=False)
+    assert loc.workspace_root is None
+    assert loc.experiment_config_root is None
+    assert loc.local_config_path is None
+    assert not loc.developer_mode
+    assert "no workspace selected" in selection.describe_locations(loc)
 
 
-def test_workspace_env_and_cli_precedence(tmp_path):
-    home, override = tmp_path / "env", tmp_path / "override"
-    by_env = selection.resolve_cli_locations(environ={"LISAI_HOME": str(home)}, editable_source_root=None)
-    assert by_env.workspace_root == home
-    assert by_env.experiment_config_root == home / "configs"
-    by_cli = selection.resolve_cli_locations(
-        environ={"LISAI_HOME": str(home)}, workspace=override, editable_source_root=None,
-    )
-    assert by_cli.workspace_root == override
-    assert by_cli.experiment_config_root == override / "configs"
-    assert by_cli.workspace_origin == "--workspace"
-
-
-def test_developer_auto_activation_and_workspace_override(tmp_path):
-    repo = tmp_path / "repo"
-    workspace_a, workspace_b = tmp_path / "A", tmp_path / "B"
-    _local(repo / "configs", dev=True, workspace=workspace_a)
-    baseline = selection.resolve_cli_locations(environ={}, editable_source_root=repo)
-    assert baseline.developer_mode
-    assert baseline.workspace_root == workspace_a
-    assert baseline.experiment_config_root == repo / "configs"
-    assert baseline.workspace_origin.endswith("workspace.root")
-    assert baseline.config_root_origin == "developer activation"
-
-    selected = selection.resolve_cli_locations(
-        workspace=workspace_b, environ={"LISAI_HOME": str(tmp_path / "env")}, editable_source_root=repo,
-    )
-    assert selected.workspace_root == workspace_b
-    assert selected.experiment_config_root == repo / "configs"
-    assert selected.local_config_path == repo / "configs" / "local.yml"
-
-    from_workspace = selection.resolve_cli_locations(
-        workspace=workspace_b, config_root=workspace_b / "configs",
-        editable_source_root=repo, environ={},
-    )
-    assert from_workspace.experiment_config_root == workspace_b / "configs"
-    assert not from_workspace.developer_mode
-
-
-def test_dev_disabled_and_explicit_root_still_allowed(tmp_path):
-    repo = tmp_path / "repo"
-    workspace = tmp_path / "workspace"
-    _local(repo / "configs", dev=False, workspace=workspace)
-    inactive = selection.resolve_cli_locations(environ={}, editable_source_root=repo)
-    assert inactive.workspace_root == Path.home() / "LISAI"
-    assert inactive.experiment_config_root == inactive.workspace_root / "configs"
-    assert not inactive.developer_mode
-    explicitly = selection.resolve_cli_locations(config_root=repo / "configs", environ={}, editable_source_root=repo)
-    assert explicitly.workspace_root == workspace
-    assert explicitly.experiment_config_root == repo / "configs"
-    assert not explicitly.developer_mode
-
-
-def test_config_root_env_survives_workspace_override(tmp_path):
-    external = tmp_path / "external"
-    _local(external, workspace=tmp_path / "from-local")
-    chosen = selection.resolve_cli_locations(
-        workspace=tmp_path / "new-workspace",
-        environ={"LISAI_CONFIG_ROOT": str(external), "LISAI_HOME": str(tmp_path / "env-workspace")},
-        editable_source_root=None,
-    )
-    assert chosen.workspace_root == tmp_path / "new-workspace"
-    assert chosen.experiment_config_root == external
-    assert chosen.config_root_origin == "LISAI_CONFIG_ROOT"
-
-
-def test_explicit_config_root_beats_env_and_developer(tmp_path):
-    repo, external, overridden = tmp_path / "repo", tmp_path / "envroot", tmp_path / "cli-root"
-    _local(repo / "configs", dev=True, workspace=tmp_path / "repo-space")
-    _local(external, workspace=tmp_path / "env-space")
-    _local(overridden, workspace=tmp_path / "chosen-space")
-    loc = selection.resolve_cli_locations(
-        config_root=overridden, environ={"LISAI_CONFIG_ROOT": str(external)}, editable_source_root=repo,
-    )
-    assert loc.experiment_config_root == overridden
-    assert loc.workspace_root == tmp_path / "chosen-space"
-    assert loc.config_root_origin == "--config-root"
-
-
-def test_relative_flags_use_cwd_but_local_root_must_be_absolute(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    selected = selection.resolve_cli_locations(
-        workspace="relative", config_root="relative/configs", environ={}, editable_source_root=None,
-    )
-    assert selected.workspace_root == tmp_path / "relative"
-    assert selected.experiment_config_root == tmp_path / "relative" / "configs"
-    p = tmp_path / "bad" / "configs"
-    p.mkdir(parents=True)
-    (p / "local.yml").write_text("workspace:\n  root: relative/path\n")
-    with pytest.raises(ValueError, match="absolute"):
-        selection.resolve_cli_locations(config_root=p, environ={}, editable_source_root=None)
+def test_standalone_home_owns_config_root_and_ignores_external_local(tmp_path):
+    ws = tmp_path / "workspace"
+    _local(ws, tmp_path / "irrelevant", preferences={"console": {"progress_bar": True}})
+    external = tmp_path / "other_configs"
+    loc = selection.resolve_cli_locations(environ={
+        "LISAI_HOME": str(ws), "LISAI_CONFIG_ROOT": str(external)
+    }, editable_source_root=None)
+    assert loc.workspace_root == ws
+    assert loc.experiment_config_root == ws / "configs"
+    assert loc.local_config_path is None
+    assert loc.config_mode is None
+    assert loc.config_root_origin == "workspace default"
+    assert loc.workspace_origin == "LISAI_HOME"
     with pytest.raises(ValueError, match="LISAI_HOME must be an absolute"):
-        selection.resolve_cli_locations(environ={"LISAI_HOME": "relative"}, editable_source_root=None)
+        selection.resolve_cli_locations(environ={"LISAI_HOME": "relative"},
+                                        editable_source_root=None)
 
 
-@pytest.mark.parametrize("contents,match", [
-    ("dev: invalid\n", "mappings"),
-    ("dev:\n  enabled: 'true'\n", "boolean"),
-    ("[]\n", "Expected mapping"),
-    ("workspace:\n  root: ''\n", "nonempty"),
+@pytest.mark.parametrize("mode", ["repo", "workspace", "custom"])
+def test_developer_three_modes_and_env_noninterference(tmp_path, mode):
+    repo, a, b, custom = (tmp_path / part for part in ("checkout", "A", "B", "custom"))
+    local_path = _local(repo, a, mode=mode, custom_root=custom if mode == "custom" else None)
+    expected = {"repo": repo / "configs", "workspace": a / "configs", "custom": custom}[mode]
+    loc = selection.resolve_cli_locations(environ={
+        "LISAI_HOME": str(b), "LISAI_CONFIG_ROOT": "relative_invalid_ignored"
+    }, editable_source_root=repo)
+    assert loc.workspace_root == a
+    assert loc.experiment_config_root == expected
+    assert loc.local_config_path == local_path
+    assert loc.config_mode == mode
+    assert loc.developer_mode
+    assert mode in loc.config_root_origin
+    assert str(local_path) in loc.workspace_origin
+    assert f"Config mode:        {mode}" in selection.describe_locations(loc)
+
+    # A persistent workspace edit respects the stored ownership mode.
+    _local(repo, b, mode=mode, custom_root=custom if mode == "custom" else None)
+    changed = selection.resolve_cli_locations(environ={}, editable_source_root=repo)
+    assert changed.workspace_root == b
+    assert changed.experiment_config_root == (b / "configs" if mode == "workspace" else expected)
+
+
+def test_disabled_developer_file_does_not_select_workspace(tmp_path):
+    repo, selected, env_root = (tmp_path / part for part in ("repo", "local_selection", "env"))
+    _local(repo, selected, enabled=False)
+    loc = selection.resolve_cli_locations(environ={"LISAI_HOME": str(env_root)},
+                                          editable_source_root=repo)
+    assert not loc.developer_mode
+    assert loc.workspace_root == env_root
+    assert loc.local_config_path is None
+
+
+@pytest.mark.parametrize("selection_data,match", [
+    ({"dev": {"enabled": True}, "workspace": {"root": "/tmp/valid"}}, "config.mode"),
+    ({"dev": {"enabled": True}, "config": {"mode": "repo"}}, "workspace.root"),
+    ({"dev": {"enabled": True}, "workspace": {"root": "relative"},
+      "config": {"mode": "repo"}}, "absolute"),
+    ({"dev": {"enabled": True}, "workspace": {"root": "/tmp/valid"},
+      "config": {"mode": "invalid"}}, "repo.*workspace.*custom"),
+    ({"dev": {"enabled": True}, "workspace": {"root": "/tmp/valid"},
+      "config": {"mode": "custom"}}, "config.root"),
+    ({"dev": {"enabled": True}, "workspace": {"root": "/tmp/valid"},
+      "config": {"mode": "repo", "root": "/tmp/extra"}}, "only valid"),
+    ({"dev": {"enabled": True}, "workspace": {"root": "/tmp/valid"},
+      "config": {"mode": "custom", "root": "relative"}}, "absolute"),
+    ({"dev": {"enabled": "true"}}, "boolean"),
+    ({"dev": "bad"}, "mapping"),
+    ({"dev": {"enabled": True}, "workspace": {"root": "/tmp/valid"},
+      "config": {"mode": "repo"}, "queue": {"override": True}}, "extra_forbidden"),
 ])
-def test_invalid_local_selector_rejected(tmp_path, contents, match):
-    root = tmp_path / "configs"
-    root.mkdir()
-    (root / "local.yml").write_text(contents)
-    with pytest.raises(ValueError, match=match):
-        selection.resolve_cli_locations(config_root=root, environ={}, editable_source_root=None)
+def test_invalid_developer_selection_fails_precisely(tmp_path, selection_data, match):
+    repo = tmp_path / "repo"
+    target = repo / "configs/local.yml"
+    target.parent.mkdir(parents=True)
+    save_yaml(selection_data, target)
+    with pytest.raises((ValidationError, ValueError), match=match):
+        selection.resolve_cli_locations(environ={"LISAI_HOME": str(tmp_path / "fallback")},
+                                        editable_source_root=repo)
+
+
+def test_invalid_disabled_local_does_not_override_standalone(tmp_path):
+    repo = tmp_path / "repo"
+    target = repo / "configs/local.yml"
+    target.parent.mkdir(parents=True)
+    save_yaml({"dev": {"enabled": False}, "invalid": True}, target)
+    loc = selection.resolve_cli_locations(environ={"LISAI_HOME": str(tmp_path / "ws")},
+                                          editable_source_root=repo)
+    assert not loc.developer_mode
+
+
+def test_python_settings_ignore_workspace_custom_local_unless_explicit(tmp_path):
+    from lisai.config.workspace import initialize_workspace
+
+    a, b, custom = (tmp_path / item for item in ("A", "B", "custom"))
+    initialize_workspace(a, core_only=True)
+    initialize_workspace(b, core_only=True)
+    dev = tmp_path / "checkout"
+    local = _local(dev, a, mode="custom", custom_root=custom,
+                   preferences={"console": {"progress_bar": True},
+                                "inference": {"output": {"mode": "in_place"}}})
+    _local(custom.parent / "elsewhere", b, preferences={"console": {"progress_bar": False}})
+    custom.mkdir(parents=True)
+    save_yaml({"console": {"progress_bar": True}}, custom / "local.yml")
+    for ws in (a, b, a):
+        plain = Settings.from_workspace(ws, config_root=custom)
+        assert plain.LOCAL_PROGRESS_BAR is None
+        assert plain.INFERENCE_OUTPUT_MODE == "default"
+        activated = Settings.from_workspace(ws, config_root=custom, local_config=local)
+        assert activated.LOCAL_PROGRESS_BAR is True
+        assert activated.INFERENCE_OUTPUT_MODE == "in_place"
+        assert activated.WORKSPACE_ROOT == ws
+        assert activated.CONFIGS_ROOT == custom
+    chosen = selection.resolve_cli_locations(environ={}, editable_source_root=dev)
+    settings = selection.load_settings_for_selected_locations(chosen)
+    assert settings.LOCAL_PROGRESS_BAR is True
+
+
+def test_api_default_requires_home_and_explicit_workspace_remains_available(tmp_path, monkeypatch):
+    from lisai.config.workspace import initialize_workspace
+
+    monkeypatch.delenv("LISAI_HOME", raising=False)
+    monkeypatch.setenv("LISAI_CONFIG_ROOT", "unused_invalid")
+    with pytest.raises(ValueError, match="LISAI_HOME is not set"):
+        load_default_settings()
+    ws = tmp_path / "workspace"
+    initialize_workspace(ws, core_only=True)
+    assert Settings.from_workspace(ws).WORKSPACE_ROOT == ws
+    monkeypatch.setenv("LISAI_HOME", str(ws))
+    assert load_default_settings().WORKSPACE_ROOT == ws
+
+
+def test_diagnostics_without_active_workspace_or_file_writes(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: None)
+    monkeypatch.delenv("LISAI_HOME", raising=False)
+    assert root_cli.main(["settings", "show"]) == 0
+    out = capsys.readouterr().out
+    assert "not selected" in out
+    assert "LISAI_HOME (unset)" in out
+    assert not (tmp_path / "workspace").exists()
+
+
+def test_no_transient_cli_root_selection_or_old_config_show():
+    parser = root_cli.build_parser()
+    with pytest.raises(SystemExit) as caught:
+        parser.parse_args(["--workspace", "/tmp/W", "settings", "show"])
+    assert caught.value.code == 2
+    with pytest.raises(SystemExit) as caught:
+        parser.parse_args(["--config-root", "/tmp/R", "train", "x"])
+    assert caught.value.code == 2
+    with pytest.raises(SystemExit) as caught:
+        parser.parse_args(["config", "show"])
+    assert caught.value.code == 2
+    with pytest.raises(SystemExit) as caught:
+        runner_cli.build_parser().parse_args(["--workspace", "/tmp/W", "queue", "list"])
+    assert caught.value.code == 2
+    for parser in (root_cli.build_parser(), runner_cli.build_parser()):
+        with pytest.raises(SystemExit) as caught:
+            parser.parse_args(["--help"])
+        assert caught.value.code == 0
+
+
+def test_cli_dispatch_uses_selected_workspace_once(tmp_path, monkeypatch):
+    from lisai.config.workspace import initialize_workspace
+    from lisai.training import cli as train_cli
+
+    ws = tmp_path / "workspace"
+    initialize_workspace(ws, core_only=True)
+    monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: None)
+    monkeypatch.setenv("LISAI_HOME", str(ws))
+    seen = []
+    monkeypatch.setattr(train_cli, "run_from_args",
+                        lambda args, parser, *, settings: seen.append(settings) or 0)
+    assert root_cli.main(["train", "any.yml"]) == 0
+    assert len(seen) == 1
+    assert seen[0].WORKSPACE_ROOT == ws
+    assert seen[0].CONFIGS_ROOT == ws / "configs"
+
+
+def test_runner_uses_same_selection_and_has_inert_help(tmp_path, monkeypatch):
+    from lisai_runner.queue import cli as queue_cli
+
+    ws = tmp_path / "runner_workspace"
+    monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: None)
+    monkeypatch.setenv("LISAI_HOME", str(ws))
+    observed = {}
+    monkeypatch.setattr(runner_cli, "load_settings_for_selected_locations", lambda loc: loc)
+    monkeypatch.setattr(runner_cli, "Paths", lambda loc: observed.setdefault("selection", loc))
+    monkeypatch.setattr(queue_cli, "list_jobs", lambda **kwargs: observed.update(kwargs) or 0)
+    assert runner_cli.main(["queue", "list"]) == 0
+    assert observed["selection"].workspace_root == ws
+    assert observed["selection"].experiment_config_root == ws / "configs"
 
 
 def test_wheel_cannot_auto_activate_even_if_git_parent(tmp_path, monkeypatch):
@@ -150,7 +240,6 @@ def test_wheel_cannot_auto_activate_even_if_git_parent(tmp_path, monkeypatch):
     (repo / "src" / "lisai").mkdir(parents=True)
     (repo / "src" / "lisai" / "__init__.py").touch()
     (repo / "pyproject.toml").write_text('[project]\nname = "lisai"\n')
-    import subprocess
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     import lisai
     monkeypatch.setattr(lisai, "__file__", str(repo / "src" / "lisai" / "__init__.py"))
@@ -163,88 +252,12 @@ def test_editable_source_validation_with_metadata(tmp_path, monkeypatch):
     (repo / "src" / "lisai").mkdir(parents=True)
     (repo / "src" / "lisai" / "__init__.py").touch()
     (repo / "pyproject.toml").write_text('[project]\nname = "lisai"\n')
-    import subprocess
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     import lisai
     monkeypatch.setattr(lisai, "__file__", str(repo / "src" / "lisai" / "__init__.py"))
     direct_url = json.dumps({"url": repo.as_uri(), "dir_info": {"editable": True}})
     monkeypatch.setattr(selection.metadata, "distribution", lambda name: SimpleNamespace(read_text=lambda _: direct_url))
     assert selection._source_checkout_for_import() == repo
-
-
-def test_config_show_without_workspace_is_read_only(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: None)
-    monkeypatch.delenv("LISAI_CONFIG_ROOT", raising=False)
-    monkeypatch.delenv("LISAI_HOME", raising=False)
-    workspace = tmp_path / "absent"
-    assert root_cli.main(["--workspace", str(workspace), "config", "show"]) == 0
-    out = capsys.readouterr().out
-    assert "not initialized" in out
-    assert str(workspace / "configs" / "workspace.yml") in out
-    assert "[--workspace]" in out
-    assert not workspace.exists()
-
-
-def test_selected_workspace_is_authoritative(settings_factory, tmp_path):
-    settings = settings_factory("correct", data_root=tmp_path / "A")
-    loc = selection.resolve_cli_locations(
-        workspace=tmp_path / "B", config_root=settings.CONFIGS_ROOT,
-        environ={}, editable_source_root=None,
-    )
-    with pytest.raises(FileNotFoundError, match="workspace.yml"):
-        selection.load_settings_for_selected_locations(loc)
-
-
-def test_selected_legacy_settings_can_dispatch_once(settings_factory, tmp_path, monkeypatch):
-    settings = settings_factory("correct", data_root=tmp_path / "data")
-    seen = []
-    from lisai.training import cli as train_cli
-    monkeypatch.setattr(train_cli, "run_from_args", lambda args, parser, *, settings: seen.append(settings) or 0)
-    # CLI parser closure resolves this function after parse, rather than at import.
-    result = root_cli.main([
-        "--workspace", str(tmp_path / "data"), "--config-root", str(settings.CONFIGS_ROOT),
-        "train", "something.yml",
-    ])
-    assert result == 0
-    assert len(seen) == 1 and seen[0].CONFIGS_ROOT == settings.CONFIGS_ROOT
-    assert seen[0].WORKSPACE_ROOT == settings.WORKSPACE_ROOT
-
-
-def test_runner_flags_and_help_are_inert(tmp_path, monkeypatch):
-    parser = runner_cli.build_parser()
-    args = parser.parse_args(["--workspace", str(tmp_path / "ws"), "--config-root", str(tmp_path / "cfg"), "queue", "list"])
-    assert args.workspace == str(tmp_path / "ws")
-    assert args.config_root == str(tmp_path / "cfg")
-    with pytest.raises(SystemExit) as exc:
-        parser.parse_args(["--help"])
-    assert exc.value.code == 0
-    assert not (tmp_path / "ws").exists()
-
-
-def test_runner_hands_selected_paths_to_queue_handler(tmp_path, monkeypatch):
-    from lisai_runner.queue import cli as queue_cli
-    workspace = tmp_path / "runner_space"
-    config_root = tmp_path / "runner_configs"
-    expected = object()
-    observed = {}
-    monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: None)
-    monkeypatch.setattr(runner_cli, "load_settings_for_selected_locations", lambda loc: loc)
-    monkeypatch.setattr(runner_cli, "Paths", lambda loc: (observed.setdefault("locations", loc), expected)[1])
-    monkeypatch.setattr(queue_cli, "list_jobs", lambda **kwargs: observed.update(kwargs) or 0)
-    rc = runner_cli.main([
-        "--workspace", str(workspace), "--config-root", str(config_root), "queue", "list",
-    ])
-    assert rc == 0
-    assert observed["paths"] is expected
-    assert observed["locations"].workspace_root == workspace
-    assert observed["locations"].experiment_config_root == config_root
-
-
-def test_catalog_is_workspace_independent_even_if_external_selector_is_bad(monkeypatch):
-    from lisai.promoted_models import cli as models_cli
-    monkeypatch.setattr(models_cli, "run_catalog_from_args", lambda args, parser: 42)
-    monkeypatch.setenv("LISAI_CONFIG_ROOT", "relative_bad_path")
-    assert root_cli.main(["models", "catalog"]) == 42
 
 
 def test_source_only_verified_checkout_fallback(monkeypatch):
@@ -258,3 +271,16 @@ def test_source_only_verified_checkout_fallback(monkeypatch):
     candidate = selection._source_checkout_for_import()
     assert candidate is not None
     assert (candidate / "src" / "lisai" / "__init__.py").resolve() == Path(lisai.__file__).resolve()
+
+
+def test_settings_show_reports_invalid_developer_selector(tmp_path, monkeypatch, capsys):
+    repo = tmp_path / "repo"
+    path = repo / "configs/local.yml"
+    path.parent.mkdir(parents=True)
+    save_yaml({"dev": {"enabled": True}, "workspace": {"root": str(tmp_path / "ws")}}, path)
+    monkeypatch.setattr(selection, "_source_checkout_for_import", lambda: repo)
+    assert root_cli.main(["settings", "show"]) == 0
+    out = capsys.readouterr().out
+    assert "Selection status:   invalid" in out
+    assert "config.mode" in out
+    assert not (tmp_path / "ws").exists()

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .inference import ApplyOutputMode, SaveInputMode
 
@@ -112,11 +113,46 @@ class DeveloperWorkspaceSelector(BaseModel):
         return str(path.resolve())
 
 
+class DeveloperConfigSelector(BaseModel):
+    """Persisted experiment-config ownership; independent of workspace YAMLs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["repo", "workspace", "custom"]
+    root: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_root(self):
+        if self.mode == "custom":
+            if not self.root or not self.root.strip():
+                raise ValueError("config.root is required when config.mode is custom")
+            path = Path(self.root).expanduser()
+            if not path.is_absolute():
+                raise ValueError("config.root must be an absolute path")
+            self.root = str(path.resolve())
+        elif self.root is not None:
+            raise ValueError("config.root is only valid when config.mode is custom")
+        return self
+
+
 class DeveloperLocalConfig(LocalConfig):
     """Strict external local.yml: a selector plus whitelisted preferences."""
 
     dev: DeveloperModeConfig = Field(default_factory=DeveloperModeConfig)
     workspace: DeveloperWorkspaceSelector = Field(default_factory=DeveloperWorkspaceSelector)
+    config: DeveloperConfigSelector | None = None
+
+    @model_validator(mode="after")
+    def _validate_active_selection(self):
+        if self.dev.enabled:
+            if self.workspace.root is None:
+                raise ValueError("workspace.root is required when dev.enabled is true")
+            if self.config is None:
+                raise ValueError(
+                    "config.mode is required in an activated developer local.yml; "
+                    "add config: {mode: repo} or use lisai settings set --config-mode repo"
+                )
+        return self
 
 
 __all__ = [
@@ -124,6 +160,7 @@ __all__ = [
     "LocalInfrastructureConfig",
     "LegacyLocalConfig",
     "DeveloperLocalConfig",
+    "DeveloperConfigSelector",
     "LocalInferenceConfig",
     "LocalInferenceOutputConfig",
     "LocalConsoleConfig",
