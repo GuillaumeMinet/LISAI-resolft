@@ -28,6 +28,12 @@ def build_parser() -> argparse.ArgumentParser:
     settings_parser = subparsers.add_parser("settings", help="Inspect persistent LISAI selection.")
     settings_commands = settings_parser.add_subparsers(dest="settings_command", required=True)
     settings_commands.add_parser("show", help="Show selected roots and their origins (read-only).")
+    set_parser = settings_commands.add_parser("set", help="Persist a developer workspace/config selection.")
+    set_parser.add_argument("--workspace", metavar="PATH", help="Set the persistent workspace root.")
+    set_parser.add_argument("--config-mode", choices=("repo", "workspace", "custom"),
+                            help="Choose the persistent experiment-config root mode.")
+    set_parser.add_argument("--config-root", metavar="PATH", help="Custom experiment-config root (custom mode only).")
+    set_parser.add_argument("--yes", action="store_true", help="Apply the displayed validated proposal without prompting.")
 
     workspace_parser = subparsers.add_parser("workspace", help="Explicitly initialize, update or migrate workspaces.")
     workspace_actions = workspace_parser.add_subparsers(dest="workspace_action", required=True)
@@ -62,6 +68,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(list(argv) if argv is not None else None)
     if args.command in ("workspace", "dev"):
         return _run_setup(args)
+    if args.command == "settings" and args.settings_command == "set":
+        from lisai.config.settings_cli import set_developer_settings
+        try:
+            return set_developer_settings(args)
+        except (OSError, ValueError) as exc:
+            print(f"LISAI settings: {exc}", file=sys.stderr)
+            return 2
     # Catalog listing is independent of local configuration, even if it is absent.
     if (args.command == "models" and getattr(args, "models_command", None) == "catalog"
             or args.command == "datasets" and getattr(args, "datasets_command", None) == "catalog"):
@@ -71,8 +84,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             try:
                 locations = resolve_cli_locations(require_workspace=False)
             except ValueError as exc:
-                # Diagnostics must remain usable to explain/repair an invalid
-                # developer selector; settings set adds repair in Patch B.
+                # Diagnostics must remain usable even with an invalid selector;
+                # `settings set` can repair an incomplete developer selection.
                 print(f"Selection status:   invalid\nSelection error:    {exc}")
                 return 0
             print(describe_locations(locations))
@@ -101,13 +114,17 @@ def _run_setup(args: argparse.Namespace) -> int:
         update_workspace,
     )
     try:
-        locations = resolve_cli_locations(require_workspace=False)
-        root = locations.workspace_root
+        # Explicit lifecycle targets never consult (or modify) the active
+        # selection. This also permits setup while local.yml is incomplete.
+        explicit_path = (
+            args.command == "workspace" and
+            (args.workspace_action == "init" or args.path is not None)
+        )
+        locations = None if explicit_path else resolve_cli_locations(require_workspace=False)
+        root = (Path(args.path).expanduser().resolve() if explicit_path
+                else locations.workspace_root)
         if args.command == "workspace":
-            if args.workspace_action in {"update", "migrate"} and args.path:
-                root = Path(args.path).expanduser().resolve()
             if args.workspace_action == "init":
-                root = Path(args.path).expanduser().resolve()
                 created = initialize_workspace(root)
             elif args.workspace_action == "migrate":
                 if root is None:
@@ -124,7 +141,7 @@ def _run_setup(args: argparse.Namespace) -> int:
                         print("Cancelled; no files changed.")
                         return 0
                 backups = update_workspace(
-                    root, config_root=locations.experiment_config_root,
+                    root, config_root=root / "configs",
                     replace_editable_defaults=args.include_inference,
                 )
                 for original, backup in backups:
