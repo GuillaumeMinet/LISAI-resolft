@@ -1,4 +1,4 @@
-"""Resolve editable configs and read-only package resources by explicit namespace."""
+"""Deterministic config names: flat user root, explicit package namespaces, and paths."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +16,33 @@ ConfigOwnership = Literal["built-in", "local", "explicit"]
 ConfigLocation = Path | Traversable
 
 _KIND_LABELS = {"training": "Training", "preprocess": "Preprocess", "inference": "Inference"}
+
+
+def _explicit_relative(value: str | Path) -> bool:
+    """Check the spelling before pathlib discards the leading './'."""
+    return isinstance(value, str) and value.startswith(("./", "../", ".\\", "..\\"))
+
+
+def managed_output_path(value: str | Path, *, root: Path, kind: ConfigKind) -> Path:
+    """Resolve an authored output name in its writable root, or an explicit file path.
+
+    Bare/nested names belong to the selected domain root, even when cwd contains
+    a same-named file. Only absolute and lexical ./ or ../ are external paths.
+    """
+    path = Path(value).expanduser()
+    if path.is_absolute() or _explicit_relative(value):
+        target = path.resolve()
+    else:
+        if not path.parts or ".." in path.parts:
+            raise ValueError(f"Invalid managed config name: {value!r}")
+        if path.parts[0] in BUILTIN_NAMESPACES.get(kind, ()):
+            raise ValueError(f"Reserved packaged config namespace: {path.parts[0]}/")
+        target = (root / path).resolve()
+        if not target.is_relative_to(root.resolve()):
+            raise ValueError(f"Managed config escapes writable root {root}: {value!r}")
+    if not target.suffix:
+        target = target.with_suffix(".yml")
+    return target
 
 
 @dataclass(frozen=True)
@@ -62,20 +89,21 @@ class ConfigPathResolver:
                 return candidate.resolve()
         return None
 
+    def user_config_paths(self):
+        if self.root.is_dir():
+            for path in sorted(self.root.rglob("*")):
+                if path.is_file() and path.suffix.lower() in self.suffixes:
+                    # Do not allow symlinks escaping the writable root to be exposed
+                    # as managed/user configs.
+                    if path.resolve().is_relative_to(self.root.resolve()):
+                        relative = path.relative_to(self.root).as_posix()
+                        if relative.split("/", 1)[0] not in BUILTIN_NAMESPACES.get(self.kind, ()):
+                            yield relative, path
+
     def available(self) -> list[str]:
-        available: set[str] = set()
-        local_root = self.root / "local"
-        if local_root.is_dir():
-            for suffix in self.suffixes:
-                available.update(f"local/{path.relative_to(local_root).as_posix()}"
-                                 for path in local_root.rglob(f"*{suffix}") if path.is_file())
+        available = {name for name, _ in self.user_config_paths()}
         for namespace in BUILTIN_NAMESPACES.get(self.kind, ()):
             available.update(f"{namespace}/{name}" for name, _ in iter_resource_files(self.kind, namespace))
-        # Older checkouts may still contain root-level dataset-specific files.
-        # Keep them addressable as explicit paths until guided migration in E.
-        if self.kind == "preprocess":
-            for suffix in self.suffixes:
-                available.update(p.name for p in self.root.glob(f"*{suffix}") if p.is_file())
         return sorted(available)
 
     def missing_error(self, config_arg: str | Path) -> FileNotFoundError:
@@ -85,72 +113,54 @@ class ConfigPathResolver:
             lines.append("Available configs:")
             lines.extend(f"  - {name}" for name in available)
         else:
-            lines.append(f"No {self.kind} configs found in {self.root / 'local'} or package resources.")
+            lines.append(f"No {self.kind} configs found in {self.root} or package resources.")
         return FileNotFoundError("\n".join(lines))
 
     def resolve_reference(self, config_arg: str | Path | None) -> ConfigReference | None:
         if config_arg is None:
             if self.default_name is None:
                 return None
-            return self.resolve_reference(self.default_name) if self.first_existing_path(
-                self.candidate_paths(self.root / self.default_name)
-            ) is not None else None
+            return self._user_reference(self.default_name, missing_ok=True)
 
         path = Path(config_arg).expanduser()
-        # An explicit file path is authoritative (especially absolute model bundles).
-        if path.is_absolute():
+        # Absolute and lexical ./ or ../ mean exactly that file, never a
+        # managed name. Do not normalize away explicit markers before checking.
+        if path.is_absolute() or _explicit_relative(config_arg):
             found = self.first_existing_path(self.candidate_paths(path))
             if found is not None:
                 return ConfigReference(found, "explicit")
             raise self.missing_error(config_arg)
 
+        if not path.parts or ".." in path.parts:
+            raise ValueError(f"Invalid managed config name: {config_arg!r}")
+
         namespaces = BUILTIN_NAMESPACES.get(self.kind, ())
-        if path.parts and path.parts[0] in namespaces:
-            name = Path(*path.parts[1:])
-            if not name.parts:
+        if path.parts[0] in namespaces:
+            if len(path.parts) == 1:
                 raise self.missing_error(config_arg)
-            found = find_resource(self.kind, path.parts[0], name, suffixes=self.suffixes)
+            found = find_resource(self.kind, path.parts[0], Path(*path.parts[1:]), suffixes=self.suffixes)
             if found is not None:
                 return ConfigReference(found, "built-in", path.parts[0])
             raise self.missing_error(config_arg)
 
-        if path.parts and path.parts[0] == "local":
-            if ".." in path.parts or len(path.parts) == 1:
-                raise ValueError(f"Local config must be a name within {self.root / 'local'}")
-            found = self.first_existing_path(self.candidate_paths(self.root / path))
-            if found is not None:
-                return ConfigReference(found, "local", "local")
-            raise self.missing_error(config_arg)
+        return self._user_reference(path, missing_ok=False)
 
-        # Paths existing relative to the caller are explicit filenames, not a
-        # fallback to an unrelated config tree.
-        found = self.first_existing_path(self.candidate_paths(path))
+    def _user_reference(self, name: str | Path, *, missing_ok: bool) -> ConfigReference | None:
+        path = Path(name)
+        if ".." in path.parts or not path.parts:
+            raise ValueError(f"Invalid managed config name: {name!r}")
+        root = self.root.resolve()
+        candidates = self.candidate_paths(root / path)
+        for candidate in candidates:
+            # Containment is checked even for symlinks, not just lexical paths.
+            if not candidate.resolve().is_relative_to(root):
+                raise ValueError(f"Managed config escapes writable root {root}: {name!r}")
+        found = self.first_existing_path(candidates)
         if found is not None:
-            return ConfigReference(found, "explicit")
-
-        local = self.first_existing_path(self.candidate_paths(self.root / "local" / path))
-        builtins = [(namespace, item) for namespace in namespaces
-                    if (item := find_resource(self.kind, namespace, path, suffixes=self.suffixes)) is not None]
-        if local is not None and builtins:
-            raise ValueError(
-                f"Ambiguous {self.kind} config {config_arg!r}: both local and built-in. "
-                f"Use 'local/{path.as_posix()}' or an explicit package namespace."
-            )
-        if len(builtins) > 1:
-            names = ", ".join(n for n, _ in builtins)
-            raise ValueError(f"Ambiguous {self.kind} config {config_arg!r} in {names}; use a namespace.")
-        if local is not None:
-            return ConfigReference(local, "local", "local")
-        if builtins:
-            namespace, resource = builtins[0]
-            return ConfigReference(resource, "built-in", namespace)
-
-        # Root-relative legacy files can still be named explicitly while local
-        # inference/preprocess configs are migrated (M2 D). They are not built-ins.
-        legacy = self.first_existing_path(self.candidate_paths(self.root / path))
-        if legacy is not None:
-            return ConfigReference(legacy, "explicit")
-        raise self.missing_error(config_arg)
+            return ConfigReference(found, "local")
+        if missing_ok:
+            return None
+        raise self.missing_error(name)
 
     def resolve(self, config_arg: str | Path | None) -> ConfigLocation | None:
         ref = self.resolve_reference(config_arg)

@@ -40,7 +40,7 @@ def inference_config_dir(tmp_path: Path) -> Path:
 def inference_stg(inference_config_dir: Path):
     return SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="default",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
@@ -48,7 +48,7 @@ def inference_stg(inference_config_dir: Path):
 
 
 def _write_local_defaults(config_dir: Path, content: str) -> Path:
-    path = config_dir / "local" / "defaults.yml"
+    path = config_dir / "defaults.yml"
     _write(path, content)
     return path
 
@@ -96,13 +96,10 @@ def test_resolve_inference_config_path_defaults_to_local_defaults(inference_conf
     assert resolved == defaults_path.resolve()
 
 
-def test_named_lookup_prefers_local_config(inference_config_dir: Path, inference_stg):
-    local_path = inference_config_dir / "local" / "fast.yml"
-    tracked_path = inference_config_dir / "fast.yml"
-    _write(local_path, "apply:\n  inference:\n    tiling_size: 256\n")
-    save_yaml(_complete_apply_config(tiling_size=1024), tracked_path)
-
-    assert resolve_inference_config_path("fast", stg=inference_stg) == local_path.resolve()
+def test_named_lookup_is_flat_managed_config(inference_config_dir: Path, inference_stg):
+    managed = inference_config_dir / "fast.yml"
+    _write(managed, "apply:\n  inference:\n    tiling_size: 256\n")
+    assert resolve_inference_config_path("fast", stg=inference_stg) == managed.resolve()
 
 
 def test_local_named_config_inherits_local_defaults_then_cli(inference_config_dir: Path, inference_stg):
@@ -121,7 +118,7 @@ apply:
 """.strip() + "\n",
     )
     _write(
-        inference_config_dir / "local" / "fast_upsamp.yml",
+        inference_config_dir / "fast_upsamp.yml",
         """
 apply:
   inference:
@@ -151,12 +148,12 @@ def test_resolve_apply_config_returns_typed_nested_config(inference_config_dir: 
         "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
     )
     _write(
-        inference_config_dir / "examples" / "hdn_sup.yml",
+        inference_config_dir / "other" / "hdn_sup.yml",
         "apply:\n  inference:\n    lvae_num_samples: 10\n",
     )
 
     resolved = resolve_apply_config(
-        config="examples/hdn_sup",
+        config="other/hdn_sup",
         overrides=ApplyOverrides(
             inference=ApplyInferenceOverrides(tiling_size=512),
         ),
@@ -212,11 +209,11 @@ def test_named_nonlocal_config_inherits_local_defaults_without_being_overridden(
         "apply:\n  inference:\n    tiling_size: 256\n  postprocess:\n    denormalize: false\n",
     )
     _write(
-        inference_config_dir / "examples" / "portable.yml",
+        inference_config_dir / "other" / "portable.yml",
         "apply:\n  inference:\n    tiling_size: 1024\n",
     )
 
-    resolved = resolve_apply_config(config="examples/portable", stg=inference_stg)
+    resolved = resolve_apply_config(config="other/portable", stg=inference_stg)
 
     assert resolved.inference.tiling_size == 1024
     assert resolved.postprocess.denormalize is False
@@ -228,11 +225,11 @@ def test_named_nonlocal_config_can_be_sparse(inference_config_dir: Path, inferen
         "apply:\n  inference:\n    tiling_size: 256\n    lvae_num_samples: 30\n",
     )
     _write(
-        inference_config_dir / "examples" / "hdn_sup.yml",
+        inference_config_dir / "other" / "hdn_sup.yml",
         "apply:\n  inference:\n    lvae_num_samples: 10\n",
     )
 
-    resolved = resolve_apply_config(config="examples/hdn_sup", stg=inference_stg)
+    resolved = resolve_apply_config(config="other/hdn_sup", stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples == 10
     assert resolved.inference.tiling_size == 256
@@ -244,11 +241,11 @@ def test_named_config_explicit_null_overrides_local_default(inference_config_dir
         "apply:\n  inference:\n    lvae_num_samples: 30\n",
     )
     _write(
-        inference_config_dir / "examples" / "no_lvae_sampling.yml",
+        inference_config_dir / "other" / "no_lvae_sampling.yml",
         "apply:\n  inference:\n    lvae_num_samples: null\n",
     )
 
-    resolved = resolve_apply_config(config="examples/no_lvae_sampling", stg=inference_stg)
+    resolved = resolve_apply_config(config="other/no_lvae_sampling", stg=inference_stg)
 
     assert resolved.inference.lvae_num_samples is None
 
@@ -258,13 +255,13 @@ def test_named_nonlocal_evaluate_preserves_tiling_policy_and_cli_override(
  inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: auto\n")
     _write(
-        inference_config_dir / "examples" / "no_tiling.yml",
+        inference_config_dir / "other" / "no_tiling.yml",
         "evaluate:\n  inference:\n    tiling_size: off\n",
     )
 
-    resolved = resolve_evaluate_config(config="examples/no_tiling", stg=inference_stg)
+    resolved = resolve_evaluate_config(config="other/no_tiling", stg=inference_stg)
     forced = resolve_evaluate_config(
-        config="examples/no_tiling",
+        config="other/no_tiling",
         overrides=EvaluateOverrides(
             inference=EvaluateInferenceOverrides(tiling_size=512),
         ),
@@ -276,7 +273,7 @@ def test_named_nonlocal_evaluate_preserves_tiling_policy_and_cli_override(
 
 def test_resolve_evaluate_config_requires_requested_section_in_local_config(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  data:\n    split: test\n")
-    _write(inference_config_dir / "local" / "apply_only.yml", "apply:\n  inference:\n    tiling_size: 512\n")
+    _write(inference_config_dir / "apply_only.yml", "apply:\n  inference:\n    tiling_size: 512\n")
 
     with pytest.raises(ValueError, match="does not define a 'evaluate' section"):
         resolve_evaluate_config(config="apply_only", stg=inference_stg)
@@ -284,7 +281,7 @@ def test_resolve_evaluate_config_requires_requested_section_in_local_config(infe
 
 def test_inference_config_rejects_unknown_evaluate_keys(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  data:\n    split: test\n")
-    _write(inference_config_dir / "local" / "invalid.yml", "evaluate:\n  test_loader: bad\n")
+    _write(inference_config_dir / "invalid.yml", "evaluate:\n  test_loader: bad\n")
 
     with pytest.raises(Exception, match="test_loader"):
         resolve_evaluate_config(config="invalid", stg=inference_stg)
@@ -294,7 +291,7 @@ def test_resolve_apply_config_fills_local_config_saving_fallbacks(inference_conf
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="folder_outside",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
@@ -324,12 +321,12 @@ def test_resolve_apply_save_input_interprets_resolved_policy():
 def test_named_saving_override_overrides_local_config_policy(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
     _write(
-        inference_config_dir / "local" / "no_input.yml",
+        inference_config_dir / "no_input.yml",
         "apply:\n  saving:\n    save_input_mode: never\n",
     )
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="default",
         INFERENCE_SAVE_INPUT_MODE="always",
@@ -346,7 +343,7 @@ def test_typed_save_input_override_has_priority(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: auto\n")
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="in_place",
         INFERENCE_SAVE_INPUT_MODE="never",
@@ -368,7 +365,7 @@ def test_apply_saving_config_overrides_local_config_route(inference_config_dir: 
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="folder_outside",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
@@ -383,10 +380,10 @@ def test_apply_saving_config_overrides_local_config_route(inference_config_dir: 
 
 def test_named_local_saving_override_has_priority_over_local_defaults(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
-    _write(inference_config_dir / "local" / "special.yml", "apply:\n  saving:\n    mode: in_place\n")
+    _write(inference_config_dir / "special.yml", "apply:\n  saving:\n    mode: in_place\n")
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="folder_outside",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
@@ -403,18 +400,18 @@ def test_named_nonlocal_saving_override_has_priority_over_local_defaults(
 ):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_inside\n")
     _write(
-        inference_config_dir / "examples" / "portable.yml",
+        inference_config_dir / "other" / "portable.yml",
         "apply:\n  saving:\n    mode: folder_outside\n",
     )
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="in_place",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
     )
 
-    resolved = resolve_apply_config(config="examples/portable", stg=local)
+    resolved = resolve_apply_config(config="other/portable", stg=local)
     policy = defaults_mod.resolve_apply_output_policy(resolved)
 
     assert policy.mode == "folder_outside"
@@ -424,7 +421,7 @@ def test_typed_output_override_has_highest_priority(inference_config_dir: Path):
     _write_local_defaults(inference_config_dir, "apply:\n  saving:\n    mode: folder_outside\n")
     local = SimpleNamespace(
         INFERENCE_CONFIG_DIR=inference_config_dir,
-        INFERENCE_DEFAULT_CONFIG_NAME="local/defaults",
+        INFERENCE_DEFAULT_CONFIG_NAME="defaults",
         CONFIG_SUFFIXES=(".yml", ".yaml"),
         INFERENCE_OUTPUT_MODE="in_place",
         INFERENCE_SAVE_INPUT_MODE="if_not_in_place",
@@ -455,7 +452,7 @@ def test_builtin_post_training_preset_is_used_if_local_file_is_missing(inference
 def test_local_post_training_overrides_builtin_and_inherits_local_defaults(inference_config_dir: Path, inference_stg):
     _write_local_defaults(inference_config_dir, "evaluate:\n  inference:\n    tiling_size: 384\n")
     _write(
-        inference_config_dir / "local" / "post_training.yml",
+        inference_config_dir / "post_training.yml",
         "evaluate:\n  metrics:\n    - custom_metric\n",
     )
 
@@ -477,7 +474,7 @@ def test_promoted_model_config_layers_between_local_defaults_and_explicit_config
     model_config = inference_config_dir / "model_defaults.yml"
     _write(model_config, "apply:\n  inference:\n    lvae_num_samples: 10\n")
     _write(
-        inference_config_dir / "local" / "large_tiles.yml",
+        inference_config_dir / "large_tiles.yml",
         "apply:\n  inference:\n    tiling_size: 512\n",
     )
 

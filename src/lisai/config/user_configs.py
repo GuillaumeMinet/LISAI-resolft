@@ -12,13 +12,13 @@ from lisai.config.models.inference import ResolvedInferenceConfig
 from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
 from lisai.config.settings import Settings
 
-INFERENCE_DEFAULTS_HINT = "# yaml-language-server: $schema=../../schema/inference-defaults.schema.json"
-INFERENCE_OVERRIDES_HINT = "# yaml-language-server: $schema=../../schema/inference.schema.json"
+INFERENCE_DEFAULTS_HINT = "# yaml-language-server: $schema=../schema/inference-defaults.schema.json"
+INFERENCE_OVERRIDES_HINT = "# yaml-language-server: $schema=../schema/inference.schema.json"
 
 
 def seed_inference_local_configs(config_root: str | Path) -> list[Path]:
-    """Create *missing* user-editable inference files, never overwrite existing ones."""
-    root = Path(config_root).expanduser().resolve() / "inference" / "local"
+    """Create *missing* flat user-editable inference files, never overwrite existing ones."""
+    root = Path(config_root).expanduser().resolve() / "inference"
     candidates = (
         (root / "defaults.yml", ResolvedInferenceConfig().model_dump(mode="json"), INFERENCE_DEFAULTS_HINT),
         (root / "post_training.yml", POST_TRAINING_OVERRIDES, INFERENCE_OVERRIDES_HINT),

@@ -24,7 +24,7 @@ def resolve_config_path(config_arg: str, *, resolver: ConfigPathResolver) -> Pat
         raise ValueError(
             "Preprocess templates cannot be run directly. Create an editable config "
             f"with `lisai configs new preprocess {Path(config_arg).stem} --dataset YOUR_DATASET` "
-            "and then run `lisai preprocess local/YOUR_DATASET`."
+            "and then run `lisai preprocess YOUR_DATASET`."
         )
     return Path(reference.location)
 

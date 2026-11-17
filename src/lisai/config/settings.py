@@ -345,7 +345,7 @@ class Settings:
 
     @property
     def INFERENCE_DEFAULT_CONFIG_NAME(self):
-        return "local/defaults"
+        return "defaults"
     
     @property
     def PREPROCESS_CONFIG_DIR(self):

@@ -829,11 +829,9 @@ def _is_path_within(path: Path, root: Path) -> bool:
 
 
 def _resolve_sweep_base_config(base_config: str, *, sweep_path: Path, paths: Paths) -> Path:
-    candidate = Path(base_config).expanduser()
-    if not candidate.is_absolute():
-        candidate_from_sweep = (sweep_path.parent / candidate).resolve()
-        if candidate_from_sweep.exists():
-            return _resolve_training_reference(str(candidate_from_sweep), paths=paths)
+    # Apply the same user-config resolution as `lisai train`: bare/nested names
+    # are managed under R/training; only explicit ./, ../ and absolute paths
+    # denote files. Do not search the sweep file's directory first.
     return _resolve_training_reference(base_config, paths=paths)
 
 

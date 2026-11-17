@@ -10,14 +10,13 @@ from pathlib import Path
 
 import yaml
 
-from lisai.config.io.config_paths import ConfigPathResolver
+from lisai.config.io.config_paths import ConfigPathResolver, managed_output_path
+from lisai.config.io.schema_hints import schema_header
 from lisai.config.io.yaml import load_yaml
 from lisai.config.settings import Settings
 
 from .core.config import PreprocessConfig
 from .pipelines import PIPELINES_REGISTRY
-
-SCHEMA_HINT = "# yaml-language-server: $schema=../../schema/preprocess.schema.json"
 
 
 def create_preprocess_config_from_template(
@@ -28,7 +27,7 @@ def create_preprocess_config_from_template(
     overwrite: bool = False,
     stg: Settings,
 ) -> tuple[Path, list[str]]:
-    """Copy a generic package template to ``preprocess/local``; never edit source.
+    """Copy a generic package template to the flat writable preprocess root.
 
     A missing dataset_name leaves a conspicuous placeholder, which cannot be run
     until replaced. If a name is supplied, validate the resulting config against
@@ -63,42 +62,14 @@ def create_preprocess_config_from_template(
     if output is None and (not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", filename)
                            or filename in {".", ".."}):
         raise ValueError("Invalid dataset name for default output filename; pass --output")
-    target = (Path(output).expanduser() if output is not None else
-              stg.PREPROCESS_CONFIG_DIR / "local" / f"{filename}.yml")
+    target = managed_output_path(output if output is not None else f"{filename}.yml",
+                                 root=stg.PREPROCESS_CONFIG_DIR, kind="preprocess")
     if target.exists() and not overwrite:
         raise FileExistsError(f"Preprocess config already exists: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
-    # The relative editor hint is for the canonical local/ output, not an
-    # arbitrary destination whose directory depth may differ.
-    header = SCHEMA_HINT + "\n" if target.parent.resolve() == (
-        stg.PREPROCESS_CONFIG_DIR / "local").resolve() else ""
+    hint = schema_header(target, stg.CONFIGS_ROOT / "schema", "preprocess.schema.json")
+    header = hint + "\n" if hint else ""
     target.write_text(header + yaml.safe_dump(body, sort_keys=False), encoding="utf-8")
     if not (stg.CONFIGS_ROOT / "schema" / "preprocess.schema.json").is_file():
         warnings.append("Editor schemas missing; run `lisai configs schema refresh`.")
     return target, warnings
-
-
-def copy_legacy_preprocess_configs(*, stg: Settings) -> tuple[list[Path], list[Path]]:
-    """Explicit, non-destructive import of old root-level preprocess YAMLs.
-
-    Preserve the original byte-for-byte. Never overwrite a local user's file.
-    This is not called on settings load or ordinary preprocessing.
-    """
-    root = stg.PREPROCESS_CONFIG_DIR
-    local = root / "local"
-    copied: list[Path] = []
-    skipped: list[Path] = []
-    for source in sorted((*root.glob("*.yml"), *root.glob("*.yaml"))):
-        if not source.is_file():
-            continue
-        target = local / source.name
-        if target.exists():
-            skipped.append(target)
-            continue
-        lines = [line for line in source.read_text(encoding="utf-8").splitlines()
-                 if not line.lstrip().startswith("# yaml-language-server: $schema=")]
-        local.mkdir(parents=True, exist_ok=True)
-        with target.open("x", encoding="utf-8") as handle:
-            handle.write(SCHEMA_HINT + "\n" + "\n".join(lines) + "\n")
-        copied.append(target)
-    return copied, skipped

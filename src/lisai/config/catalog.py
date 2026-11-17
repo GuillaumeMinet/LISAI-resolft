@@ -8,7 +8,8 @@ from typing import Any, Literal, Mapping
 import yaml
 
 from lisai.config.io.metadata import split_config_metadata, strip_config_metadata
-from lisai.config.io.config_paths import ConfigLocation, ConfigPathResolver
+from lisai.config.io.config_paths import ConfigLocation, ConfigPathResolver, managed_output_path
+from lisai.config.io.schema_hints import schema_header
 from lisai.config.io.resources import iter_resource_files
 from lisai.config.io.yaml import load_yaml
 from lisai.config.models import ContinueTrainingConfig, ExperimentConfig, RetrainConfig
@@ -29,14 +30,10 @@ KIND_TO_FOLDER: dict[TrainingConfigKind, str] = {
     "preset": "presets",
     "template": "templates",
     "example": "examples",
-    "local": "local",
+    "local": "",  # user-owned files are directly beneath R/training
 }
-FOLDER_TO_KIND = {folder: kind for kind, folder in KIND_TO_FOLDER.items()}
 
 PLACEHOLDER_RE = re.compile(r"^(?:<[A-Za-z_][A-Za-z0-9_.-]*>|\$\{[A-Za-z_][A-Za-z0-9_.-]*\})$")
-TRAINING_SUFFIXES = (".yml", ".yaml")
-EXPERIMENT_SCHEMA_LINE = "# yaml-language-server: $schema=../../schema/experiment.schema.json"
-TEMPLATE_SCHEMA_LINE = "# yaml-language-server: $schema=../../schema/experiment-template.schema.json"
 
 SECTION_HEADERS: dict[str, str] = {
     "metadata": "Catalog metadata",
@@ -99,18 +96,18 @@ def resolve_training_template_path(template_ref: str | Path, *, stg: Settings) -
 
 
 def discover_training_configs(
-    *, kind: TrainingConfigKind | None = None, task: str | None = None, stg: Settings,
+    *, kind: TrainingConfigKind | None = None, task: str | None = None, stg: Settings | None = None,
 ) -> list[TrainingConfigEntry]:
-    root = training_config_root(stg=stg)
+    if stg is None and (kind is None or kind == "local"):
+        raise ValueError("Listing user/combined training configs requires a selected workspace (LISAI_HOME).")
     kinds = [kind] if kind is not None else list(KIND_TO_FOLDER)
     entries: list[TrainingConfigEntry] = []
 
     for current_kind in kinds:
         namespace = KIND_TO_FOLDER[current_kind]
         if current_kind == "local":
-            folder = root / "local"
-            sources = ((f"local/{p.relative_to(folder).as_posix()}", p, "local")
-                       for p in sorted(_iter_yaml_files(folder)) if p.is_file()) if folder.is_dir() else ()
+            sources = ((name, path, "local") for name, path in
+                       ConfigPathResolver("training", stg=stg).user_config_paths())
         else:
             sources = ((f"{namespace}/{name}", resource, "built-in")
                        for name, resource in iter_resource_files("training", namespace))
@@ -264,7 +261,7 @@ def create_training_config_from_preset(
         raise FileExistsError(f"Config already exists: {output_path}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_training_config_yaml(cfg, output_path)
+    save_training_config_yaml(cfg, output_path, schema_root=stg.CONFIGS_ROOT / "schema")
     return output_path, warnings
 
 
@@ -323,24 +320,21 @@ def create_training_config_from_template(
         raise FileExistsError(f"Config already exists: {output_path}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_training_config_yaml(cfg, output_path)
+    save_training_config_yaml(cfg, output_path, schema_root=stg.CONFIGS_ROOT / "schema")
     return output_path, warnings
 
 
-def save_training_config_yaml(cfg: dict[str, Any], path: str | Path) -> None:
+def save_training_config_yaml(
+    cfg: dict[str, Any], path: str | Path, *, schema_root: Path | None = None,
+) -> None:
     path = Path(path)
     metadata = cfg.get("metadata")
     is_template = isinstance(metadata, dict) and metadata.get("kind") == "template"
-    schema_line = TEMPLATE_SCHEMA_LINE if is_template else EXPERIMENT_SCHEMA_LINE
+    schema_name = "experiment-template.schema.json" if is_template else "experiment.schema.json"
+    schema_line = schema_header(path, schema_root, schema_name) if schema_root is not None else ""
     yaml_text = yaml.dump(cfg, Dumper=_IndentedSafeDumper, sort_keys=False)
     text = _with_section_comments(yaml_text, schema_line=schema_line)
     path.write_text(text, encoding="utf-8")
-
-
-def _candidate_paths(path: Path) -> tuple[Path, ...]:
-    if path.suffix:
-        return (path,)
-    return (path,) + tuple(path.with_suffix(suffix) for suffix in TRAINING_SUFFIXES)
 
 
 def _resolve_catalog_member_path(
@@ -352,7 +346,7 @@ def _resolve_catalog_member_path(
         resolved = ConfigPathResolver("training", stg=stg).resolve(ref)
         assert resolved is not None
         return resolved
-    if ref.parts and ref.parts[0] in {"local", "presets", "templates", "examples"} and ref.parts[0] != namespace:
+    if ref.parts and ref.parts[0] in {"presets", "templates", "examples"} and ref.parts[0] != namespace:
         raise ValueError(f"Expected a {namespace}/ reference, got {config_ref}")
     source = ConfigPathResolver("training", stg=stg).resolve_reference(
         ref if ref.parts[0] == namespace else Path(namespace) / ref
@@ -360,11 +354,6 @@ def _resolve_catalog_member_path(
     if source is None or source.ownership != "built-in" or source.namespace != namespace:
         raise ValueError(f"{kind.title()} must resolve from packaged {namespace}/ resources")
     return source.location
-
-
-def _iter_yaml_files(root: Path):
-    for suffix in TRAINING_SUFFIXES:
-        yield from root.rglob(f"*{suffix}")
 
 
 def _entry_from_source(
@@ -381,7 +370,7 @@ def _entry_from_source(
         name = str(metadata.get("name") or name)
         task = metadata.get("task") or _infer_task_name(body)
         description = metadata.get("description")
-        kind = metadata.get("kind") or fallback_kind
+        kind = fallback_kind if ownership == "local" else (metadata.get("kind") or fallback_kind)
         if kind not in KIND_TO_FOLDER:
             kind = fallback_kind
     except Exception as exc:
@@ -653,32 +642,18 @@ def _dset(d: dict[str, Any], path: str, value: Any) -> None:
 
 
 def _resolve_output_path(*, output: str | Path | None, exp_name: str, stg: Settings) -> Path:
-    root = training_config_root(stg=stg)
-    if output is None:
-        path = root / "local" / exp_name
-    else:
-        path = Path(output).expanduser()
-        if not path.is_absolute():
-            if not path.parts:
-                path = root / "local" / exp_name
-            elif path.parts[0] in FOLDER_TO_KIND:
-                path = root / path
-            elif len(path.parts) == 1:
-                path = root / "local" / path
-
-    if not path.suffix:
-        path = path.with_suffix(".yml")
-    return path.resolve()
+    return managed_output_path(output if output is not None else exp_name,
+                               root=training_config_root(stg=stg), kind="training")
 
 
 def _with_section_comments(yaml_text: str, *, schema_line: str) -> str:
-    out: list[str] = [schema_line]
+    out: list[str] = [schema_line] if schema_line else []
     for line in yaml_text.splitlines():
         if line and not line.startswith((" ", "-")):
             section = line.split(":", 1)[0]
             title = SECTION_HEADERS.get(section)
             if title:
-                if out[-1] != "":
+                if out and out[-1] != "":
                     out.append("")
                 out.extend(_section_comment(title))
         out.append(line)

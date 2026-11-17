@@ -49,7 +49,7 @@ def _validate_globals(workspace: Path) -> None:
 
 def _scaffold_root(config_root: Path, *, workspace: Path) -> list[Path]:
     created = []
-    for relative in ("training/local", "preprocess/local", "inference/local", "schema"):
+    for relative in ("training", "preprocess", "inference", "schema"):
         folder = config_root / relative
         if not folder.exists():
             folder.mkdir(parents=True)
@@ -133,9 +133,9 @@ def update_workspace(workspace: str | Path, *, config_root: str | Path | None = 
         from lisai.config.models.inference.presets import POST_TRAINING_OVERRIDES
         from lisai.config.user_configs import INFERENCE_DEFAULTS_HINT, INFERENCE_OVERRIDES_HINT
         editable = Path(config_root).expanduser().resolve() if config_root else root / "configs"
-        replacements[editable / "inference/local/defaults.yml"] = (
+        replacements[editable / "inference/defaults.yml"] = (
             INFERENCE_DEFAULTS_HINT + "\n" + _yaml_text(ResolvedInferenceConfig().model_dump(mode="json")))
-        replacements[editable / "inference/local/post_training.yml"] = (
+        replacements[editable / "inference/post_training.yml"] = (
             INFERENCE_OVERRIDES_HINT + "\n" + _yaml_text(POST_TRAINING_OVERRIDES))
     # Write backups before replacing any file. Missing generated files are added.
     backups = []

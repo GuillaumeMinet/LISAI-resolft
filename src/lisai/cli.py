@@ -75,6 +75,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (OSError, ValueError) as exc:
             print(f"LISAI settings: {exc}", file=sys.stderr)
             return 2
+    # Explicit package-only config operations are independent of the workspace.
+    # Mixed/user catalogs still go through normal selection, never an
+    # unexpectedly incomplete built-in-only fallback.
+    if args.command == "configs":
+        from lisai.config.cli import _is_builtin_training_name
+        if (args.configs_command == "list" and
+                getattr(args, "kind", None) in {"preset", "template", "example"}):
+            return args.handler(args)
+        if (args.configs_command in {"info", "validate"} and
+                _is_builtin_training_name(args.config)):
+            return args.handler(args)
     # Catalog listing is independent of local configuration, even if it is absent.
     if (args.command == "models" and getattr(args, "models_command", None) == "catalog"
             or args.command == "datasets" and getattr(args, "datasets_command", None) == "catalog"):

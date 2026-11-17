@@ -28,13 +28,13 @@ def test_workspace_explicit_init_is_idempotent_and_preserves_assets(tmp_path):
     assert root / "configs/workspace.yml" in created
     assert (root / "configs/data.yml").exists()
     assert (root / ".lisai/queue").is_dir()
-    assert (root / "configs/inference/local/defaults.yml").is_file()
-    assert (root / "configs/inference/local/post_training.yml").is_file()
+    assert (root / "configs/inference/defaults.yml").is_file()
+    assert (root / "configs/inference/post_training.yml").is_file()
     assert (root / "configs/schema/experiment.schema.json").is_file()
     cfg = Settings.from_workspace(root)
     assert cfg.DEFAULTS_REVISION == 1
     assert cfg.WORKSPACE_ROOT == root
-    defaults = root / "configs/inference/local/defaults.yml"
+    defaults = root / "configs/inference/defaults.yml"
     defaults.write_text("custom: true\n")
     assert initialize_workspace(root) == []
     assert defaults.read_text() == "custom: true\n"
@@ -52,7 +52,7 @@ def test_developer_init_uses_repo_scaffold_not_workspace(tmp_path):
     created = initialize_developer(source, root)
     assert source / "configs/local.yml" in created
     assert load_yaml(source / "configs/local.yml")["dev"]["enabled"] is True
-    assert (source / "configs/inference/local/defaults.yml").exists()
+    assert (source / "configs/inference/defaults.yml").exists()
     assert (source / "configs/schema/preprocess.schema.json").exists()
     assert not (root / "configs/training").exists()
     assert initialize_developer(source, root) == []
@@ -68,7 +68,7 @@ def test_update_backs_up_both_yaml_and_preserves_user_configs(tmp_path):
     data_cfg = root / "configs/data.yml"
     before_global = global_cfg.read_bytes()
     before_data = data_cfg.read_bytes()
-    local = root / "configs/training/local/experiment.yml"
+    local = root / "configs/training/experiment.yml"
     local.write_text("experiment: my-own-values\n")
     weights = root / "models/my-model/weights.pth"
     weights.parent.mkdir(parents=True)
@@ -91,10 +91,10 @@ def test_update_local_inference_opt_in_and_backup(tmp_path):
     root = tmp_path / "workspace"
     external = tmp_path / "external"
     initialize_workspace(root)
-    custom = external / "inference/local/defaults.yml"
+    custom = external / "inference/defaults.yml"
     custom.parent.mkdir(parents=True)
     custom.write_text("my: previous defaults\n")
-    post = external / "inference/local/post_training.yml"
+    post = external / "inference/post_training.yml"
     post.write_text("user: previous override\n")
     update_workspace(root, config_root=external)
     assert custom.read_text() == "my: previous defaults\n"
@@ -198,7 +198,7 @@ def test_cli_dev_init_core_only_and_explicit_activation(tmp_path, monkeypatch, c
     assert (root / "configs/workspace.yml").is_file()
     assert not (root / "configs/training").exists()
     assert (source / "configs/local.yml").is_file()
-    assert (source / "configs/training/local").is_dir()
+    assert (source / "configs/training").is_dir()
     monkeypatch.setattr("builtins.input", lambda *_: str(root))
     assert main(["dev", "init", "--yes"]) == 0
     assert main(["settings", "show"]) == 0

@@ -26,7 +26,7 @@ def _build_tree(stg: Settings, label: str) -> None:
     root = stg.TRAINING_CONFIG_DIR
     (root / "local").mkdir(parents=True)
     (stg.PREPROCESS_CONFIG_DIR).mkdir(parents=True)
-    (stg.INFERENCE_CONFIG_DIR / "local").mkdir(parents=True)
+    stg.INFERENCE_CONFIG_DIR.mkdir(parents=True)
 
     save_yaml({"metadata": {"kind": "example", "name": label},
                "experiment": {"mode": "train", "exp_name": label},
@@ -37,9 +37,9 @@ def _build_tree(stg: Settings, label: str) -> None:
                "fmt": "single", "pipeline_cfg": {}},
               stg.PREPROCESS_CONFIG_DIR / "common.yml")
     save_yaml({"apply": {"inference": {"tiling_size": 256 if label == "A" else 512}}},
-              stg.INFERENCE_CONFIG_DIR / "local" / "defaults.yml")
+              stg.INFERENCE_CONFIG_DIR / "defaults.yml")
     save_yaml({"apply": {"inference": {"crop_size": 64 if label == "A" else 96}}},
-              stg.INFERENCE_CONFIG_DIR / "local" / "common.yml")
+              stg.INFERENCE_CONFIG_DIR / "common.yml")
 
     path = Paths(stg).dataset_registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +61,7 @@ def test_operation_scoped_config_paths_and_registries(settings_factory, tmp_path
         inf_resolver = ConfigPathResolver("inference", stg=stg)
         assert train_resolver.resolve("local/common").is_relative_to(stg.CONFIGS_ROOT)
         assert prep_resolver.resolve("common").is_relative_to(stg.CONFIGS_ROOT)
-        assert inf_resolver.resolve("common") == (stg.INFERENCE_CONFIG_DIR / "local" / "common.yml").resolve()
+        assert inf_resolver.resolve("common") == (stg.INFERENCE_CONFIG_DIR / "common.yml").resolve()
         with pytest.raises(ValueError, match="must be instantiated"):
             training_cli.resolve_config_path("presets/denoising_hdn_unsup", resolver=train_resolver)
 
@@ -88,11 +88,11 @@ def test_operation_scoped_config_paths_and_registries(settings_factory, tmp_path
             "denoising_hdn_unsup", exp_name=f"made_{label}", dataset_name=label,
             stg=stg, overwrite=True,
         )
-        assert out == (stg.TRAINING_CONFIG_DIR / "local" / f"made_{label}.yml").resolve()
+        assert out == (stg.TRAINING_CONFIG_DIR / f"made_{label}.yml").resolve()
         assert out.is_file()
 
-    assert not (a.TRAINING_CONFIG_DIR / "local" / "made_B.yml").exists()
-    assert not (b.TRAINING_CONFIG_DIR / "local" / "made_A.yml").exists()
+    assert not (a.TRAINING_CONFIG_DIR / "made_B.yml").exists()
+    assert not (b.TRAINING_CONFIG_DIR / "made_A.yml").exists()
 
 
 def test_training_and_preprocess_command_resolve_one_selected_context(settings_factory, monkeypatch):

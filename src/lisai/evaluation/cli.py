@@ -191,8 +191,8 @@ def _add_config_argument(parser: argparse.ArgumentParser) -> argparse._ArgumentG
         "--config",
         help=(
             "Inference config path, or a config name from configs/inference with or without "
-            ".yml/.yaml. Local configs are looked up first. Defaults to local/defaults.yml; "
-            "named configs may be sparse and inherit unspecified values from local/defaults.yml. "
+            ".yml/.yaml. User names resolve in the selected inference directory. Defaults to defaults.yml; "
+            "named configs may be sparse and inherit unspecified values from defaults.yml. "
             "With --model, the model's stored inference config is layered in before this config."
         ),
     )
@@ -478,7 +478,7 @@ def _apply_description() -> str:
     return (
         "Apply a trained model to raw data (noisy or subsampled)."
         "\n\nINFERENCE PARAMETERS: by default, apply uses the local default inference config "
-        "configs/inference/local/defaults.yml. "
+        "configs/inference/defaults.yml. "
         "Common worfklow parameters such as 'lvae-num-samples' or 'tiling-size' are overridable " 
         "with CLI argument. For more advanced or model-specific inference settings, custom inference "
         "configurations can be passed by as CLI argument (--config)."
@@ -496,7 +496,7 @@ def _evaluate_description() -> str:
     return (
         "Evaluate a trained model on its dataset split or a registered evaluation dataset.\n\n"
         "\n\nEVALUATION PARAMETERS: by default, evaluate uses the local default inference config "
-        "configs/inference/local/defaults.yml. "
+        "configs/inference/defaults.yml. "
         "Common worfklow parameters such as 'lvae-num-samples' or 'tiling-size' are overridable " 
         "with CLI argument. For more advanced or model-specific inference settings, custom inference "
         "configurations can be passed by as CLI argument (--config)."

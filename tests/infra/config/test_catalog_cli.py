@@ -99,7 +99,9 @@ def test_configs_new_hdn_preset_patches_dataset_and_keeps_task_name(tmp_path: Pa
     cfg = load_yaml(output)
     text = output.read_text(encoding="utf-8")
     assert exit_code == 0
-    assert text.startswith("# yaml-language-server: $schema=../../schema/experiment.schema.json")
+    assert text.startswith("# yaml-language-server: $schema=")
+    header = text.splitlines()[0].split("$schema=", 1)[1]
+    assert (output.parent / header).resolve().name == "experiment.schema.json"
     assert "# General experiment settings" in text
     assert "# Dataset / DataLoader configuration" in text
     assert "metadata" not in cfg
@@ -178,7 +180,9 @@ def test_configs_new_custom_starts_from_base_template(tmp_path: Path):
     cfg = load_yaml(output)
     text = output.read_text(encoding="utf-8")
     assert exit_code == 0
-    assert text.startswith("# yaml-language-server: $schema=../../schema/experiment.schema.json")
+    assert text.startswith("# yaml-language-server: $schema=")
+    header = text.splitlines()[0].split("$schema=", 1)[1]
+    assert (output.parent / header).resolve().name == "experiment.schema.json"
     assert "metadata" not in cfg
     assert cfg["experiment"]["exp_name"] == "scratch"
     assert cfg["experiment"]["task"]["name"] == "custom"

@@ -42,39 +42,38 @@ def test_workspaces_share_package_but_not_editable_configs(settings_factory, tmp
     a = Settings.from_workspace(settings_factory("A").WORKSPACE_ROOT)
     b = Settings.from_workspace(settings_factory("B").WORKSPACE_ROOT)
     for stg, name in ((a, "A"), (b, "B")):
-        folder = stg.TRAINING_CONFIG_DIR / "local"
+        folder = stg.TRAINING_CONFIG_DIR
         folder.mkdir(parents=True)
         save_yaml({"metadata": {"kind": "local", "name": name},
                    "experiment": {"mode": "train", "exp_name": name},
                    "data": {"dataset_name": name}}, folder / "same.yml")
     for stg, name in ((a, "A"), (b, "B"), (a, "A")):
         resolver = ConfigPathResolver("training", stg=stg)
-        assert load_yaml(resolver.resolve("local/same"))["data"]["dataset_name"] == name
-        assert resolver.resolve_reference("local/same").ownership == "local"
+        assert load_yaml(resolver.resolve("same"))["data"]["dataset_name"] == name
+        assert resolver.resolve_reference("same").ownership == "local"
         assert resolver.resolve_reference("presets/denoising_hdn_sup").ownership == "built-in"
         assert not (stg.TRAINING_CONFIG_DIR / "presets").exists()
         output, _ = create_training_config_from_preset(
             "denoising_hdn_unsup", exp_name=f"new_{name}", dataset_name="CHANGEME", stg=stg, overwrite=True,
         )
-        assert output == stg.TRAINING_CONFIG_DIR / "local" / f"new_{name}.yml"
+        assert output == stg.TRAINING_CONFIG_DIR / f"new_{name}.yml"
         assert output.is_file()
-    assert not (a.TRAINING_CONFIG_DIR / "local" / "new_B.yml").exists()
+    assert not (a.TRAINING_CONFIG_DIR / "new_B.yml").exists()
 
 
-def test_namespace_and_ambiguous_shorthand_are_explicit(settings_factory):
+def test_namespace_and_flat_shorthand_are_explicit(settings_factory):
     stg = settings_factory("collisions")
-    infer = stg.INFERENCE_CONFIG_DIR / "local"
+    infer = stg.INFERENCE_CONFIG_DIR
     infer.mkdir(parents=True)
     local = infer / "hdn_sup.yaml"
     local.write_text("apply:\n  inference:\n    lvae_num_samples: 4\n", encoding="utf-8")
     resolver = ConfigPathResolver("inference", stg=stg)
-    with pytest.raises(ValueError, match="Ambiguous"):
-        resolver.resolve("hdn_sup")
-    assert resolver.resolve("local/hdn_sup") == local.resolve()
+    assert resolver.resolve("hdn_sup") == local.resolve()
+    assert resolver.resolve_reference("hdn_sup").ownership == "local"
     built = resolver.resolve("presets/hdn_sup")
     assert load_yaml(built)["apply"]["inference"]["lvae_num_samples"] == 10
     assert resolver.resolve(local.resolve()) == local.resolve()
-    with pytest.raises(ValueError, match="Local config"):
+    with pytest.raises(ValueError, match="Invalid managed config name"):
         resolver.resolve("local/../presets/hdn_sup")
 
 
@@ -85,7 +84,7 @@ def test_inference_package_preset_and_model_bundle_source(settings_factory):
     assert load_inference_config("presets/hdn_sup", stg=stg)[0].apply is not None
     assert resolve_apply_config(config="presets/hdn_sup", stg=stg).inference.lvae_num_samples == 10
     with pytest.raises(ValueError, match="does not define an 'apply'"):
-        absent_apply = stg.INFERENCE_CONFIG_DIR / "local" / "not_apply.yml"
+        absent_apply = stg.INFERENCE_CONFIG_DIR / "not_apply.yml"
         absent_apply.parent.mkdir(parents=True, exist_ok=True)
         save_yaml({"evaluate": {"metrics": ["psnr"]}}, absent_apply)
         resolve_promoted_inference_config_source(absent_apply, stg=stg)
@@ -115,7 +114,7 @@ def test_config_cli_labels_resource_ownership(settings_factory, capsys):
     assert configs_cli.main(["validate", "presets/denoising_hdn_sup"], settings=stg) == 0
     assert "(built-in)" in capsys.readouterr().out
     assert configs_cli.main(["new", "denoising_hdn_unsup", "--name", "demo", "--dataset", "CHANGEME"], settings=stg) == 0
-    assert (stg.TRAINING_CONFIG_DIR / "local" / "demo.yml").is_file()
+    assert (stg.TRAINING_CONFIG_DIR / "demo.yml").is_file()
     assert "Created training config" in capsys.readouterr().out
 
 
