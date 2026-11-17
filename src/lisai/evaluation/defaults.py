@@ -4,7 +4,7 @@ import warnings
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 from typing import Any, Literal, Mapping
 
 from lisai.config import load_yaml

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 
 from lisai.evaluation.saved_run import SavedTrainingRun
 from lisai.infra.paths import Paths

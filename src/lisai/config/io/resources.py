@@ -7,7 +7,7 @@ while zip importers can expose virtual files. Only materialize within a managed
 from __future__ import annotations
 
 from importlib import resources
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 from pathlib import Path
 from typing import Iterator
 

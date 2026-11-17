@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 
 from lisai.config import load_yaml
 from lisai.config.io.config_paths import ConfigPathResolver

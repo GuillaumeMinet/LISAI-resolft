@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 
 from lisai.config.io.yaml import load_yaml
 from lisai.config.io.metadata import split_config_metadata

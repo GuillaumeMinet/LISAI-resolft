@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 

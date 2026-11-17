@@ -1,5 +1,5 @@
 from pathlib import Path
-from importlib.resources.abc import Traversable
+from lisai._compat import Traversable
 
 import yaml
 
