@@ -115,7 +115,8 @@ def test_worker_preserves_config_identity_when_worker_and_job_settings_differ(se
     cfg = tmp_path / "config_snapshot.yml"
     cfg.write_text("experiment: {}\n", encoding="utf-8")
     record = create_queued_job(
-        config_path=cfg, config_root=b.settings.CONFIGS_ROOT, resource_class="light",
+        config_path=cfg, workspace_root=b.workspace_root(),
+        config_root=b.settings.CONFIGS_ROOT, resource_class="light",
         device="cpu", queue_root=root,
     )
     assert read_job(record.path).config_root == str(b.settings.CONFIGS_ROOT)
@@ -134,7 +135,8 @@ def test_worker_preserves_config_identity_when_worker_and_job_settings_differ(se
     worker = QueueWorker(paths=a, queue_root=root, stdout=io.StringIO(), stderr=io.StringIO())
     assert worker._launch_job(record)
     cmd = captured["args"]
-    assert cmd[cmd.index("--settings-config-dir") + 1] == str(b.settings.CONFIGS_ROOT)
+    assert cmd[cmd.index("--workspace") + 1] == str(b.workspace_root())
+    assert cmd[cmd.index("--config-root") + 1] == str(b.settings.CONFIGS_ROOT)
     assert cmd[cmd.index("--config") + 1] == str(cfg)
     # Worker uses its explicitly selected queue directory as a neutral cwd.
     assert captured["cwd"] == str(root.resolve())
@@ -152,7 +154,8 @@ def test_training_child_reconstructs_submitted_context(settings_factory, monkeyp
     monkeypatch.setattr(api, "train", lambda config, *, settings: seen.append((Path(config), settings.CONFIGS_ROOT)))
     for chosen in (a, b, a):
         exit_code = training_entrypoint.main([
-            "--config", str(cfg), "--settings-config-dir", str(chosen.settings.CONFIGS_ROOT),
+            "--config", str(cfg), "--workspace", str(chosen.workspace_root()),
+            "--config-root", str(chosen.settings.CONFIGS_ROOT),
         ])
         assert exit_code == 0
     assert seen == [(cfg, p.settings.CONFIGS_ROOT) for p in (a, b, a)]

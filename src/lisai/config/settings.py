@@ -196,6 +196,7 @@ class Settings:
         self.CONFIGS_ROOT = Path(configs_root).expanduser().resolve()
         self.PROJECT_ROOT = self.CONFIGS_ROOT.parent  # legacy loader compatibility only
         self._local_yaml_path = self.CONFIGS_ROOT / "local_config.yml"
+        self._explicit_local_config_path = None  # legacy loader is not a developer selector
         self._project_yaml_path = self.CONFIGS_ROOT / "project_config.yml"
         self._data_yaml_path = self.CONFIGS_ROOT / "data_config.yml"
         legacy = LegacyLocalConfig.model_validate(self._load_required(self._local_yaml_path))
@@ -215,6 +216,11 @@ class Settings:
         """Explicit read-only adapter for old three-file configuration trees."""
         return cls(configs_root)
 
+    @property
+    def local_preferences_path(self) -> Path | None:
+        """Explicitly supplied developer preferences (never discovered from config root)."""
+        return self._explicit_local_config_path
+
     @classmethod
     def from_workspace(
         cls, workspace: str | Path, *,
@@ -233,9 +239,10 @@ class Settings:
         instance.CONFIGS_ROOT = Path(config_root).expanduser().resolve() if config_root is not None else owned
         instance._project_yaml_path = owned / "workspace.yml"
         instance._data_yaml_path = owned / "data.yml"
-        instance._local_yaml_path = None
-        if local_config is not None:
-            instance._local_yaml_path = Path(local_config).expanduser().resolve()
+        instance._explicit_local_config_path = (
+            Path(local_config).expanduser().resolve() if local_config is not None else None
+        )
+        instance._local_yaml_path = instance._explicit_local_config_path
 
         source = instance._load_required(instance._project_yaml_path)
         workspace_file = WorkspaceFileConfig.model_validate(source)

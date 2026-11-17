@@ -35,6 +35,7 @@ class QueueJob(BaseModel):
     # experiment YAML root, not the workspace containing global settings.
     workspace_root: str | None = None
     config_root: str | None = None
+    local_preferences_path: str | None = None
     status: JobStatus
     priority: JobPriority = "normal"
     device: str
@@ -88,7 +89,7 @@ class QueueJob(BaseModel):
             raise ValueError("selector index must be >= 1.")
         return format_queue_selector(number)
 
-    @field_validator("source_config", "workspace_root", "config_root", "dataset", "model_subfolder", "run_name", "log_path", "error")
+    @field_validator("source_config", "workspace_root", "config_root", "local_preferences_path", "dataset", "model_subfolder", "run_name", "log_path", "error")
     @classmethod
     def _validate_optional_text_fields(cls, value: str | None) -> str | None:
         if value is None:
@@ -129,6 +130,12 @@ class QueueJob(BaseModel):
             from pathlib import Path
             if not Path(self.workspace_root).is_absolute() or not Path(self.config_root).is_absolute():
                 raise ValueError("Submitted workspace_root and config_root must be absolute paths")
+        if self.local_preferences_path is not None:
+            if self.workspace_root is None:
+                raise ValueError("local_preferences_path requires workspace_root and config_root")
+            from pathlib import Path
+            if not Path(self.local_preferences_path).is_absolute():
+                raise ValueError("Submitted local_preferences_path must be an absolute path")
         if self.submitted_at is None:
             raise ValueError("submitted_at must be set.")
         if self.updated_at is None:

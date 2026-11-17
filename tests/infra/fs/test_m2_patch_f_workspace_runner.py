@@ -28,10 +28,13 @@ def contexts(settings_factory, tmp_path, monkeypatch):
     save_yaml({
         "dev": {"enabled": True},
         "workspace": {"root": str(legacy_a.WORKSPACE_ROOT)},
+        "config": {"mode": "repo"},
         "console": {"progress_bar": True},
     }, editable / "local.yml")
-    a = Paths(Settings.from_workspace(legacy_a.WORKSPACE_ROOT, config_root=editable))
-    b = Paths(Settings.from_workspace(legacy_b.WORKSPACE_ROOT, config_root=editable))
+    a = Paths(Settings.from_workspace(legacy_a.WORKSPACE_ROOT, config_root=editable,
+                                      local_config=editable / "local.yml"))
+    b = Paths(Settings.from_workspace(legacy_b.WORKSPACE_ROOT, config_root=editable,
+                                      local_config=editable / "local.yml"))
     return a, b, editable
 
 
@@ -73,6 +76,7 @@ def test_queue_submission_persists_both_selected_roots(contexts, monkeypatch):
         saved = read_job(records[-1].path)
         assert saved.workspace_root == str(paths.workspace_root())
         assert saved.config_root == str(editable)
+        assert saved.local_preferences_path == str(editable / "local.yml")
         assert Path(saved.config).is_file()
         assert Path(saved.config).parent.name == "submitted_configs"
         assert saved.source_config == str(source)
@@ -92,6 +96,7 @@ def test_foreign_workspace_job_preserves_two_roots_across_worker_and_child(
     cfg.write_text("experiment: {}\n", encoding="utf-8")
     record = create_queued_job(
         config_path=cfg, workspace_root=b.workspace_root(), config_root=editable,
+        local_preferences_path=editable / "local.yml",
         resource_class="light", device="cpu", queue_root=queue_root,
     )
     seen = {}
@@ -112,7 +117,7 @@ def test_foreign_workspace_job_preserves_two_roots_across_worker_and_child(
     assert args[args.index("--workspace") + 1] == str(b.workspace_root())
     assert args[args.index("--config-root") + 1] == str(editable)
     assert args[args.index("--config") + 1] == str(cfg)
-    assert "--settings-config-dir" not in args
+    assert args[args.index("--local-preferences") + 1] == str(editable / "local.yml")
     assert seen["cwd"] == str(queue_root.resolve())
     assert seen["stdin"] == worker_module.subprocess.DEVNULL
     assert seen["env"]["LISAI_DISABLE_TQDM"] == "1"
@@ -134,6 +139,7 @@ def test_queue_job_postprocessing_uses_submission_context(contexts, tmp_path):
     from lisai_runner.queue.cli import _job_paths
     record = create_queued_job(
         config_path=config, workspace_root=b.workspace_root(), config_root=editable,
+        local_preferences_path=editable / "local.yml",
         resource_class="light", device="cpu", queue_root=tmp_path / "queue",
     )
     selected = _job_paths(record.job, a)
@@ -153,13 +159,13 @@ def test_old_queue_job_without_workspace_rejects_ambiguous_config_root(contexts,
         _job_paths(record.job, a)
 
 
-def test_child_rejects_one_sided_roots_and_conflicting_legacy_options(tmp_path):
+def test_child_rejects_incomplete_root_handoff(tmp_path):
     with pytest.raises(ValueError, match="requires --workspace"):
         training_entrypoint.run_training(tmp_path / "snapshot.yml", config_root=tmp_path)
-    with pytest.raises(ValueError, match="cannot be combined"):
-        training_entrypoint.run_training(
-            tmp_path / "snapshot.yml", workspace=tmp_path, settings_config_dir=tmp_path,
-        )
+    with pytest.raises(ValueError, match="requires --config-root"):
+        training_entrypoint.run_training(tmp_path / "snapshot.yml", workspace=tmp_path)
+    with pytest.raises(ValueError, match="requires --workspace"):
+        training_entrypoint.run_training(tmp_path / "snapshot.yml", local_preferences=tmp_path)
 
 
 def test_workspace_git_repository_is_not_mistaken_for_lisai_source(contexts, monkeypatch):
@@ -262,6 +268,7 @@ def test_real_child_process_is_cwd_independent_and_uses_both_roots(contexts, tmp
             sys.executable, "-c", script, "--config", str(cfg),
             "--workspace", str(selected.workspace_root()),
             "--config-root", str(editable),
+            "--local-preferences", str(editable / "local.yml"),
         ], cwd=cwd, env=env, capture_output=True, text=True, timeout=40)
         assert proc.returncode == 0, proc.stderr
         payload = json.loads(proc.stdout.strip())
@@ -298,4 +305,5 @@ def test_sweep_jobs_record_workspace_and_independent_config_root(contexts, monke
         assert len(saved) == 1
         assert saved[0].job.workspace_root == str(selected.workspace_root())
         assert saved[0].job.config_root == str(editable)
+        assert saved[0].job.local_preferences_path == str(editable / "local.yml")
         assert Path(saved[0].job.config).is_file()

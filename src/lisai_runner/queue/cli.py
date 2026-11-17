@@ -95,6 +95,7 @@ def submit_job(
         source_config=resolved_config,
         workspace_root=paths.workspace_root(),
         config_root=paths.settings.CONFIGS_ROOT,
+        local_preferences_path=paths.settings.local_preferences_path,
         queue_root=queue_root,
         resource_class=resource_class,
         device=device,
@@ -198,6 +199,7 @@ def submit_sweep(
             queue_root=queue_root,
             workspace_root=paths.workspace_root(),
             config_root=paths.settings.CONFIGS_ROOT,
+        local_preferences_path=paths.settings.local_preferences_path,
             config_path=snapshot_config,
             source_config=generated_config,
             resource_class=resource_class,
@@ -1627,17 +1629,10 @@ def _job_paths(job: QueueJob, paths: Paths) -> Paths:
         return Paths(Settings.from_workspace(
             job.workspace_root,
             config_root=job.config_root,
+            local_config=job.local_preferences_path,
         ))
     if job.config_root is not None:
-        # Read-only compatibility for jobs queued before M2. Never guess a
-        # workspace from the worker's current environment or working directory.
-        legacy = Path(job.config_root)
-        if (legacy / "project_config.yml").is_file():
-            return Paths(Settings.from_config_dir(legacy))
-        raise ValueError(
-            f"Queued job {job.job_id} lacks workspace_root and {legacy} is not "
-            "a legacy config directory; resubmit the job with M2 workspace identity."
-        )
+        raise ValueError(f"Queued job {job.job_id} lacks workspace_root; resubmit with both roots")
     return paths
 
 

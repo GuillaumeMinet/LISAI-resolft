@@ -269,10 +269,10 @@ class QueueWorker:
                         + ", ".join(map(str, missing))
                         + f" (run 'lisai workspace init {job.workspace_root}')")
         elif job.config_root is not None:
-            old = Path(job.config_root)
-            if not (old / "project_config.yml").is_file():
-                return ("prelaunch_validation_failed: old job lacks workspace_root and "
-                        f"{old} is not a legacy config directory; resubmit this job")
+            return "prelaunch_validation_failed: job lacks workspace_root; resubmit with both roots"
+        if job.local_preferences_path is not None and not Path(job.local_preferences_path).is_file():
+            return ("prelaunch_validation_failed: developer preferences file missing "
+                    f"({job.local_preferences_path})")
         return None
 
     def _running_cuda_counts(self) -> dict[int, int]:
@@ -336,9 +336,10 @@ class QueueWorker:
                     "--workspace", job.workspace_root,
                     "--config-root", job.config_root,
                 ])
+                if job.local_preferences_path is not None:
+                    command.extend(["--local-preferences", job.local_preferences_path])
             elif job.config_root is not None:
-                # Old queued jobs still reference a legacy three-file config dir.
-                command.extend(["--settings-config-dir", job.config_root])
+                raise ValueError("Queued job has config_root without workspace_root")
             else:
                 # Job created without explicit identity by a legacy in-process
                 # caller: preserve the worker-selected roots as an explicit handoff.
@@ -346,6 +347,8 @@ class QueueWorker:
                     "--workspace", str(self.paths.workspace_root()),
                     "--config-root", str(self.paths.settings.CONFIGS_ROOT),
                 ])
+                if self.paths.settings.local_preferences_path is not None:
+                    command.extend(["--local-preferences", str(self.paths.settings.local_preferences_path)])
             process = subprocess.Popen(
                 command,
                 cwd=str(self.queue_root),
