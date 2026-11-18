@@ -188,3 +188,24 @@ def test_python_api_uses_supplied_settings_for_predict_and_evaluate(settings_fac
         api.predict(object(), settings=settings)
         api.evaluate(object(), settings=settings)
     assert captured == [(action, stg) for stg in (a, b, a) for action in ("predict", "evaluate")]
+
+
+def test_public_predict_accepts_typed_input_normalization_override(settings_factory, monkeypatch):
+    from lisai import api
+    from lisai.config.models.inference import ApplyDefaults, InputNormalization
+
+    settings = settings_factory("norm_api")
+    captured = {}
+
+    def fake_apply(cfg, *, paths, **kwargs):
+        captured.update(kwargs)
+        assert paths.settings is settings
+
+    monkeypatch.setattr(api, "run_apply_model", fake_apply)
+    api.predict(
+        ApplyDefaults(), settings=settings,
+        input_normalization={"mode": "manual", "gain": 9.94, "offset": -7.35},
+    )
+    assert captured["input_normalization"] == InputNormalization(
+        mode="manual", gain=9.94, offset=-7.35
+    )

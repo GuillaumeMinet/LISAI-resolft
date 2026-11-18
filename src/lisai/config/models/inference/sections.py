@@ -11,6 +11,7 @@ SaveInputMode: TypeAlias = Literal["always", "never", "if_not_in_place"]
 CheckpointSelector = Literal["best", "last", "both"]
 PositiveTilingSize: TypeAlias = Annotated[int, Field(gt=0)]
 TilingSizePolicy: TypeAlias = PositiveTilingSize | Literal["auto", "off"] | None
+InputNormalizationMode: TypeAlias = Literal["training", "image", "manual"]
 
 OUTPUT_MODE_DESC = (
     "Output placement for apply predictions: default uses the configured inference "
@@ -81,6 +82,10 @@ CH_OUT_DESC = (
 )
 SPLIT_DESC = "Dataset split to evaluate, typically 'test' or 'val'."
 LIMIT_N_IMGS_DESC = "Optional cap on the number of input images or batches processed."
+INPUT_NORMALIZATION_DESC = (
+    "Input intensity adaptation before the saved clipping and normalization: training (unchanged), "
+    "image (match each input file/stack to saved training statistics), or manual (gain*x + offset)."
+)
 
 
 def _normalize_tiling_size_policy(value):
@@ -112,6 +117,16 @@ class CheckpointOverrides(BaseModel):
     best_or_last: CheckpointSelector | None = Field(default=None, description=BEST_OR_LAST_DESC)
 
 
+class InputNormalization(BaseModel):
+    """Optional raw-intensity adaptation; the model's saved normalization is always applied."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: InputNormalizationMode = Field(default="training", description=INPUT_NORMALIZATION_DESC)
+    gain: float = Field(default=1.0, gt=0, allow_inf_nan=False, description="Manual input gain.")
+    offset: float = Field(default=0.0, allow_inf_nan=False, description="Manual input offset.")
+
+
 class ApplyInputDefaults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -120,6 +135,7 @@ class ApplyInputDefaults(BaseModel):
     stack_selection_idx: int | None = Field(default=None, description=STACK_SELECTION_IDX_DESC)
     limit_n_imgs: int | None = Field(default=None, gt=0, description=LIMIT_N_IMGS_DESC)
     timelapse_max: int | None = Field(default=None, description=TIMELAPSE_MAX_DESC)
+    normalization: InputNormalization = Field(default_factory=InputNormalization)
 
 
 class ApplyInputOverrides(BaseModel):
@@ -130,6 +146,7 @@ class ApplyInputOverrides(BaseModel):
     stack_selection_idx: int | None = Field(default=None, description=STACK_SELECTION_IDX_DESC)
     limit_n_imgs: int | None = Field(default=None, gt=0, description=LIMIT_N_IMGS_DESC)
     timelapse_max: int | None = Field(default=None, description=TIMELAPSE_MAX_DESC)
+    normalization: InputNormalization | None = None
 
 
 class ApplyInferenceDefaults(BaseModel):

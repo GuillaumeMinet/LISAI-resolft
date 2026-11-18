@@ -72,6 +72,8 @@ def _build_apply_overrides(args: argparse.Namespace) -> ApplyOverrides:
         input_cfg["limit_n_imgs"] = args.limit_n_imgs
     if args.timelapse_max is not None:
         input_cfg["timelapse_max"] = args.timelapse_max
+    if args.normalization is not None:
+        input_cfg["normalization"] = {"mode": args.normalization}
     if input_cfg:
         payload["input"] = input_cfg
 
@@ -238,8 +240,15 @@ def add_apply_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentPar
     input_group.add_argument("--skip-if-contain", "--skip_if_contain", dest="skip_if_contain", type=_parse_csv_list)
     input_group.add_argument("--limit-n-imgs", "--limit_n_imgs", dest="limit_n_imgs", type=int)
     input_group.add_argument("--timelapse-max", "--timelapse_max", dest="timelapse_max", type=int)
-
-    _add_inference_arguments(parser)
+    inference_group = _add_inference_arguments(parser)
+    inference_group.add_argument(
+        "--normalization",
+        choices=("training", "image"),
+        help=(
+            "Override input normalization for this apply run. "
+            "Manual gain/offset remain available in the inference YAML."
+        ),
+    )
 
     output_location_group = parser.add_argument_group(
         "Output location",

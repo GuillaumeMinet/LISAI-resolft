@@ -6,16 +6,17 @@ run stack inference, and save outputs.
 """
 
 import warnings
+from typing import Mapping
 from pathlib import Path
 
 import numpy as np
 from tifffile import imread
 
-from lisai.config.models.inference import ApplyDefaults, TilingSizePolicy
+from lisai.config.models.inference import ApplyDefaults, InputNormalization, TilingSizePolicy
 from lisai.config.progress import resolve_progress_bar
 from lisai.data.utils import center_pad, crop_center
 from lisai.evaluation.defaults import resolve_apply_output_policy, resolve_apply_save_input
-from lisai.evaluation.inference.normalization import denormalize_pred, normalize_inp
+from lisai.evaluation.inference.normalization import denormalize_pred, normalize_apply_input
 from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
@@ -275,11 +276,21 @@ def run_apply_model(
     overwrite: bool = False,
     reuse_folder: bool = False,
     skip_existing: bool = False,
+    input_normalization: InputNormalization | Mapping[str, object] | None = None,
 ):
-    """Apply a saved model using a fully resolved typed apply config."""
+    """Apply a saved model using a fully resolved typed apply config.
+
+    ``input_normalization`` replaces the YAML normalization choice for this
+    invocation only; model weights and saved normalization remain unchanged.
+    """
     output_policy = resolve_apply_output_policy(cfg)
     save_input = resolve_apply_save_input(cfg, output_policy=output_policy)
     color_code_cfg = cfg.postprocess.color_code
+    normalization = (
+        cfg.input.normalization
+        if input_normalization is None
+        else InputNormalization.model_validate(input_normalization)
+    )
     progress = InferenceProgress(
         enabled=resolve_progress_bar(True, progress_bar, stg=paths.settings)
     )
@@ -423,8 +434,8 @@ def run_apply_model(
 
         file_path = data_path / file
         img = imread(file_path)
-        img = normalize_inp(img, clip, data_norm, model_norm)
         img, timelapse, volumetric = make_4d(img, cfg.input.stack_selection_idx, cfg.input.timelapse_max)
+        img = normalize_apply_input(img, clip, data_norm, model_norm, normalization)
         print(img.shape)
 
         crop_size = cfg.inference.crop_size

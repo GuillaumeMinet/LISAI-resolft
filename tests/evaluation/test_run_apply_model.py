@@ -801,3 +801,46 @@ def test_run_apply_model_folder_outside_file_moves_to_parent_of_source_folder(
     assert captured["save_folder"] == (
         tmp_path / "Predict_mito_fast_c01_Upsamp_mito_model_03"
     )
+
+
+def test_apply_passes_selected_input_normalization_to_inference(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, settings
+):
+    """The strategy is applied once per TIFF, before 4D preparation and inference."""
+    image = np.arange(64, dtype=np.float32).reshape(8, 8)
+    cfg = _base_apply_config(downsamp=None, fill_factor=None)
+    cfg.input.normalization.mode = "manual"
+    cfg.input.normalization.gain = 2.0
+    cfg.input.normalization.offset = -7.0
+    _patch_common_runtime(monkeypatch, tmp_path=tmp_path, input_image=image)
+    monkeypatch.setattr(
+        apply_mod, "load_saved_run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            is_lvae=False,
+            data_norm_prm={"clip": -3, "normalize_data": False},
+            model_norm_prm={"data_mean": 10., "data_std": 4.},
+            upsampling_factor=1,
+            context_length=None,
+        ),
+    )
+    captured = []
+
+    def fake_predict(_model, inp, **_kwargs):
+        captured.append(inp.copy())
+        return np.zeros_like(inp), None
+
+    monkeypatch.setattr(apply_mod, "predict_4d_stack", fake_predict)
+    kwargs = dict(
+        model_dataset="dataset", model_subfolder="Denoising", model_name="model",
+        data_path=tmp_path, paths=apply_mod.Paths(settings),
+    )
+    apply_mod.run_apply_model(cfg, **kwargs)
+    expected = (np.maximum(image * 2 - 7, -3) - 10) / 4
+    np.testing.assert_allclose(captured.pop()[0, 0], expected)
+
+    # Direct call overrides the YAML normalization object for one invocation.
+    apply_mod.run_apply_model(cfg, input_normalization={"mode": "image"}, **kwargs)
+    img_mean, img_std = image.mean(), image.std()
+    adapted = (image - img_mean) * (4. / img_std) + 10.
+    expected = (np.maximum(adapted, -3) - 10) / 4
+    np.testing.assert_allclose(captured.pop()[0, 0], expected, rtol=1e-5, atol=1e-5)

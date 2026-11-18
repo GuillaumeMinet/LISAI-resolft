@@ -134,6 +134,59 @@ Automatic post-training evaluation loads the user-editable `configs/inference/po
 
 `tiling_size: auto` uses the saved model default, a positive integer forces a tile size, and `tiling_size: off` or `--no-tiling` disables tiling.
 
+### Input normalization for existing models
+
+By default, `apply.input.normalization.mode: training` uses the model's saved
+input normalization without modification. To experiment with a different input
+intensity convention, set this in an inference YAML under `apply`:
+
+```yaml
+apply:
+  input:
+    normalization:
+      mode: manual      # training | image | manual
+      gain: 9.94
+      offset: -7.35
+```
+
+- `manual` transforms raw pixels as `gain * image + offset` **before** saved
+  clipping and model normalization. Gain must be positive; it defaults to 1 and
+  offset defaults to 0.
+- `image` computes one mean/std over the selected input image or stack (all
+  selected frames, before cropping and tiling) and affine-maps it to the model's saved input mean/std before
+  saved clipping and normalization. This is experimental for models trained with
+  dataset-wide statistics; a different noise distribution is **not** corrected
+  by intensity matching.
+- `training` retains the original behavior; it is the default for existing
+  inference YAMLs and model bundles.
+
+For a quick CLI comparison, `lisai apply` accepts `--normalization image`
+(or `--normalization training`). This option overrides the YAML mode for that
+invocation. The `manual` mode and its gain/offset are deliberately YAML/API-only:
+
+```bash
+lisai apply --model my_model input.tif --normalization image
+```
+
+The Python boundary also supports a per-call override (no model repackaging):
+
+```python
+from lisai.api import predict
+
+# cfg is a resolved ApplyDefaults; model selection/data_path are as usual.
+predict(
+    cfg,
+    settings=settings,
+    model_dataset="", model_subfolder="promoted", model_name="my_model",
+    promoted_model_name="my_model", data_path=input_path,
+    input_normalization={"mode": "manual", "gain": 9.94, "offset": -7.35},
+)
+```
+
+The call-level `input_normalization` replaces the entire YAML choice for that
+invocation; output denormalization continues to use saved model statistics.
+
+
 Run selectors must refer to a discovered LISAI training run, either by `--run-id`, `dataset[/subfolder]/run_dir_name`, `run_dir_name`, or a partial experiment name. See [`docs/run_selectors.md`](run_selectors.md) for details.
 
 ## Promoted Models

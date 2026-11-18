@@ -157,6 +157,31 @@ def test_build_apply_overrides_is_sparse():
     assert overrides.model_dump(exclude_unset=True) == {}
 
 
+@pytest.mark.parametrize("mode", ["image", "training"])
+def test_apply_cli_normalization_override_is_sparse(mode):
+    parser = build_parser()
+    args = parser.parse_args(["apply", "run_00", "/data/images", "--normalization", mode])
+
+    overrides = evaluation_cli._build_apply_overrides(args)
+
+    assert overrides.model_dump(exclude_unset=True) == {"input": {"normalization": {"mode": mode}}}
+
+
+def test_apply_cli_normalization_is_listed_under_inference():
+    help_text = evaluation_cli.build_apply_parser().format_help()
+    inference_section = help_text.split("\nInference:\n", 1)[1].split("\nOutput location:\n", 1)[0]
+    input_section = help_text.split("\nInput selection:\n", 1)[1].split("\nInference:\n", 1)[0]
+
+    assert "--normalization" in inference_section
+    assert "--normalization" not in input_section
+
+
+def test_apply_cli_manual_mode_remains_yaml_only():
+    parser = build_parser()
+    with pytest.raises(SystemExit, match="2"):
+        parser.parse_args(["apply", "run_00", "/data/images", "--normalization", "manual"])
+
+
 def test_build_apply_overrides_translates_cli_aliases_to_nested_config():
     parser = build_parser()
     args = parser.parse_args(

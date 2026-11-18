@@ -88,6 +88,27 @@ def _complete_apply_config(*, tiling_size=512, crop_size=128, saving=None) -> di
     return {"apply": apply}
 
 
+@pytest.mark.parametrize("choice", ["image", "training"])
+def test_apply_cli_normalization_takes_precedence_over_yaml(inference_config_dir, inference_stg, choice):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  input:\n    normalization:\n      mode: manual\n      gain: 9.94\n      offset: -7.35\n",
+    )
+    from lisai.evaluation.cli import _build_apply_overrides, build_apply_parser
+
+    cfg = resolve_apply_config(stg=inference_stg)
+    assert cfg.input.normalization.mode == "manual"
+    assert cfg.input.normalization.gain == 9.94
+
+    args = build_apply_parser().parse_args(["run_00", "/data/images", "--normalization", choice])
+    cfg_override = resolve_apply_config(
+        overrides=_build_apply_overrides(args), stg=inference_stg
+    )
+    assert cfg_override.input.normalization.mode == choice
+    # CLI selects only the mode; it does not change the YAML's manual parameters.
+    assert cfg_override.input.normalization.gain == 9.94
+
+
 def test_resolve_inference_config_path_defaults_to_local_defaults(inference_config_dir: Path, inference_stg):
     defaults_path = _write_local_defaults(inference_config_dir, "apply:\n  inference:\n    tiling_size: 256\n")
 
@@ -563,3 +584,24 @@ def test_local_defaults_do_not_warn_when_promoted_model_overrides_them(
 
     assert captured == []
     assert resolved.inference.lvae_num_samples == 10
+
+
+def test_apply_normalization_yaml_and_invocation_overrides(inference_config_dir, inference_stg):
+    _write_local_defaults(
+        inference_config_dir,
+        "apply:\n  input:\n    normalization:\n      mode: training\n",
+    )
+    _write(
+        inference_config_dir / "test.yml",
+        "apply:\n  input:\n    normalization:\n      mode: manual\n      gain: 9.94\n",
+    )
+    resolved = resolve_apply_config(config="test", stg=inference_stg)
+    assert resolved.input.normalization.mode == "manual"
+    assert resolved.input.normalization.gain == 9.94
+    assert resolved.input.normalization.offset == 0
+
+    override = ApplyOverrides.model_validate({"input": {"normalization": {"offset": -7.35}}})
+    resolved = resolve_apply_config(config="test", overrides=override, stg=inference_stg)
+    assert resolved.input.normalization.mode == "manual"
+    assert resolved.input.normalization.gain == 9.94
+    assert resolved.input.normalization.offset == -7.35
