@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lisai"
 version = "0.1.0"
-description = "LISAI training and data processing package"
+description = "Deep-learning image restoration for RESOLFT microscopy"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=1.24",
   "scipy",
   "torch",
-  "torchvision",
   "PyYAML",
   "pydantic>=2,<3",
   "tifffile",
@@ -23,10 +23,6 @@ lisai = "lisai.cli:main"
 lisai-runner = "lisai_runner.cli:main"
 
 [project.optional-dependencies]
-train = [
-  "tensorboard",
-  "h5py",
-]
 full = [
   "tensorboard",
   "h5py",
@@ -38,7 +34,18 @@ full = [
   "pystackreg",
 ]
 dev = [
-  "pytest",
+  "tensorboard",
+  "h5py",
+  "matplotlib",
+  "scikit-image",
+  "scikit-learn",
+  "opencv-python",
+  "pillow",
+  "pystackreg",
+  "pytest>=8",
+  "ruff",
+  "build",
+  "wheel",
 ]
 
 [tool.setuptools]

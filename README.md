@@ -25,14 +25,26 @@ Main supported workflows:
 
 LISAI is driven primarily through YAML configuration files and the `lisai` command-line interface. 
 
-LISAI v0.1 supports explicit standalone workspaces and source-checkout developer configurations. Built-in presets are packaged with the installed distribution. The file-based Python API remains available; streamlined inference APIs and minimal-install dependency validation are planned for M3.
+LISAI v0.1 supports explicit standalone workspaces and source-checkout developer configurations. Built-in presets are packaged with the installed distribution. The existing file-based Python API remains available. M3-A isolates inference dependencies; the new public in-memory prediction API is part of M3-B/C and is not yet implemented.
 
 
 ## Getting started
 
-### Environment
+### Installation levels (M3-A)
 
-Create one of the provided Conda environments from the repository root.
+The package declares three dependency sets:
+
+```bash
+pip install .           # Base: PyTorch inference, workspace/model management and TIFF I/O
+pip install ".[full]"  # Base plus training, preprocessing, evaluation and visualization
+pip install ".[dev]"   # Full plus tests, lint and distribution build tools
+```
+
+These commands install from a downloaded LISAI source archive or checkout; once released on a package index they become `pip install lisai`, `pip install lisai[full]`, and `pip install lisai[dev]`. The base package, CLI, and HDN/upsampling model constructors no longer require `torchvision`, Matplotlib, Pillow, `scikit-image`, or `scikit-learn`. Those extras are deferred to the specific training, visualization or evaluation operations that need them. End-to-end inference with published models remains a separate M3-D validation gate.
+
+On Windows with an NVIDIA GPU, install a compatible GPU-enabled PyTorch distribution according to the [official PyTorch instructions](https://pytorch.org/get-started/locally/) before installing LISAI. LISAI's metadata does not select a CUDA build; `pip` may otherwise install a CPU-only Torch variant depending on the environment and index. Windows/Python 3.10 GPU validation is a later M3-D gate and has not been completed by M3-A.
+
+For developer/research environments, the repository also supplies Conda definitions:
 
 CPU:
 

@@ -1,7 +1,16 @@
 import torch
-import torchvision.transforms.functional as F
 
 from .stable_exp import StableExponential
+
+
+def _center_crop(tensor: torch.Tensor, size: int) -> torch.Tensor:
+    """Center-crop the spatial dimensions using only Torch indexing."""
+    height, width = tensor.shape[-2:]
+    if height < size or width < size:
+        raise ValueError(f"Cannot center-crop {height}x{width} to {size}x{size}.")
+    top = (height - size) // 2
+    left = (width - size) // 2
+    return tensor[..., top : top + size, left : left + size]
 
 
 class StableLogVar:
@@ -35,7 +44,7 @@ class StableLogVar:
 
         diff = self._lv.shape[-1] - size
         assert diff > 0 and diff % 2 == 0
-        self._lv = F.center_crop(self._lv, (size, size))
+        self._lv = _center_crop(self._lv, size)
 
 
 class StableMean:
@@ -52,4 +61,4 @@ class StableMean:
 
         diff = self._mean.shape[-1] - size
         assert diff > 0 and diff % 2 == 0
-        self._mean = F.center_crop(self._mean, (size, size))
+        self._mean = _center_crop(self._mean, size)

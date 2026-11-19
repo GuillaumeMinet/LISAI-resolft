@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 from lisai.evaluation.metrics.ra_psnr import RangeInvariantPsnr as ra_psnr
 
@@ -14,10 +13,14 @@ def _ra_psnr_metric(ref: np.ndarray, pred: np.ndarray, data_range: float) -> flo
 
 
 def _psnr_metric(ref: np.ndarray, pred: np.ndarray, data_range: float) -> float:
+    from skimage.metrics import peak_signal_noise_ratio
+
     return float(peak_signal_noise_ratio(ref, pred, data_range=data_range))
 
 
 def _ssim_metric(ref: np.ndarray, pred: np.ndarray, data_range: float) -> float:
+    from skimage.metrics import structural_similarity
+
     return float(structural_similarity(ref, pred, data_range=data_range))
 
 

@@ -23,11 +23,6 @@ from lisai.evaluation.inference.stack import predict_4d_stack
 from lisai.evaluation.io import resolve_prediction_inputs, save_outputs
 from lisai.evaluation.runtime import initialize_runtime
 from lisai.evaluation.saved_run import load_saved_run, resolve_run_dir
-from lisai.evaluation.visualization.z_projection import (
-    add_colorbar,
-    create_color_coded_image,
-    enhance_contrast,
-)
 from lisai.infra.fs import prepare_output_folder
 from lisai.infra.paths import Paths
 from lisai.lib.upsamp.inp_generators import (
@@ -511,6 +506,12 @@ def run_apply_model(
 
         if color_code_cfg.enabled and volumetric:
             try:
+                from lisai.evaluation.visualization.z_projection import (
+                    add_colorbar,
+                    create_color_coded_image,
+                    enhance_contrast,
+                )
+
                 if context_length is not None and not cfg.inference.dark_frame_context_length:
                     pred_stack = pred_stack[:, context_length // 2 : -context_length // 2]
                 pred_stack_color_coded = create_color_coded_image(

@@ -3,8 +3,6 @@ import math
 import numpy as np
 import torch
 import torch.nn.functional as F
-from matplotlib import pyplot as plt
-from sklearn.feature_extraction import image
 from torch import nn
 from tqdm import tqdm
 
@@ -139,6 +137,8 @@ def extract_patches_paired(x,y,patch_size,num_patches):
     num_patches: int
         Number of patches to be extracted from each image.    
     """
+    from sklearn.feature_extraction import image
+
     patches_x = np.zeros(shape=(x.shape[0]*num_patches,patch_size,patch_size))
     patches_y = np.zeros(shape=(y.shape[0]*num_patches,patch_size,patch_size))
     
@@ -166,6 +166,8 @@ def extract_patches(x,y,patch_size,num_patches):
     num_patches: int
         Number of patches to be extracted from each image.    
     """
+    from sklearn.feature_extraction import image
+
     patches_x = np.zeros(shape=(x.shape[0]*num_patches,patch_size,patch_size))
     if y is not None:
         patches_y = np.zeros(shape=(y.shape[0]*num_patches,patch_size,patch_size))
@@ -305,6 +307,8 @@ def plotProbabilityDistribution(signalBinIndex, histogram, gaussianMixtureNoiseM
     n_plots = len(signalBinIndex_list)
     n_columns = min(2 * math.ceil(math.sqrt(n_plots)), max_columns)
     n_rows = math.ceil(n_plots / (n_columns // 2))
+
+    from matplotlib import pyplot as plt
 
     fig = plt.figure(figsize=(6*n_columns, 5*n_rows))
     for i,signalBinIndex in enumerate(signalBinIndex_list):

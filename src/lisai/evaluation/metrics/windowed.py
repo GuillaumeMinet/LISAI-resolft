@@ -1,7 +1,4 @@
 import numpy as np
-from skimage.metrics import mean_squared_error as mse
-from skimage.metrics import peak_signal_noise_ratio as psnr
-from skimage.metrics import structural_similarity as ssim
 
 from lisai.data.utils import extract_patches, select_patches
 from lisai.evaluation.metrics.ra_psnr import RangeInvariantPsnr as ra_psnr
@@ -42,6 +39,8 @@ def windowed_mse_2d(ref,test_image,size=128,patch_selection=None):
                                                  select_on_gt=True)
         test_patches=np.squeeze(test_patches,axis=1)
         ref_patches=np.squeeze(ref_patches,axis=1)
+
+    from skimage.metrics import mean_squared_error as mse
 
     list_mse = []
     for idx in range(test_patches.shape[0]):
@@ -89,6 +88,9 @@ def windowed_psnr_2d(ref,test_image,size=128,patch_selection=None,range_invarian
         test_patches=np.squeeze(test_patches,axis=1)
         ref_patches=np.squeeze(ref_patches,axis=1)
 
+    if not range_invariant:
+        from skimage.metrics import peak_signal_noise_ratio as psnr
+
     list_psnrs = []
     for idx in range(test_patches.shape[0]):
         gt=ref_patches[idx]
@@ -135,6 +137,8 @@ def windowed_ssim_2d(ref,test_image,size=128,patch_selection=None):
                                                  select_on_gt=True)
         test_patches=np.squeeze(test_patches,axis=1)
         ref_patches=np.squeeze(ref_patches,axis=1)
+    from skimage.metrics import structural_similarity as ssim
+
     list_ssim = []
     for idx in range(test_patches.shape[0]):
         gt=ref_patches[idx]

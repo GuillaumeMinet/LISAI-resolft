@@ -9,7 +9,6 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from torch.nn.modules import Module
-from torchvision import transforms
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -187,8 +186,8 @@ class CharEdge_loss(Module):
 if __name__ == "__main__":
     a=np.zeros((12,12),dtype=np.float32)
     b=np.ones((12,12),dtype=np.float32)
-    a = transforms.ToTensor()(a).to(device)
-    b = transforms.ToTensor()(b).to(device)
+    a = torch.as_tensor(a, device=device)[None, None]
+    b = torch.as_tensor(b, device=device)[None, None]
 
     loss = MSE_upsampling(p=2,alpha=0.2)
 
