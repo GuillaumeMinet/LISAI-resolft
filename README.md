@@ -482,3 +482,26 @@ pytest
 ```
 
 For architecture-level changes, update the relevant docs and schemas alongside the code.
+
+### M3-D validation of published promoted models (Windows)
+
+After installing LISAI into a Windows Python 3.10 environment with a CUDA-enabled
+PyTorch build, initialize an M2 workspace and explicitly select it for the CLI.
+The optional validation script can then download/install the two reference
+models and verify *actual checkpoint inference* without a source checkout:
+
+```powershell
+# Use the script copied from the LISAI repository or the M3-D delivery.
+python validate_m3d_models.py --workspace E:/lisai --download --device cuda --full --report m3d-validation.json
+```
+
+The reference models are `vim_denoise_hdnsup` and `vim_upsamp_5frames`.
+The script checks the promoted-model installation path, array/TIFF numerical
+agreement (with a controlled random seed), normalization modes, temporal
+alignment, output shapes, finite predictions and GPU device availability.
+It generates **synthetic input images**, so its successful completion does not
+establish scientific reconstruction accuracy on real microscopy recordings.
+The normal automated tests use **locally generated untrained** LVAE and
+UNet-RCAN bundles; they are not substitutes for this published-weight test.
+No source checkout is required for LISAI itself, but the standalone validation
+script must be copied into the environment where it is executed.
