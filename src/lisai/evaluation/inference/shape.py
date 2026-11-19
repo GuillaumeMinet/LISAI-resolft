@@ -61,4 +61,10 @@ def inverse_make_4d(img:np.array,volumetric:bool,timelapse:bool,
         else:
             img = img[0]
     
+    elif volumetric:
+        if lvae_samples:
+            img = np.transpose(img, (0, 2, 1, 3, 4))
+        else:
+            img = np.transpose(img, (1, 0, 2, 3))
+
     return img

@@ -2,7 +2,7 @@
 apply:
   inference:
     tiling_size: off
-    dark_frame_context_length: true
+    temporal_edge_mode: black_input
   postprocess:
     color_code:
       enabled: true

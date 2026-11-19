@@ -12,6 +12,7 @@ CheckpointSelector = Literal["best", "last", "both"]
 PositiveTilingSize: TypeAlias = Annotated[int, Field(gt=0)]
 TilingSizePolicy: TypeAlias = PositiveTilingSize | Literal["auto", "off"] | None
 InputNormalizationMode: TypeAlias = Literal["training", "image", "manual"]
+TemporalEdgeMode: TypeAlias = Literal["drop", "black_output", "black_input"]
 
 OUTPUT_MODE_DESC = (
     "Output placement for apply predictions: default uses the configured inference "
@@ -59,10 +60,25 @@ FILL_FACTOR_DESC = (
     "When set, apply uses generate_downsamp_inp with random=false."
 )
 APPLY_COLOR_CODE_DESC = "Whether an additional color-coded visualization should be saved for volumetric apply outputs."
-DARK_FRAME_CONTEXT_LENGTH_DESC = (
-    "Whether missing timelapse context frames should be replaced with dark frames "
-    "instead of skipping sequence edges."
+TEMPORAL_EDGE_MODE_DESC = (
+    "Behavior at temporal boundaries: drop incomplete frames, retain black output "
+    "placeholders, or pad only missing input neighbors with raw-black frames."
 )
+
+
+def _migrate_legacy_temporal_edge(value):
+    """Translate the former boolean once; reject conflicting edge controls."""
+    if not isinstance(value, dict) or "dark_frame_context_length" not in value:
+        return value
+    migrated = dict(value)
+    legacy = migrated.pop("dark_frame_context_length")
+    if "temporal_edge_mode" in migrated:
+        raise ValueError("Specify temporal_edge_mode or legacy dark_frame_context_length, not both.")
+    if not isinstance(legacy, bool):
+        raise ValueError("Legacy dark_frame_context_length must be a boolean.")
+    migrated["temporal_edge_mode"] = "black_input" if legacy else "drop"
+    return migrated
+
 COLORMAP_DESC = "Matplotlib colormap name used for volumetric color-coding."
 SATURATION_DESC = "Contrast boost applied to the color-coded volumetric visualization."
 ADD_COLORBAR_DESC = "Whether a colorbar should be appended to the color-coded volumetric visualization."
@@ -158,7 +174,12 @@ class ApplyInferenceDefaults(BaseModel):
     lvae_num_samples: int | None = Field(default=30, description=LVAE_NUM_SAMPLES_DESC)
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
-    dark_frame_context_length: bool = Field(default=False, description=DARK_FRAME_CONTEXT_LENGTH_DESC)
+    temporal_edge_mode: TemporalEdgeMode = Field(default="drop", description=TEMPORAL_EDGE_MODE_DESC)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_edge_mode(cls, value):
+        return _migrate_legacy_temporal_edge(value)
 
     @field_validator("tiling_size", mode="before")
     @classmethod
@@ -175,7 +196,12 @@ class ApplyInferenceOverrides(BaseModel):
     lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
-    dark_frame_context_length: bool | None = Field(default=None, description=DARK_FRAME_CONTEXT_LENGTH_DESC)
+    temporal_edge_mode: TemporalEdgeMode | None = Field(default=None, description=TEMPORAL_EDGE_MODE_DESC)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_edge_mode(cls, value):
+        return _migrate_legacy_temporal_edge(value)
 
     @field_validator("tiling_size", mode="before")
     @classmethod

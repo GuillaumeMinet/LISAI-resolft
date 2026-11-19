@@ -177,35 +177,21 @@ def test_promoted_apply_default_output_uses_selected_paths_a_b_a(settings_factor
     assert destinations[0] != destinations[1]
 
 
-def test_python_api_uses_supplied_settings_for_predict_and_evaluate(settings_factory, monkeypatch):
+def test_python_evaluate_uses_explicit_settings(settings_factory, monkeypatch):
     from lisai import api
 
     a, b = settings_factory("api_a"), settings_factory("api_b")
     captured = []
-    monkeypatch.setattr(api, "run_apply_model", lambda cfg, *, paths, **kw: captured.append(("predict", paths.settings)))
-    monkeypatch.setattr(api, "run_evaluate", lambda cfg, *, paths, **kw: captured.append(("evaluate", paths.settings)))
+    monkeypatch.setattr(api, "run_evaluate", lambda cfg, *, paths, **kw: captured.append(paths.settings))
     for settings in (a, b, a):
-        api.predict(object(), settings=settings)
         api.evaluate(object(), settings=settings)
-    assert captured == [(action, stg) for stg in (a, b, a) for action in ("predict", "evaluate")]
+    assert captured == [a, b, a]
 
 
-def test_public_predict_accepts_typed_input_normalization_override(settings_factory, monkeypatch):
+def test_old_prediction_signature_is_no_longer_public(settings_factory):
     from lisai import api
-    from lisai.config.models.inference import ApplyDefaults, InputNormalization
+    from lisai.config.models.inference import ApplyDefaults
 
     settings = settings_factory("norm_api")
-    captured = {}
-
-    def fake_apply(cfg, *, paths, **kwargs):
-        captured.update(kwargs)
-        assert paths.settings is settings
-
-    monkeypatch.setattr(api, "run_apply_model", fake_apply)
-    api.predict(
-        ApplyDefaults(), settings=settings,
-        input_normalization={"mode": "manual", "gain": 9.94, "offset": -7.35},
-    )
-    assert captured["input_normalization"] == InputNormalization(
-        mode="manual", gain=9.94, offset=-7.35
-    )
+    with pytest.raises(TypeError):
+        api.predict(ApplyDefaults(), settings=settings, input_normalization={"mode": "image"})

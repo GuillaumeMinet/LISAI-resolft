@@ -25,7 +25,10 @@ Main supported workflows:
 
 LISAI is driven primarily through YAML configuration files and the `lisai` command-line interface. 
 
-LISAI v0.1 supports explicit standalone workspaces and source-checkout developer configurations. Built-in presets are packaged with the installed distribution. The existing file-based Python API remains available. M3-A isolates inference dependencies; the new public in-memory prediction API is part of M3-B/C and is not yet implemented.
+LISAI v0.1 supports explicit standalone workspaces and source-checkout developer configurations. Built-in presets are packaged with the installed distribution. M3-A isolates inference dependencies; M3-B/C introduces a promoted-model Python
+`predict(model, data, settings=...)` facade for direct NumPy arrays and TIFF
+files/directories, sharing the CLI inference computation path. The saved-run
+`lisai apply` CLI workflow remains available.
 
 
 ## Getting started
@@ -99,6 +102,35 @@ With the default workspace config, the main data locations are:
 - training runs: `<workspace_root>/datasets/training/<dataset>/runs/<models_subfolder>/<exp_name>`
 - inference outputs: `<workspace_root>/inference/<source_name>/<model_name>`
 
+
+### Predict directly from Python (M3-B/C)
+
+```python
+from lisai import predict, ApplyOverrides, ApplyInferenceOverrides
+from lisai.config.settings import Settings
+
+settings = Settings.from_workspace("D:/lisai-workspace")
+result = predict(
+    "vim_upsamp_5frames", input_stack, settings=settings,
+    overrides=ApplyOverrides(
+        inference=ApplyInferenceOverrides(temporal_edge_mode="black_output")
+    ),
+    return_info=True,
+)
+prediction, info = result  # ndarray and zero-based frame alignment
+
+files = predict("vim_upsamp_5frames", "D:/images/stack.tif",
+                settings=settings, output_dir="D:/predictions")
+print(files.output_dir, files.prediction_paths, files.info_by_path)
+```
+
+Array inputs (`YX`, `TYX`, `TZYX`) never create temporary prediction files.
+TIFF directory inputs are processed nonrecursively. The `drop` (default),
+`black_output`, and `black_input` temporal modes require a time series of at
+least the trained model's context length; all three raise `ValueError` for
+shorter series. HDN output is stochastic unless the random state is controlled.
+The model must first be installed into the selected workspace with
+`lisai models download NAME --install` or `lisai models install`.
 
 ### Download paper datasets and models
 

@@ -42,7 +42,7 @@ def _training_input_reference(data_norm, model_norm) -> tuple[float, float]:
     return mean, std
 
 
-def normalize_apply_input(inp, clip, data_norm, model_norm, config: InputNormalization):
+def normalize_apply_input(inp, clip, data_norm, model_norm, config: InputNormalization, *, reference_image=None):
     """Adapt raw intensities, then apply the model's *unchanged* saved normalization.
 
     Image statistics are computed once on each selected image/stack (including
@@ -50,7 +50,7 @@ def normalize_apply_input(inp, clip, data_norm, model_norm, config: InputNormali
     image adaptations happen before the saved raw-intensity clipping threshold.
     """
     if config.mode == "training":
-        return normalize_inp(inp, clip, data_norm, model_norm)
+        return normalize_inp(np.array(inp, dtype=np.float32, copy=True), clip, data_norm, model_norm)
 
     # A float copy prevents clipping from modifying the original input and avoids
     # integer overflow/truncation when applying a gain or offset.
@@ -60,8 +60,11 @@ def normalize_apply_input(inp, clip, data_norm, model_norm, config: InputNormali
     elif config.mode == "image":
         if not np.isfinite(raw).all():
             raise ValueError("Image normalization requires finite input pixels.")
-        image_mean = float(np.mean(raw, dtype=np.float64))
-        image_std = float(np.std(raw, dtype=np.float64))
+        reference = raw if reference_image is None else np.asarray(reference_image, dtype=np.float32)
+        if not np.isfinite(reference).all():
+            raise ValueError("Image normalization requires finite input pixels.")
+        image_mean = float(np.mean(reference, dtype=np.float64))
+        image_std = float(np.std(reference, dtype=np.float64))
         if not np.isfinite(image_std) or image_std <= 0:
             raise ValueError("Image normalization requires nonzero input variance.")
         training_mean, training_std = _training_input_reference(data_norm, model_norm)

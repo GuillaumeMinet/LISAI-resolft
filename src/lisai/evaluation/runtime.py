@@ -119,7 +119,7 @@ def _load_state_dict_model(
         img_shape=_compute_img_shape(saved_run.patch_size, saved_run.downsamp_factor),
     )
 
-    loaded = torch.load(checkpoint_path, map_location=device)
+    loaded = torch.load(checkpoint_path, map_location=device, weights_only=True)
     resolved_epoch = _epoch_from_checkpoint_path(checkpoint_path)
     if isinstance(loaded, dict):
         epoch = loaded.get("epoch")
@@ -200,7 +200,7 @@ def initialize_runtime(
             raise FileNotFoundError(f"Model checkpoint not found: {resolved_checkpoint_path}")
 
     if load_method == "full_model":
-        model = torch.load(resolved_checkpoint_path, map_location=resolved_device)
+        model = torch.load(resolved_checkpoint_path, map_location=resolved_device, weights_only=False)
         model.eval()
         resolved_epoch = _epoch_from_checkpoint_path(resolved_checkpoint_path)
     else:

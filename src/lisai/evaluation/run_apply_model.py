@@ -18,6 +18,7 @@ from lisai.data.utils import center_pad, crop_center
 from lisai.evaluation.defaults import resolve_apply_output_policy, resolve_apply_save_input
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_apply_input
 from lisai.evaluation.inference.progress import InferenceProgress
+from lisai.evaluation.inference.results import PredictionInfo, PredictionResult
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
 from lisai.evaluation.io import resolve_prediction_inputs, save_outputs
@@ -135,7 +136,7 @@ def _create_apply_save_folder(
 
 def _apply_img_name(file: str, name_file: str | None) -> str:
     source = name_file if name_file is not None else file
-    return source.split(".")[0]
+    return Path(source).stem
 
 
 def _existing_apply_outputs(save_folder: Path, img_name: str) -> list[Path]:
@@ -258,6 +259,121 @@ def _resolve_apply_files_for_output(
     return selected
 
 
+def compute_prediction_array(
+    img: np.ndarray, *, saved_run, runtime, cfg: ApplyDefaults,
+    normalization: InputNormalization | None = None,
+    progress: InferenceProgress | None = None, verbose: bool = False,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, PredictionInfo, np.ndarray]:
+    """The single array computation path used by public predict and legacy apply.
+
+    Returns final prediction, optional samples, processed input, alignment info,
+    and internal ZTYX prediction for optional CLI color visualization.
+    """
+    if not isinstance(img, np.ndarray) or img.ndim not in (2, 3, 4):
+        raise ValueError("Prediction expects an image with axes YX, TYX or TZYX.")
+    selected = cfg.input.stack_selection_idx
+    if img.ndim >= 3:
+        source_indices = list(range(img.shape[0]))
+        if selected is not None:
+            if isinstance(selected, int) and not 0 <= selected < img.shape[0]:
+                raise ValueError(f"stack_selection_idx {selected} outside input time axis 0..{img.shape[0]-1}.")
+            source_indices = source_indices[selected:selected+1] if isinstance(selected, int) else [source_indices[i] for i in selected]
+        elif cfg.input.timelapse_max is not None:
+            source_indices = source_indices[:cfg.input.timelapse_max]
+    else:
+        source_indices = [0]
+
+    prepared, timelapse, volumetric = make_4d(img, selected, cfg.input.timelapse_max)
+    context_length = saved_run.context_length
+    if context_length is not None and len(source_indices) < context_length:
+        raise ValueError(
+            f"Model requires at least {context_length} input frames, but received {len(source_indices)}."
+        )
+    data_norm = saved_run.data_norm_prm
+    model_norm = saved_run.model_norm_prm
+    clip = data_norm.get("clip", False) if isinstance(data_norm, dict) else False
+    if clip is True:
+        clip = 0
+    mode = normalization if normalization is not None else cfg.input.normalization
+    normalized = normalize_apply_input(prepared, clip, data_norm, model_norm, mode)
+    # A raw-zero input must be transformed consistently with real observations.
+    # Image-mode statistics are calculated only on real selected pixels.
+    normalized_black = float(normalize_apply_input(
+        np.zeros((1, 1), dtype=np.float32), clip, data_norm, model_norm,
+        mode, reference_image=prepared,
+    )[0, 0]) if context_length is not None and cfg.inference.temporal_edge_mode == "black_input" else 0.0
+
+    crop_size = cfg.inference.crop_size
+    if crop_size is not None:
+        if isinstance(crop_size, int):
+            crop_size = (crop_size, crop_size)
+        original_size = normalized.shape[-2:]
+        normalized = crop_center(normalized, crop_size)
+
+    if cfg.inference.fill_factor is not None and cfg.inference.downsamp is None:
+        raise ValueError("`apply.fill_factor` requires `apply.downsamp` to be set.")
+    if cfg.inference.downsamp is not None:
+        normalized = _ensure_shape(normalized, cfg.inference.downsamp)
+        if cfg.inference.fill_factor is None:
+            normalized = normalized[..., ::cfg.inference.downsamp, ::cfg.inference.downsamp]
+        else:
+            fill_factor = _resolve_fill_factor_for_multiple_apply_downsampling(
+                downsamp=cfg.inference.downsamp, fill_factor=cfg.inference.fill_factor,
+            )
+            normalized, _ = generate_downsamp_inp(normalized, {
+                "downsamp_factor": int(cfg.inference.downsamp),
+                "downsamp_method": "multiple",
+                "multiple_prm": {"fill_factor": fill_factor, "random": False},
+            })
+
+    ch_out = 1 if normalized.ndim >= 4 and normalized.shape[1] > 1 else None
+    pred_stack, samples_stack = predict_4d_stack(
+        runtime.model, normalized, timelapse=timelapse, ch_out=ch_out,
+        device=runtime.device, is_lvae=saved_run.is_lvae,
+        tiling_size=runtime.tiling_size, lvae_num_samples=cfg.inference.lvae_num_samples,
+        lvae_save_samples=cfg.saving.lvae_save_samples,
+        upsamp=saved_run.upsampling_factor, context_length=context_length,
+        temporal_edge_mode=cfg.inference.temporal_edge_mode,
+        normalized_black_value=normalized_black,
+        verbose=verbose, progress=progress,
+    )
+    if crop_size is not None and cfg.inference.keep_original_shape:
+        pad = (max(0, original_size[0] - crop_size[0]), max(0, original_size[1] - crop_size[1]))
+        pred_stack = center_pad(pred_stack, pad)
+        if samples_stack is not None:
+            samples_stack = center_pad(samples_stack, pad)
+
+    if cfg.postprocess.denormalize:
+        pred_stack = denormalize_pred(pred_stack, data_norm, model_norm)
+        if samples_stack is not None:
+            samples_stack = denormalize_pred(samples_stack, data_norm, model_norm)
+
+    black_positions: tuple[int, ...] = ()
+    if context_length is not None:
+        half = context_length // 2
+        if cfg.inference.temporal_edge_mode == "drop":
+            if half:
+                source_indices = source_indices[half:-half]
+        elif cfg.inference.temporal_edge_mode == "black_output":
+            black_positions = tuple(list(range(half)) + list(range(len(source_indices)-half, len(source_indices))))
+            # Do this AFTER denormalization; zeros in model space are not raw black.
+            pred_stack[:, list(black_positions), ...] = 0
+            if samples_stack is not None:
+                samples_stack[:, :, list(black_positions), ...] = 0
+
+    internal_pred = np.asarray(pred_stack, dtype=np.float32)
+    prediction = inverse_make_4d(internal_pred, volumetric, timelapse)
+    samples = (
+        inverse_make_4d(np.asarray(samples_stack, dtype=np.float32), volumetric, timelapse, lvae_samples=True)
+        if samples_stack is not None else None
+    )
+    return (
+        np.asarray(prediction, dtype=np.float32), samples,
+        np.asarray(normalized, dtype=np.float32),
+        PredictionInfo(tuple(source_indices), black_positions), internal_pred,
+    )
+
+
 def run_apply_model(
     cfg: ApplyDefaults,
     *,
@@ -272,6 +388,8 @@ def run_apply_model(
     reuse_folder: bool = False,
     skip_existing: bool = False,
     input_normalization: InputNormalization | Mapping[str, object] | None = None,
+    device: str | None = None,
+    return_result: bool = False,
 ):
     """Apply a saved model using a fully resolved typed apply config.
 
@@ -303,6 +421,7 @@ def run_apply_model(
             saved_run=saved_run,
             paths=paths,
             tiling_size=cfg.inference.tiling_size,
+            device=device,
             checkpoint_path=promoted.weights_path,
             noise_model_path=promoted.noise_model_path,
             noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
@@ -318,6 +437,7 @@ def run_apply_model(
             best_or_last=cfg.checkpoint.best_or_last,
             epoch_number=cfg.checkpoint.epoch_number,
             tiling_size=cfg.inference.tiling_size,
+            device=device,
         )
     if saved_run.is_lvae:
         assert cfg.inference.lvae_num_samples is not None, (
@@ -421,88 +541,29 @@ def run_apply_model(
     )
     if not skip_existing:
         print(f"Found #{len(list_files)} files.")
+    # A .tif/.tiff pair with the same stem, or any other naming collision,
+    # must not silently overwrite the first prediction in a directory batch.
+    names = [_apply_img_name(file, name_file) for file in list_files]
+    if len(names) != len(set(name.casefold() for name in names)):
+        raise ValueError("Multiple input TIFFs would produce the same prediction filename.")
     if not list_files:
+        if return_result:
+            return PredictionResult(Path(save_folder), (), {})
         return
+    saved_predictions: list[Path] = []
+    info_by_path: dict[Path, PredictionInfo] = {}
 
     for idx, file in enumerate(list_files):
         print(f"File {idx+1}/{max(1, len(list_files))}: {file}")
 
         file_path = data_path / file
         img = imread(file_path)
-        img, timelapse, volumetric = make_4d(img, cfg.input.stack_selection_idx, cfg.input.timelapse_max)
-        img = normalize_apply_input(img, clip, data_norm, model_norm, normalization)
-        print(img.shape)
-
-        crop_size = cfg.inference.crop_size
-        if crop_size is not None:
-            if isinstance(crop_size, int):
-                crop_size = (crop_size, crop_size)
-            original_size = img.shape[-2:]
-            img = crop_center(img, crop_size)
-
-        if cfg.inference.fill_factor is not None and cfg.inference.downsamp is None:
-            raise ValueError(
-                "`apply.fill_factor` requires `apply.downsamp` to be set."
-            )
-
-        if cfg.inference.downsamp is not None:
-            img = _ensure_shape(img, cfg.inference.downsamp)
-            if cfg.inference.fill_factor is None:
-                img = img[..., :: cfg.inference.downsamp, :: cfg.inference.downsamp]
-            else:
-                resolved_fill_factor = _resolve_fill_factor_for_multiple_apply_downsampling(
-                    downsamp=cfg.inference.downsamp,
-                    fill_factor=cfg.inference.fill_factor,
-                )
-                downsampling_prm = {
-                    "downsamp_factor": int(cfg.inference.downsamp),
-                    "downsamp_method": "multiple",
-                    "multiple_prm": {
-                        "fill_factor": resolved_fill_factor,
-                        "random": False,
-                    },
-                }
-                img, _ = generate_downsamp_inp(img, downsampling_prm)
-
-        resolved_ch_out = None
-        if img.ndim >= 4 and img.shape[1] > 1:
-            # Align apply behavior with evaluate: multi-channel inputs predict one target channel by default.
-            resolved_ch_out = 1
-
-        pred_stack, samples_stack = predict_4d_stack(
-            runtime.model,
-            img,
-            timelapse=timelapse,
-            ch_out=resolved_ch_out,
-            device=runtime.device,
-            is_lvae=saved_run.is_lvae,
-            tiling_size=tiling_size,
-            lvae_num_samples=cfg.inference.lvae_num_samples,
-            lvae_save_samples=cfg.saving.lvae_save_samples,
-            upsamp=upsamp,
-            context_length=context_length,
-            dark_frame_context_length=cfg.inference.dark_frame_context_length,
-            verbose=True,
-            progress=progress,
+        pred_stack, samples_stack, normalized_input, info, internal_pred = compute_prediction_array(
+            img, saved_run=saved_run, runtime=runtime, cfg=cfg,
+            normalization=normalization, progress=progress, verbose=True,
         )
-
-        if crop_size is not None and cfg.inference.keep_original_shape:
-            pad_width = (
-                max(0, original_size[0] - crop_size[0]),
-                max(0, original_size[1] - crop_size[1]),
-            )
-            pred_stack = center_pad(pred_stack, pad_width)
-
-            if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
-                samples_stack = center_pad(samples_stack, pad_width)
-
-        if cfg.postprocess.denormalize:
-            pred_stack = denormalize_pred(pred_stack, data_norm, model_norm)
-            if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
-                for sample_id in range(samples_stack.shape[0]):
-                    samples_stack[sample_id] = denormalize_pred(samples_stack[sample_id], data_norm, model_norm)
-        pred_stack = inverse_make_4d(pred_stack, volumetric, timelapse, lvae_samples=False)
-        tosave = {"pred": pred_stack.astype(np.float32)}
+        volumetric = img.ndim == 4
+        tosave = {"pred": pred_stack}
 
         if color_code_cfg.enabled and volumetric:
             try:
@@ -512,10 +573,8 @@ def run_apply_model(
                     enhance_contrast,
                 )
 
-                if context_length is not None and not cfg.inference.dark_frame_context_length:
-                    pred_stack = pred_stack[:, context_length // 2 : -context_length // 2]
                 pred_stack_color_coded = create_color_coded_image(
-                    pred_stack,
+                    internal_pred,
                     colormap=color_code_cfg.colormap,
                     stack_order="ZTYX",
                 )
@@ -524,7 +583,7 @@ def run_apply_model(
                     color_code_cfg.saturation,
                 )
                 if color_code_cfg.add_colorbar:
-                    zmax = (pred_stack.shape[0] - 1) * color_code_cfg.zstep
+                    zmax = (internal_pred.shape[0] - 1) * color_code_cfg.zstep
                     pred_stack_color_coded = add_colorbar(pred_stack_color_coded, zmax=zmax)
                 tosave["pred_colorCoded"] = pred_stack_color_coded
 
@@ -532,11 +591,19 @@ def run_apply_model(
                 warnings.warn(f"Failed to apply color coding: {e}")
 
         if saved_run.is_lvae and cfg.saving.lvae_save_samples and samples_stack is not None:
-            samples_stack = inverse_make_4d(samples_stack, volumetric, timelapse, lvae_samples=True)
             tosave["samples"] = samples_stack.astype(np.float32)
 
         img_name = _apply_img_name(file, name_file)
         if save_input:
-            tosave["inp"] = img.astype(np.float32)
+            tosave["inp"] = normalized_input
 
-        save_outputs(tosave, save_folder, img_name)
+        written = save_outputs(tosave, save_folder, img_name)
+        if return_result:
+            if written is None or "pred" not in written:
+                raise RuntimeError("Inference did not return the saved prediction path.")
+            prediction_path = written["pred"]
+            saved_predictions.append(prediction_path)
+            info_by_path[prediction_path] = info
+
+    if return_result:
+        return PredictionResult(Path(save_folder), tuple(saved_predictions), info_by_path)

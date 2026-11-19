@@ -131,7 +131,7 @@ def test_initialize_runtime_loads_full_model_and_applies_tiling_override(monkeyp
 
     model_obj = FakeModel()
 
-    monkeypatch.setattr(runtime_mod.torch, 'load', lambda path, map_location: model_obj)
+    monkeypatch.setattr(runtime_mod.torch, 'load', lambda path, map_location, weights_only: model_obj if weights_only is False else None)
 
     runtime = runtime_mod.initialize_runtime(
         saved_run=_make_saved_run(checkpoint_methods=('full_model',), default_tiling_size=128),
@@ -216,3 +216,25 @@ def test_initialize_runtime_with_both_selector_falls_back_to_last(
             "best_or_last": "last",
         },
     ]
+
+
+def test_promoted_state_dict_explicitly_uses_weights_only(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    """Promoted state dicts must not depend on version-specific Torch defaults."""
+    saved = _make_saved_run()
+    class FakeModel:
+        def load_state_dict(self, state):
+            assert state == {"conv.weight": torch.tensor([1.])}
+        def eval(self):
+            return self
+    monkeypatch.setattr(runtime_mod, "init_model", lambda **_: FakeModel())
+    observed = {}
+    def fake_load(path, **kwargs):
+        observed.update(kwargs)
+        return {"model_state_dict": {"conv.weight": torch.tensor([1.])}}
+    monkeypatch.setattr(runtime_mod.torch, "load", fake_load)
+    model, epoch = runtime_mod._load_state_dict_model(
+        saved, tmp_path / "weights.pt", torch.device("cpu"), paths=object(),
+    )
+    assert observed["weights_only"] is True
+    assert observed["map_location"] == torch.device("cpu")
+    assert epoch is None

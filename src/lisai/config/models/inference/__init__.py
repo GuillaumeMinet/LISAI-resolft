@@ -33,6 +33,7 @@ from .sections import (
     PositiveTilingSize,
     SaveInputMode,
     TilingSizePolicy,
+    TemporalEdgeMode,
 )
 
 __all__ = [
@@ -68,4 +69,5 @@ __all__ = [
     "ResolvedInferenceConfig",
     "SaveInputMode",
     "TilingSizePolicy",
+    "TemporalEdgeMode",
 ]

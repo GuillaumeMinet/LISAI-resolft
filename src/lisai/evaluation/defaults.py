@@ -63,6 +63,17 @@ def _merge_section_config(
     overrides: dict[str, Any],
 ) -> dict[str, Any]:
     base = deepcopy(base)
+    # Normalize old boolean field before merging into modern typed defaults.
+    # Otherwise an inherited temporal_edge_mode and an old YAML boolean appear
+    # to be two simultaneously selected controls.
+    if section == "apply" and isinstance(overrides.get("inference"), Mapping):
+        legacy = overrides["inference"].get("dark_frame_context_length")
+        if "dark_frame_context_length" in overrides["inference"]:
+            if "temporal_edge_mode" in overrides["inference"] or not isinstance(legacy, bool):
+                raise ValueError("Use temporal_edge_mode or legacy dark_frame_context_length, not both.")
+            overrides = deepcopy(overrides)
+            overrides["inference"].pop("dark_frame_context_length")
+            overrides["inference"]["temporal_edge_mode"] = "black_input" if legacy else "drop"
     if section == "apply":
         saving = overrides.get("saving")
         if isinstance(saving, Mapping) and any(
