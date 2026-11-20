@@ -4,7 +4,7 @@ import hashlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -40,6 +40,19 @@ class ModelDownloadError(RuntimeError):
     """Raised when a model archive cannot be downloaded."""
 
 
+class DownloadCancelled(ModelDownloadError):
+    """Raised when a caller requests cancellation before download completion."""
+
+
+DownloadProgressCallback = Callable[[int, int | None], None]
+DownloadCancelCallback = Callable[[], bool]
+
+
+def _check_cancel(callback: DownloadCancelCallback | None) -> None:
+    if callback is not None and callback():
+        raise DownloadCancelled("Model download cancelled.")
+
+
 @dataclass(frozen=True)
 class ModelDownload:
     name: str
@@ -59,21 +72,47 @@ def _resolve_remote_url(model: CatalogModel, *, timeout: float) -> str:
     raise ValueError(f"Unsupported downloadable-model source type: {source.type!r}")
 
 
-def _stream_download(url: str, destination: Path, *, timeout: float) -> str:
+def _stream_download(
+    url: str,
+    destination: Path,
+    *,
+    timeout: float,
+    progress_callback: DownloadProgressCallback | None = None,
+    cancel_callback: DownloadCancelCallback | None = None,
+) -> str:
+    """Stream one archive, reporting bytes written and checking for cancellation.
+
+    ``total_bytes`` may be None when HTTP Content-Length is unavailable. This
+    function stays synchronous and independent of any GUI/event loop.
+    """
+    _check_cancel(cancel_callback)
     request = Request(url, headers={"User-Agent": "LISAI"})
     digest = hashlib.sha256()
     try:
         with urlopen(request, timeout=timeout) as response, destination.open("wb") as output:
+            headers = getattr(response, "headers", None)
+            raw_total = headers.get("Content-Length") if headers is not None else None
+            try:
+                total_bytes = int(raw_total) if raw_total is not None else None
+                if total_bytes is not None and total_bytes <= 0:
+                    total_bytes = None
+            except (TypeError, ValueError):
+                total_bytes = None
+            received = 0
             while True:
+                _check_cancel(cancel_callback)
                 chunk = response.read(_DOWNLOAD_CHUNK_SIZE)
                 if not chunk:
                     break
                 output.write(chunk)
                 digest.update(chunk)
+                received += len(chunk)
+                if progress_callback is not None:
+                    progress_callback(received, total_bytes)
+            _check_cancel(cancel_callback)
     except (HTTPError, URLError, OSError) as exc:
         raise ModelDownloadError(f"Could not download model archive from {url}: {exc}") from exc
     return digest.hexdigest()
-
 
 def download_model(
     name: str,
@@ -82,9 +121,18 @@ def download_model(
     paths: Paths,
     catalog_url: str | None = None,
     timeout: float = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+    progress_callback: DownloadProgressCallback | None = None,
+    cancel_callback: DownloadCancelCallback | None = None,
 ) -> ModelDownload:
-    """Download one catalog model into the configured promoted-model downloads directory."""
+    """Download a model synchronously, with optional progress/cancel callbacks.
+
+    Progress reports ``(received_bytes, total_bytes_or_None)``. Cancellation is
+    cooperative between HTTP chunks; it does not interrupt an active socket
+    read or catalog lookup. A cancelled transfer removes its temporary file.
+    """
+    _check_cancel(cancel_callback)
     model = catalog.get_model(name, catalog_url=catalog_url, timeout=timeout)
+    _check_cancel(cancel_callback)
     resolved_paths = paths
     downloads_dir = resolved_paths.promoted_model_downloads_dir()
     try:
@@ -100,6 +148,7 @@ def download_model(
 
     existed_before = archive_path.is_file()
     if existed_before:
+        _check_cancel(cancel_callback)
         try:
             actual = sha256_file(archive_path)
         except OSError as exc:
@@ -107,6 +156,7 @@ def download_model(
                 f"Could not read existing downloaded archive {archive_path}: {exc}"
             ) from exc
         if actual == model.archive_sha256:
+            _check_cancel(cancel_callback)
             return ModelDownload(
                 name=model.name,
                 archive_path=archive_path,
@@ -120,7 +170,9 @@ def download_model(
                 actual_sha256=actual,
             )
 
+    _check_cancel(cancel_callback)
     remote_url = _resolve_remote_url(model, timeout=timeout)
+    _check_cancel(cancel_callback)
     partial_path = archive_path.with_name(f"{archive_path.name}.part")
     if partial_path.exists():
         if not partial_path.is_file():
@@ -130,12 +182,21 @@ def download_model(
         partial_path.unlink()
 
     try:
-        actual = _stream_download(remote_url, partial_path, timeout=timeout)
+        # Preserve existing callers/tests that patch the original _stream_download
+        # signature: only forward optional callback keywords when provided.
+        stream_options = {"timeout": timeout}
+        if progress_callback is not None:
+            stream_options["progress_callback"] = progress_callback
+        if cancel_callback is not None:
+            stream_options["cancel_callback"] = cancel_callback
+        actual = _stream_download(remote_url, partial_path, **stream_options)
+        _check_cancel(cancel_callback)
         if actual != model.archive_sha256:
             raise DownloadIntegrityError(
                 f"Downloaded archive for {model.name!r} failed SHA256 verification: "
                 f"expected {model.archive_sha256}, got {actual}."
             )
+        _check_cancel(cancel_callback)
         os.replace(partial_path, archive_path)
     except Exception:
         if partial_path.exists():
@@ -152,6 +213,9 @@ def download_model(
 
 __all__ = [
     "DEFAULT_DOWNLOAD_TIMEOUT_SECONDS",
+    "DownloadCancelCallback",
+    "DownloadCancelled",
+    "DownloadProgressCallback",
     "DownloadConflictError",
     "DownloadIntegrityError",
     "ModelDownload",

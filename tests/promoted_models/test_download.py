@@ -127,3 +127,94 @@ def test_download_model_removes_partial_file_when_checksum_is_wrong(monkeypatch,
     downloads_dir = tmp_path / "downloads"
     assert not (downloads_dir / "demo-model.lisai.zip").exists()
     assert not (downloads_dir / "demo-model.lisai.zip.part").exists()
+
+class _ChunkedResponse:
+    def __init__(self, chunks, *, content_length=None):
+        self._chunks = iter(chunks)
+        self.headers = {"Content-Length": content_length} if content_length is not None else {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, _size):
+        return next(self._chunks, b"")
+
+
+def test_stream_reports_bytes_and_content_length(monkeypatch, tmp_path):
+    monkeypatch.setattr(download, "urlopen", lambda request, timeout: _ChunkedResponse(
+        [b"ab", b"cde"], content_length="5"
+    ))
+    events = []
+    destination = tmp_path / "model.part"
+    digest = download._stream_download(
+        "https://example.org/demo", destination, timeout=2,
+        progress_callback=lambda received, total: events.append((received, total)),
+    )
+    assert destination.read_bytes() == b"abcde"
+    assert digest == _sha(b"abcde")
+    assert events == [(2, 5), (5, 5)]
+
+
+def test_stream_progress_without_content_length(monkeypatch, tmp_path):
+    monkeypatch.setattr(download, "urlopen", lambda request, timeout: _ChunkedResponse([b"abc"]))
+    events = []
+    download._stream_download(
+        "https://example.org/demo", tmp_path / "model.part", timeout=2,
+        progress_callback=lambda received, total: events.append((received, total)),
+    )
+    assert events == [(3, None)]
+
+
+def test_cancelled_download_cleans_partial_and_preserves_existing_archive(monkeypatch, tmp_path):
+    data = b"correct-model"
+    model = _model(data)
+    monkeypatch.setattr(download.catalog, "get_model", lambda *args, **kwargs: model)
+    monkeypatch.setattr(download, "urlopen", lambda request, timeout: _ChunkedResponse(
+        [b"first", b"second"]
+    ))
+    existing = tmp_path / "downloads" / "demo-model.lisai.zip"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"old-invalid-but-preserved")
+    cancel = False
+    events = []
+
+    def report(received, total):
+        nonlocal cancel
+        events.append(received)
+        cancel = True
+
+    with pytest.raises(download.DownloadCancelled, match="cancelled"):
+        download.download_model(
+            "demo-model", paths=FakePaths(tmp_path), overwrite=True,
+            progress_callback=report, cancel_callback=lambda: cancel,
+        )
+    assert events == [5]
+    assert existing.read_bytes() == b"old-invalid-but-preserved"
+    assert not existing.with_name(existing.name + ".part").exists()
+
+
+def test_cancelled_before_fetch_has_no_filesystem_effects(monkeypatch, tmp_path):
+    monkeypatch.setattr(download.catalog, "get_model", lambda *args, **kwargs: (_ for _ in ()).throw(
+        AssertionError("catalog should not be contacted")
+    ))
+    with pytest.raises(download.DownloadCancelled):
+        download.download_model("demo-model", paths=FakePaths(tmp_path), cancel_callback=lambda: True)
+    assert not (tmp_path / "downloads").exists()
+
+
+def test_callback_failure_cleans_partial(monkeypatch, tmp_path):
+    data = b"abcde"
+    monkeypatch.setattr(download.catalog, "get_model", lambda *args, **kwargs: _model(data))
+    monkeypatch.setattr(download, "urlopen", lambda request, timeout: _ChunkedResponse([data]))
+
+    def broken(*_args):
+        raise RuntimeError("UI handler failed")
+
+    with pytest.raises(RuntimeError, match="UI handler"):
+        download.download_model(
+            "demo-model", paths=FakePaths(tmp_path), progress_callback=broken,
+        )
+    assert not list((tmp_path / "downloads").glob("*.part"))
