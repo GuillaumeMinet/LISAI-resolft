@@ -9,6 +9,7 @@ from lisai.config.models.inference import ApplyOverrides
 from lisai.config.settings import Settings, load_default_settings
 from lisai.evaluation.inference.results import PredictionInfo, PredictionResult
 from lisai.infra.paths import Paths
+from lisai.model_sources import RunRef
 
 
 def train(config_path, *, progress_bar: bool | None = None, settings: Settings | None = None):
@@ -41,7 +42,7 @@ def run_evaluate(*args, **kwargs):
 
 @overload
 def predict(
-    model: str, data: np.ndarray, *, settings: Settings,
+    model: str | RunRef, data: np.ndarray, *, settings: Settings,
     output_dir: None = None, config: str | Path | None = None,
     overrides: ApplyOverrides | None = None, device: str = "auto",
     overwrite: Literal[False] = False, return_info: Literal[False] = False,
@@ -50,7 +51,7 @@ def predict(
 
 @overload
 def predict(
-    model: str, data: np.ndarray, *, settings: Settings,
+    model: str | RunRef, data: np.ndarray, *, settings: Settings,
     output_dir: None = None, config: str | Path | None = None,
     overrides: ApplyOverrides | None = None, device: str = "auto",
     overwrite: Literal[False] = False, return_info: Literal[True],
@@ -59,7 +60,7 @@ def predict(
 
 @overload
 def predict(
-    model: str, data: str | Path, *, settings: Settings,
+    model: str | RunRef, data: str | Path, *, settings: Settings,
     output_dir: str | Path | None = None, config: str | Path | None = None,
     overrides: ApplyOverrides | None = None, device: str = "auto",
     overwrite: bool = False, return_info: Literal[False] = False,
@@ -67,7 +68,7 @@ def predict(
 
 
 def predict(
-    model: str,
+    model: str | RunRef,
     data: np.ndarray | str | Path,
     *,
     settings: Settings,
@@ -78,13 +79,13 @@ def predict(
     overwrite: bool = False,
     return_info: bool = False,
 ) -> np.ndarray | tuple[np.ndarray, PredictionInfo] | PredictionResult:
-    """Predict with one installed promoted model, from memory or TIFF inputs.
+    """Predict from an installed model name or an explicit saved-run reference.
 
-    An ndarray never creates intermediate TIFF files. All paths, installed model
-    registry entries and inference defaults derive from the explicit settings.
+    A string means a promoted model, while RunRef(run_id=...) means a training
+    run in the supplied workspace. Arrays never create intermediate TIFFs.
     """
-    if not isinstance(model, str) or not model.strip():
-        raise TypeError("model must be a nonempty installed promoted-model name.")
+    if not isinstance(model, RunRef) and (not isinstance(model, str) or not model.strip()):
+        raise TypeError("model must be a promoted-model name or RunRef(run_id=...).")
     if not isinstance(settings, Settings):
         raise TypeError("settings must be an explicitly constructed Settings instance.")
     if overrides is not None and not isinstance(overrides, ApplyOverrides):
@@ -113,12 +114,23 @@ def predict(
             raise ValueError("Path input must be a TIFF (.tif/.tiff) file or directory.")
 
     from lisai.evaluation.defaults import resolve_apply_config
-    from lisai.promoted_models.package import load_promoted_model
     from lisai.evaluation.runtime import initialize_runtime
+    from lisai.evaluation.saved_run import load_saved_run
     from lisai.evaluation.run_apply_model import compute_prediction_array
 
     paths = Paths(settings)
-    promoted = load_promoted_model(model.strip(), paths=paths)
+    if isinstance(model, RunRef):
+        from lisai.runs.lookup import resolve_run_ref
+
+        selected_run = resolve_run_ref(model, paths=paths)
+        saved_run = load_saved_run(selected_run.run_dir, paths=paths)
+        promoted = None
+    else:
+        from lisai.promoted_models.package import load_promoted_model
+
+        selected_run = None
+        promoted = load_promoted_model(model.strip(), paths=paths)
+        saved_run = promoted.saved_run
     sparse = overrides.model_dump(exclude_unset=True) if overrides is not None else {}
     if output_dir is not None:
         dest = Path(output_dir).expanduser().resolve()
@@ -132,7 +144,7 @@ def predict(
         sparse = {**sparse, "saving": {**chosen, "save_folder": str(dest)}}
     resolved_overrides = ApplyOverrides.model_validate(sparse) if sparse else None
     cfg = resolve_apply_config(
-        model_config=promoted.inference_config_path,
+        model_config=promoted.inference_config_path if promoted is not None else None,
         config=config, overrides=resolved_overrides, stg=settings,
     )
     if is_path:
@@ -146,16 +158,25 @@ def predict(
         cfg = cfg.model_copy(update={
             "saving": cfg.saving.model_copy(update={"lvae_save_samples": False})
         })
-        runtime = initialize_runtime(
-            saved_run=promoted.saved_run, paths=paths,
+        runtime_options = dict(
+            saved_run=saved_run, paths=paths,
             tiling_size=cfg.inference.tiling_size,
             device=None if device == "auto" else device,
-            checkpoint_path=promoted.weights_path,
-            noise_model_path=promoted.noise_model_path,
-            noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
         )
+        if promoted is not None:
+            runtime_options.update(
+                checkpoint_path=promoted.weights_path,
+                noise_model_path=promoted.noise_model_path,
+                noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
+            )
+        else:
+            runtime_options.update(
+                best_or_last=cfg.checkpoint.best_or_last,
+                epoch_number=cfg.checkpoint.epoch_number,
+            )
+        runtime = initialize_runtime(**runtime_options)
         result, _, _, info, _ = compute_prediction_array(
-            data, saved_run=promoted.saved_run, runtime=runtime, cfg=cfg,
+            data, saved_run=saved_run, runtime=runtime, cfg=cfg,
             verbose=False,
         )
         return (result, info) if return_info else result
@@ -163,8 +184,13 @@ def predict(
     # Path adapter uses the same computation function through run_apply_model,
     # preserving output-numbering, in-place and explicit overwrite behavior.
     return run_apply_model(
-        cfg, model_dataset="", model_subfolder="promoted", model_name=model,
-        data_path=Path(data), paths=paths, promoted_model_name=model,
+        cfg,
+        model_dataset=selected_run.dataset if selected_run is not None else "",
+        model_subfolder=selected_run.model_subfolder if selected_run is not None else "promoted",
+        model_name=selected_run.run_dir.name if selected_run is not None else model,
+        data_path=Path(data), paths=paths,
+        promoted_model_name=model if promoted is not None else None,
+        saved_run_dir=selected_run.run_dir if selected_run is not None else None,
         device=None if device == "auto" else device,
         overwrite=overwrite, return_result=True,
     )

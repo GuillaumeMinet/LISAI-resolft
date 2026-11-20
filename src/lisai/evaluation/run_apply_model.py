@@ -383,6 +383,7 @@ def run_apply_model(
     data_path: Path,
     paths: Paths,
     promoted_model_name: str | None = None,
+    saved_run_dir: Path | None = None,
     progress_bar: bool | None = None,
     overwrite: bool = False,
     reuse_folder: bool = False,
@@ -409,6 +410,8 @@ def run_apply_model(
     )
 
     data_path = Path(data_path)
+    if promoted_model_name is not None and saved_run_dir is not None:
+        raise ValueError("Choose promoted_model_name or saved_run_dir, not both.")
     if promoted_model_name is not None:
         from lisai.promoted_models import load_promoted_model
 
@@ -427,9 +430,9 @@ def run_apply_model(
             noise_model_norm_prm_path=promoted.noise_model_norm_prm_path,
         )
     else:
-        run_dir = resolve_run_dir(
+        run_dir = (Path(saved_run_dir) if saved_run_dir is not None else resolve_run_dir(
             dataset_name=model_dataset, subfolder=model_subfolder, exp_name=model_name, paths=paths
-        )
+        ))
         saved_run = load_saved_run(run_dir, paths=paths)
         runtime = initialize_runtime(
             saved_run=saved_run,
