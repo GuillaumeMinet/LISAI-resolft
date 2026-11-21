@@ -132,6 +132,30 @@ shorter series. HDN output is stochastic unless the random state is controlled.
 The model must first be installed into the selected workspace with
 `lisai models download NAME --install` or `lisai models install`.
 
+### Generate an HDN noise model from paired arrays
+
+Applications can calibrate an HDN noise model directly from aligned high-SNR
+reference and noisy NumPy images without registering a dataset or writing
+intermediate TIFFs:
+
+```python
+from lisai.config.settings import Settings
+from lisai.noise_models import NoiseModelOptions, create_noise_model
+
+settings = Settings.from_workspace("D:/lisai-workspace")
+calibration = create_noise_model(
+    signal=reference_stack, observation=noisy_stack,  # matching YX or NYX arrays
+    name="camera_488", settings=settings,
+    options=NoiseModelOptions(save_gmm_plot=True),
+)
+print(calibration.save_dir)  # <workspace>/noise_models/camera_488
+```
+
+The saved `GMM.npz`, `norm_prm.json`, histogram, info file and optional plots
+use the existing HDN format. Pass `calibration.name` to the quick-HDN training
+helper; see [noise-model calibration](docs/noise_model_calibration.md) for
+acquisition, input pairing, options, overwriting and validation requirements.
+
 ### Download paper datasets and models
 
 To start with concrete examples, you can directly use datasets available from the paper Zenodo repository.

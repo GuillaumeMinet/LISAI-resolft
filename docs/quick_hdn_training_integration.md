@@ -2,7 +2,7 @@
 
 These helpers prepare **unsupervised HDN training from independent raw recordings** without creating separate preprocessed train/validation folders. They are designed for ImProcess and other Python integrations. Training execution remains in the existing LISAI runner.
 
-Prerequisites: an initialized workspace, LISAI installed with `[full]` for training, and an existing calibrated HDN GMM noise model (`GMM.npz` and `norm_prm.json` in the workspace noise-model folder).
+Prerequisites: an initialized workspace, LISAI installed with `[full]` for training, and an existing calibrated HDN GMM noise model (`GMM.npz` and `norm_prm.json` in the workspace noise-model folder). You can now create a calibration from paired NumPy images with [`create_noise_model()`](noise_model_calibration.md); its returned `name` is the `noise_model_name` used below.
 
 ```python
 from lisai.config.settings import Settings
