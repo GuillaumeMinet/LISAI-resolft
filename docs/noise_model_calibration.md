@@ -5,6 +5,18 @@ already hold paired calibration images in memory. It fits LISAI's existing HDN
 conditional-noise GMM and saves the same files as the dataset-based builder.
 This is a **calibration** API, not unsupervised HDN training itself.
 
+**Runnable example:** [`scripts/generate_noise_model.py`](../scripts/generate_noise_model.py)
+loads matching TIFF files or stacks, exposes the main calibration parameters in
+a clearly documented section at the top, and saves the noise model to your
+chosen workspace. Edit the parameters in that script and run:
+
+```bash
+python scripts/generate_noise_model.py
+```
+
+The minimal NumPy example below is useful when the paired arrays are already
+available in memory.
+
 ## Prerequisites and example
 
 Initialize a LISAI workspace and install LISAI with its training/visualization

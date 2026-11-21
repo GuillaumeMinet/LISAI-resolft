@@ -138,6 +138,13 @@ Applications can calibrate an HDN noise model directly from aligned high-SNR
 reference and noisy NumPy images without registering a dataset or writing
 intermediate TIFFs:
 
+For a complete example that reads paired TIFF images and explains the main
+calibration parameters, see
+[`scripts/generate_noise_model.py`](scripts/generate_noise_model.py).
+
+For a step-by-step tutorial with visualizations of the calibration data,
+noise histogram and fitted GMM, see the [Jupyter notebook](notebooks/noise_model_example.ipynb).
+
 ```python
 from lisai.config.settings import Settings
 from lisai.noise_models import NoiseModelOptions, create_noise_model
