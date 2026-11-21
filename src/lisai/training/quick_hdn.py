@@ -100,6 +100,7 @@ def prepare_quick_hdn_training(
     split_ratios: SplitRatios | Mapping[str, float] | None = None,
     seed: int = 0,
     learning_rate: float | None = None,
+    beta_kl: float | None = None,
     write: bool = False,
 ) -> QuickHDNTrainingPlan:
     """Validate a new HDN experiment; optionally persist its YAML.
@@ -118,6 +119,8 @@ def prepare_quick_hdn_training(
         raise ValueError("seed must be a nonnegative integer.")
     if learning_rate is not None and (not math.isfinite(learning_rate) or learning_rate <= 0):
         raise ValueError("learning_rate must be finite and positive.")
+    if beta_kl is not None and (not math.isfinite(beta_kl) or beta_kl < 0):
+        raise ValueError("beta_kl must be finite and nonnegative.")
     ratios = (SplitRatios(train=0.8, val=0.2, test=0.0)
               if split_ratios is None else SplitRatios.model_validate(split_ratios))
     paths = Paths(settings)
@@ -156,6 +159,8 @@ def prepare_quick_hdn_training(
     preset["noise_model"] = {"name": noise_model_name}
     preset["normalization"]["load_from_noise_model"] = True
     preset["training"]["n_epochs"] = epochs
+    if beta_kl is not None:
+        preset["experiment"]["task"]["betaKL"] = beta_kl
     if learning_rate is not None:
         preset["training"]["learning_rate"] = learning_rate
 

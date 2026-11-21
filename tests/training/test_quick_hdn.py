@@ -120,3 +120,11 @@ def test_invalid_noise_model_archive_rejected_before_writing(setup):
     with pytest.raises(ValueError, match="missing fields"):
         _plan(setup, write=True)
     assert not (setup.TRAINING_CONFIG_DIR / "improcess" / "first_hdn.yml").exists()
+
+
+def test_quick_hdn_scientific_beta_override_uses_task_schema(setup):
+    _add(setup)
+    plan = _plan(setup, beta_kl=0.25)
+    assert plan.config["experiment"]["task"]["betaKL"] == 0.25
+    with pytest.raises(ValueError, match="beta_kl"):
+        _plan(setup, beta_kl=-0.2)
