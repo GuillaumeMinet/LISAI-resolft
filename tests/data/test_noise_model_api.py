@@ -215,12 +215,12 @@ def test_new_model_works_with_quick_hdn_preflight(settings, sample_pairs, option
 
 
 def test_failed_fit_cleans_only_new_model_directory(settings, sample_pairs, options, monkeypatch):
-    import lisai.noise_models as public_module
+    import lisai.data.noise_model.builder as builder_module
 
     def fail(*args, **kwargs):
         raise RuntimeError("synthetic fitting failure")
 
-    monkeypatch.setattr(public_module, "_fit_and_save_prepared", fail)
+    monkeypatch.setattr(builder_module, "_fit_and_save_prepared", fail)
     with pytest.raises(RuntimeError, match="synthetic fitting failure"):
         _create(settings, sample_pairs, options)
     assert not Paths(settings).noise_model_dir(noiseModel_name="calibrated").exists()

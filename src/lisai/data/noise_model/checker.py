@@ -12,13 +12,13 @@ from lisai.lib.hdn.gaussianMixtureNoiseModel import GaussianMixtureNoiseModel
 
 from .builder import (
     _as_hw,
-    _display_examples,
     _load_observation_image,
     _load_signal_image,
     _resolve_observation_dir,
 )
 from .core import clip_crop_pair, make_noise_histogram, prepare_noise_model_data
 from .io import list_image_files
+from .plotting import display_examples as _display_examples
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import math
 import re
-import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -16,7 +15,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 
-from lisai.data.noise_model.builder import _fit_and_save_prepared
+from lisai.data.noise_model.builder import _fit_and_save_transactionally
 from lisai.data.noise_model.core import clip_crop_pair, prepare_noise_model_data
 from lisai.infra.paths import Paths
 
@@ -211,35 +210,25 @@ def create_noise_model(
         f"GMM training params: #{options.gmm_n_epochs}, learning rate {options.gmm_learning_rate}"
     )
 
-    # Patch C will make the full overwrite/persistence lifecycle atomic.
-    created = not base_save_dir.exists()
-    if created:
-        base_save_dir.mkdir(parents=True, exist_ok=False)
-    try:
-        built = _fit_and_save_prepared(
-            prepared,
-            save_dir=base_save_dir,
-            device=selected_device,
-            n_files_used=n_pairs,
-            info_text=info,
-            histogram_bins=options.histogram_bins,
-            gmm_n_gaussian=options.gmm_n_gaussian,
-            gmm_n_coeff=options.gmm_n_coeff,
-            gmm_n_epochs=options.gmm_n_epochs,
-            gmm_learning_rate=options.gmm_learning_rate,
-            gmm_batch_size=options.gmm_batch_size,
-            gmm_min_sigma=options.gmm_min_sigma,
-            gmm_name="GMM",
-            save_gmm_plot=options.save_gmm_plot,
-            gmm_plot_points=options.gmm_plot_points,
-            gmm_plot_max_columns=options.gmm_plot_max_columns,
-        )
-    except BaseException:
-        # Only remove a directory that this invocation created, never an
-        # existing calibration explicitly selected for overwrite.
-        if created:
-            shutil.rmtree(base_save_dir)
-        raise
+    built = _fit_and_save_transactionally(
+        prepared,
+        save_dir=base_save_dir,
+        overwrite=overwrite,
+        device=selected_device,
+        n_files_used=n_pairs,
+        info_text=info,
+        histogram_bins=options.histogram_bins,
+        gmm_n_gaussian=options.gmm_n_gaussian,
+        gmm_n_coeff=options.gmm_n_coeff,
+        gmm_n_epochs=options.gmm_n_epochs,
+        gmm_learning_rate=options.gmm_learning_rate,
+        gmm_batch_size=options.gmm_batch_size,
+        gmm_min_sigma=options.gmm_min_sigma,
+        gmm_name="GMM",
+        save_gmm_plot=options.save_gmm_plot,
+        gmm_plot_points=options.gmm_plot_points,
+        gmm_plot_max_columns=options.gmm_plot_max_columns,
+    )
     return NoiseModelResult(
         name=name,
         save_dir=built.save_dir,

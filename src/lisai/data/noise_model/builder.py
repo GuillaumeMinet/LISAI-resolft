@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Sequence
@@ -10,8 +10,6 @@ import torch
 from tifffile import imread
 
 from lisai.infra.paths import Paths
-from lisai.data.utils import crop_center
-from lisai.lib.hdn.gaussianMixtureNoiseModel import GaussianMixtureNoiseModel
 
 from .core import (
     NoiseModelFitParameters,
@@ -23,12 +21,12 @@ from .core import (
     prepare_noise_model_data,
 )
 from .io import (
-    ensure_output_dir,
     list_image_files,
     save_gmm_parameters,
     save_histogram,
     save_norm_prm,
     save_text,
+    staged_noise_model_output,
 )
 
 
@@ -167,27 +165,6 @@ def _load_observation_image(path: Path, noise_level: int | Sequence[int]) -> np.
     return np.asarray(img[levels])
 
 
-def _display_examples(signal: np.ndarray, observation: np.ndarray, crop_size: int) -> None:
-    import matplotlib.pyplot as plt
-
-    if observation.shape[0] < 2:
-        idxs = [0]
-    else:
-        idxs = np.random.randint(0, observation.shape[0], size=2).tolist()
-
-    plt.figure(figsize=(20, 10))
-    for i, idx in enumerate(idxs):
-        sig = crop_center(signal[idx], crop_size)
-        obs = crop_center(observation[idx], crop_size)
-        plt.subplot(1, 2 * len(idxs), 2 * i + 1)
-        plt.imshow(obs, cmap="gray")
-        plt.title(f"Observation #{idx}")
-        plt.subplot(1, 2 * len(idxs), 2 * i + 2)
-        plt.imshow(sig, cmap="gray")
-        plt.title(f"Signal #{idx}")
-    plt.show()
-
-
 def _build_info_text(
     *,
     cfg: NoiseModelBuildConfig,
@@ -250,7 +227,6 @@ def build_noise_model(
 
     save_name = cfg.save_name or _build_default_save_name(cfg)
     base_save_dir = paths.noise_model_dir(noiseModel_name=save_name)
-    save_dir = ensure_output_dir(base_save_dir, overwrite=cfg.overwrite)
 
     files_signal = list_image_files(signal_dir, cfg.filters)
     if not files_signal:
@@ -318,9 +294,11 @@ def build_noise_model(
             std_sig=prepared.std_sig,
         )
 
-    return _fit_and_save_prepared(
+    return _fit_and_save_transactionally(
         prepared,
-        save_dir=save_dir,
+        save_dir=base_save_dir,
+        overwrite=cfg.overwrite,
+        numbered=True,
         device=device,
         n_files_used=len(signal_list),
         info_text=make_info_text,
@@ -363,27 +341,25 @@ def _fit_and_save_prepared(
     display_crop_size: int = 400,
     noise_level_label: str = "0",
 ) -> NoiseModelBuildResult:
-    """Shared fit-and-write boundary used by file and in-memory inputs.
+    """Shared numerical fitting and artifact serialization into a work directory.
 
-    Patch B retains the existing artifact writer and plotting logic. Their
-    independent persistence refactor belongs to Patch C.
+    Use ``_fit_and_save_transactionally`` to publish the resulting model.
     """
     signal, observation = prepared.signal, prepared.observation
     min_val, max_val = prepared.min_signal, prepared.max_signal
     if display:
-        _display_examples(signal, observation, crop_size=display_crop_size)
+        from .plotting import display_examples
+
+        display_examples(signal, observation, crop_size=display_crop_size)
 
     histogram = make_noise_histogram(prepared, bins=histogram_bins)
     histogram_path = save_histogram(save_dir / "Histogram.npy", histogram)
     print(f"Histogram saved at: {histogram_path}")
 
     if display:
-        import matplotlib.pyplot as plt
+        from .plotting import display_histogram
 
-        plt.figure(figsize=(7, 7))
-        plt.title(f"Histogram-based model for noise level: {noise_level_label}")
-        plt.imshow(histogram[0] ** 0.25, cmap="gray")
-        plt.show()
+        display_histogram(histogram, noise_level_label)
 
     fit = fit_noise_model(
         prepared,
@@ -414,36 +390,20 @@ def _fit_and_save_prepared(
     gmm_plot_svg_path: Path | None = None
 
     if save_gmm_plot or display:
-        import matplotlib.pyplot as plt
-        from lisai.lib.hdn.utils import plotProbabilityDistribution
+        from .plotting import render_gmm_diagnostics
 
-        signal_bin_index_list = (
-            np.linspace(0, gmm_plot_points - 1, gmm_plot_points) * histogram_bins // gmm_plot_points
-        ).astype(int).tolist()
-
-        gmm_params = np.load(gmm_path)
-        gmm_plot_model = GaussianMixtureNoiseModel(params=gmm_params, device=device)
-
-        fig = plotProbabilityDistribution(
-            signalBinIndex=signal_bin_index_list,
-            histogram=histogram[0],
-            gaussianMixtureNoiseModel=gmm_plot_model,
+        gmm_plot_png_path, gmm_plot_svg_path = render_gmm_diagnostics(
+            gmm_path=gmm_path,
+            histogram=histogram,
             min_signal=min_val,
             max_signal=max_val,
-            n_bin=histogram_bins,
+            histogram_bins=histogram_bins,
             device=device,
-            max_columns=gmm_plot_max_columns,
+            plot_points=gmm_plot_points,
+            plot_max_columns=gmm_plot_max_columns,
+            save=save_gmm_plot,
+            display=display,
         )
-
-        if save_gmm_plot:
-            gmm_plot_png_path = save_dir / "GMM_plot.png"
-            gmm_plot_svg_path = save_dir / "GMM_plot.svg"
-            fig.savefig(gmm_plot_png_path)
-            fig.savefig(gmm_plot_svg_path)
-
-        if display:
-            plt.show()
-        plt.close(fig)
 
     return NoiseModelBuildResult(
         save_dir=save_dir,
@@ -459,3 +419,49 @@ def _fit_and_save_prepared(
         min_signal=min_val,
         max_signal=max_val,
     )
+
+
+def _published_build_result(
+    built: NoiseModelBuildResult, destination: Path
+) -> NoiseModelBuildResult:
+    """Translate temporary artifact paths to their final workspace locations."""
+
+    def relocated(path: Path | None) -> Path | None:
+        return destination / path.name if path is not None else None
+
+    return replace(
+        built,
+        save_dir=destination,
+        histogram_path=relocated(built.histogram_path),
+        gmm_path=relocated(built.gmm_path),
+        norm_prm_path=relocated(built.norm_prm_path),
+        info_path=relocated(built.info_path),
+        gmm_plot_png_path=relocated(built.gmm_plot_png_path),
+        gmm_plot_svg_path=relocated(built.gmm_plot_svg_path),
+    )
+
+
+def _fit_and_save_transactionally(
+    prepared: PreparedNoiseModelData,
+    *,
+    save_dir: Path,
+    overwrite: bool,
+    numbered: bool = False,
+    **fit_options,
+) -> NoiseModelBuildResult:
+    """Shared persistence path for legacy and NumPy noise-model generation."""
+    with staged_noise_model_output(save_dir, overwrite=overwrite, numbered=numbered) as (
+        work_dir, destination,
+    ):
+        built = _fit_and_save_prepared(prepared, save_dir=work_dir, **fit_options)
+        required = (built.histogram_path, built.gmm_path, built.norm_prm_path, built.info_path)
+        if built.gmm_plot_png_path is not None:
+            required += (built.gmm_plot_png_path,)
+        if built.gmm_plot_svg_path is not None:
+            required += (built.gmm_plot_svg_path,)
+        for path in required:
+            if not path.is_file() or path.stat().st_size == 0:
+                raise RuntimeError(f"Noise-model calibration did not write a valid artifact: {path}")
+    published = _published_build_result(built, destination)
+    print(f"Noise model saved at: {destination}")
+    return published
