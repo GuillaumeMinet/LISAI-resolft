@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -10,12 +9,17 @@ import numpy as np
 import torch
 from tifffile import imread
 
-from lisai.data.utils import crop_center
 from lisai.infra.paths import Paths
-from lisai.lib.hdn import histNoiseModel
 from lisai.lib.hdn.gaussianMixtureNoiseModel import GaussianMixtureNoiseModel
-from lisai.lib.hdn.utils import plotProbabilityDistribution
 
+from .core import (
+    NoiseModelFitParameters,
+    _as_noise_levels,
+    clip_crop_pair,
+    fit_noise_model,
+    make_noise_histogram,
+    prepare_noise_model_data,
+)
 from .io import (
     ensure_output_dir,
     list_image_files,
@@ -80,29 +84,12 @@ class NoiseModelBuildResult:
     max_signal: float
 
 
-def _as_noise_levels(noise_level: int | Sequence[int]) -> tuple[list[int], bool]:
-    if isinstance(noise_level, int):
-        return [int(noise_level)], False
-
-    levels = [int(v) for v in noise_level]
-    if not levels:
-        raise ValueError("noise_level sequence cannot be empty.")
-    return levels, True
-
-
 def _as_hw(crop_size: int | tuple[int, int] | None) -> tuple[int, int] | None:
     if crop_size is None:
         return None
     if isinstance(crop_size, int):
         return crop_size, crop_size
     return crop_size
-
-
-def _zscore(x: np.ndarray) -> np.ndarray:
-    std = float(np.std(x))
-    if std == 0:
-        raise ValueError("Cannot normalize with zero standard deviation.")
-    return (x - float(np.mean(x))) / std
 
 
 def _noise_level_label(noise_level: int | Sequence[int]) -> str:
@@ -176,58 +163,6 @@ def _load_observation_image(path: Path, noise_level: int | Sequence[int]) -> np.
             f"Multiple noise levels were requested, but observation is not a stack: {path}"
         )
     return np.asarray(img[levels])
-
-
-def _prepare_signal_observation_arrays(
-    signal_list: list[np.ndarray],
-    observation_list: list[np.ndarray],
-    *,
-    noise_level: int | Sequence[int],
-    norm_sig_to_obs: bool,
-) -> tuple[np.ndarray, np.ndarray, dict[str, list[float]]]:
-    levels, mltpl_noise = _as_noise_levels(noise_level)
-    per_noise_stats: dict[str, list[float]] = {}
-
-    if not mltpl_noise:
-        signal = np.stack(signal_list, axis=0)
-        observation = np.stack(observation_list, axis=0)
-        if norm_sig_to_obs:
-            signal = _zscore(signal)
-            signal = signal * float(np.std(observation)) + float(np.mean(observation))
-        return signal, observation, per_noise_stats
-
-    n_noise = len(levels)
-
-    if not norm_sig_to_obs:
-        signal = np.repeat(np.stack(signal_list, axis=0), n_noise, axis=0)
-        observation = np.concatenate(observation_list, axis=0)
-        return signal, observation, per_noise_stats
-
-    n_imgs = len(signal_list)
-    h, w = observation_list[0].shape[-2:]
-
-    observation = np.reshape(
-        np.concatenate(observation_list, axis=0),
-        (n_noise, n_imgs, h, w),
-        order="F",
-    )
-    avg_obs_per_noise = np.mean(observation, axis=(1, 2, 3))
-    std_obs_per_noise = np.std(observation, axis=(1, 2, 3))
-
-    signal = np.stack(signal_list, axis=0)
-    signal = _zscore(signal)
-    signal = np.tile(signal, (n_noise, 1, 1, 1))
-    signal = (
-        signal * std_obs_per_noise[:, np.newaxis, np.newaxis, np.newaxis]
-        + avg_obs_per_noise[:, np.newaxis, np.newaxis, np.newaxis]
-    )
-
-    observation = np.reshape(observation, (n_noise * n_imgs, h, w))
-    signal = np.reshape(signal, (n_noise * n_imgs, h, w))
-
-    per_noise_stats["avgObs_per_noise"] = avg_obs_per_noise.tolist()
-    per_noise_stats["stdObs_per_noise"] = std_obs_per_noise.tolist()
-    return signal, observation, per_noise_stats
 
 
 def _display_examples(signal: np.ndarray, observation: np.ndarray, crop_size: int) -> None:
@@ -343,13 +278,9 @@ def build_noise_model(
             print(f"Skipping {obs_path.name}: noise level index out of bounds.")
             continue
 
-        if cfg.clip is not None:
-            signal_img = np.maximum(signal_img, cfg.clip)
-            observation_img = np.maximum(observation_img, cfg.clip)
-
-        if cfg.crop_size is not None:
-            signal_img = crop_center(signal_img, cfg.crop_size)
-            observation_img = crop_center(observation_img, cfg.crop_size)
+        signal_img, observation_img = clip_crop_pair(
+            signal_img, observation_img, clip=cfg.clip, crop_size=cfg.crop_size
+        )
 
         if expected_hw is not None:
             if signal_img.shape[-2:] != expected_hw or observation_img.shape[-2:] != expected_hw:
@@ -365,31 +296,23 @@ def build_noise_model(
     if not signal_list:
         raise ValueError("No valid signal/observation pairs were loaded.")
 
-    signal, observation, per_noise_stats = _prepare_signal_observation_arrays(
+    prepared = prepare_noise_model_data(
         signal_list,
         observation_list,
         noise_level=cfg.noise_level,
         norm_sig_to_obs=cfg.norm_sig_to_obs,
+        normalize_everything=cfg.normalize_everything,
+        clip=cfg.clip,
     )
-
-    avg_obs = float(np.mean(observation))
-    std_obs = float(np.std(observation))
-    avg_sig = float(np.mean(signal))
-    std_sig = float(np.std(signal))
-
-    if cfg.normalize_everything:
-        signal = _zscore(signal)
-        observation = _zscore(observation)
-
-    min_val = float(np.min(signal))
-    max_val = float(np.max(signal))
+    signal, observation = prepared.signal, prepared.observation
+    avg_obs, std_obs = prepared.avg_obs, prepared.std_obs
+    avg_sig, std_sig = prepared.avg_sig, prepared.std_sig
+    min_val, max_val = prepared.min_signal, prepared.max_signal
 
     if cfg.display:
         _display_examples(signal, observation, crop_size=cfg.display_crop_size)
 
-    histogram = histNoiseModel.createHistogram(
-        cfg.histogram_bins, min_val, max_val, observation, signal
-    )
+    histogram = make_noise_histogram(prepared, bins=cfg.histogram_bins)
     histogram_path = save_histogram(save_dir / "Histogram.npy", histogram)
     print(f"Histogram saved at: {histogram_path}")
 
@@ -401,46 +324,26 @@ def build_noise_model(
         plt.imshow(histogram[0] ** 0.25, cmap="gray")
         plt.show()
 
-    gmm = GaussianMixtureNoiseModel(
-        min_signal=min_val,
-        max_signal=max_val,
-        path=str(save_dir) + os.sep,
-        weight=None,
-        n_gaussian=cfg.gmm_n_gaussian,
-        n_coeff=cfg.gmm_n_coeff,
-        min_sigma=cfg.gmm_min_sigma,
+    fit = fit_noise_model(
+        prepared,
+        params=NoiseModelFitParameters(
+            histogram_bins=cfg.histogram_bins,
+            gmm_n_gaussian=cfg.gmm_n_gaussian,
+            gmm_n_coeff=cfg.gmm_n_coeff,
+            gmm_n_epochs=cfg.gmm_n_epochs,
+            gmm_learning_rate=cfg.gmm_learning_rate,
+            gmm_batch_size=cfg.gmm_batch_size,
+            gmm_min_sigma=cfg.gmm_min_sigma,
+            gmm_name=cfg.gmm_name,
+        ),
+        save_dir=save_dir,
         device=device,
+        histogram=histogram,
     )
-    gmm.train(
-        signal,
-        observation,
-        batchSize=cfg.gmm_batch_size,
-        n_epochs=cfg.gmm_n_epochs,
-        learning_rate=cfg.gmm_learning_rate,
-        name=cfg.gmm_name,
-    )
-
-    gmm_path = save_gmm_parameters(gmm, save_dir / f"{cfg.gmm_name}.npz")
+    gmm_path = save_gmm_parameters(fit.gmm, save_dir / f"{cfg.gmm_name}.npz")
     print(f"GMM saved at: {gmm_path}")
 
-    levels, mltpl_noise = _as_noise_levels(cfg.noise_level)
-    norm_prm: dict[str, object] = {
-        "clip": cfg.clip,
-        "normalize_data": cfg.normalize_everything,
-        "normSig2Obs": cfg.norm_sig_to_obs,
-        "avgObs": avg_obs,
-        "stdObs": std_obs,
-        "avgSig": avg_sig,
-        "stdSig": std_sig,
-    }
-    if mltpl_noise and cfg.norm_sig_to_obs:
-        norm_prm["avgObs_per_noise"] = per_noise_stats["avgObs_per_noise"]
-        norm_prm["stdObs_per_noise"] = per_noise_stats["stdObs_per_noise"]
-    elif mltpl_noise:
-        norm_prm["avgObs_per_noise"] = [avg_obs] * len(levels)
-        norm_prm["stdObs_per_noise"] = [std_obs] * len(levels)
-
-    norm_prm_path = save_norm_prm(save_dir / "norm_prm.json", norm_prm)
+    norm_prm_path = save_norm_prm(save_dir / "norm_prm.json", prepared.norm_prm)
 
     info_text = _build_info_text(
         cfg=cfg,
@@ -458,6 +361,7 @@ def build_noise_model(
 
     if cfg.save_gmm_plot or cfg.display:
         import matplotlib.pyplot as plt
+        from lisai.lib.hdn.utils import plotProbabilityDistribution
 
         signal_bin_index_list = (
             np.linspace(0, cfg.gmm_plot_points - 1, cfg.gmm_plot_points) * cfg.histogram_bins // cfg.gmm_plot_points

@@ -7,21 +7,17 @@ from typing import Sequence
 import numpy as np
 import torch
 
-from lisai.data.utils import crop_center
 from lisai.infra.paths import Paths
-from lisai.lib.hdn import histNoiseModel
 from lisai.lib.hdn.gaussianMixtureNoiseModel import GaussianMixtureNoiseModel
-from lisai.lib.hdn.utils import plotProbabilityDistribution
 
 from .builder import (
     _as_hw,
     _display_examples,
     _load_observation_image,
     _load_signal_image,
-    _prepare_signal_observation_arrays,
     _resolve_observation_dir,
-    _zscore,
 )
+from .core import clip_crop_pair, make_noise_histogram, prepare_noise_model_data
 from .io import list_image_files
 
 
@@ -139,13 +135,9 @@ def check_noise_model(
             print(f"Skipping {obs_path.name}: noise level index out of bounds.")
             continue
 
-        if cfg.clip is not None:
-            signal_img = np.maximum(signal_img, cfg.clip)
-            observation_img = np.maximum(observation_img, cfg.clip)
-
-        if cfg.crop_size is not None:
-            signal_img = crop_center(signal_img, cfg.crop_size)
-            observation_img = crop_center(observation_img, cfg.crop_size)
+        signal_img, observation_img = clip_crop_pair(
+            signal_img, observation_img, clip=cfg.clip, crop_size=cfg.crop_size
+        )
 
         if expected_hw is not None:
             if signal_img.shape[-2:] != expected_hw or observation_img.shape[-2:] != expected_hw:
@@ -161,29 +153,22 @@ def check_noise_model(
     if not signal_list:
         raise ValueError("No valid signal/observation pairs were loaded.")
 
-    signal, observation, _ = _prepare_signal_observation_arrays(
+    prepared = prepare_noise_model_data(
         signal_list,
         observation_list,
         noise_level=cfg.noise_level,
         norm_sig_to_obs=cfg.norm_sig_to_obs,
+        normalize_everything=cfg.normalize_everything,
+        clip=cfg.clip,
     )
-
-    avg_obs = float(np.mean(observation))
-    std_obs = float(np.std(observation))
-
-    if cfg.normalize_everything:
-        signal = _zscore(signal)
-        observation = _zscore(observation)
-
-    min_val = float(np.min(signal))
-    max_val = float(np.max(signal))
+    signal, observation = prepared.signal, prepared.observation
+    avg_obs, std_obs = prepared.avg_obs, prepared.std_obs
+    min_val, max_val = prepared.min_signal, prepared.max_signal
 
     if cfg.display:
         _display_examples(signal, observation, crop_size=cfg.display_crop_size)
 
-    histogram = histNoiseModel.createHistogram(
-        cfg.histogram_bins, min_val, max_val, observation, signal
-    )
+    histogram = make_noise_histogram(prepared, bins=cfg.histogram_bins)
 
     if cfg.display:
         import matplotlib.pyplot as plt
@@ -194,6 +179,7 @@ def check_noise_model(
         plt.show()
 
     import matplotlib.pyplot as plt
+    from lisai.lib.hdn.utils import plotProbabilityDistribution
 
     signal_bin_index_list = (
         np.linspace(0, cfg.gmm_plot_points - 1, cfg.gmm_plot_points)
