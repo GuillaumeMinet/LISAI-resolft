@@ -169,14 +169,33 @@ class LadderVAE(nn.Module):
         """Global step."""
         return self._global_step
 
-    def forward(self, x, y=None):
+    def prepare_inference_features(self, x):
+        """Compute bottom-up features for *one* inference image/tile.
+
+        No features are stored on the module: the caller owns their lifetime.
+        This method must never be used for training or gradient-bearing passes.
+        """
+        if self.training or not self.mode_pred or torch.is_grad_enabled():
+            raise RuntimeError("Cached LVAE features require eval prediction under no_grad.")
+        if x.ndim != 4 or x.shape[0] != 1:
+            raise ValueError("Cached LVAE inference requires one NCHW input image.")
+        return tuple(self.bottomup_pass(self.pad_input(x)))
+
+    def forward(self, x, y=None, *, cached_bottomup=None):
 
         img_size = x.size()[2:]
-        # Pad input to make everything easier with conv strides
-        x_pad = self.pad_input(x)
-
-        # Bottom-up inference: return list of length n_layers (bottom to top)
-        bu_values = self.bottomup_pass(x_pad)
+        if cached_bottomup is None:
+            # Normal training/evaluation forward is unchanged.
+            bu_values = self.bottomup_pass(self.pad_input(x))
+        else:
+            if self.training or not self.mode_pred or torch.is_grad_enabled() or y is not None:
+                raise RuntimeError("Cached LVAE features require eval prediction under no_grad.")
+            if x.ndim != 4 or len(cached_bottomup) != self.n_layers:
+                raise ValueError("Invalid cached LVAE bottom-up features.")
+            if any(feature.shape[0] != 1 for feature in cached_bottomup):
+                raise ValueError("Cached LVAE features must belong to a single input.")
+            bu_values = tuple(feature.expand(x.shape[0], *feature.shape[1:])
+                              for feature in cached_bottomup)
 
         # Top-down inference/generation
         out, td_data = self.topdown_pass(bu_values)

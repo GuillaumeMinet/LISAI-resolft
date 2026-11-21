@@ -10,7 +10,8 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             is_lvae:bool=False,num_samples:int = None,mltpl_of:int = 16,
             tiling_size:int = None,tiling_overlap = 50,upsamp:int=1,
             ch_out = None, progress: ProgressLike | None = None,
-            progress_level: int = 0):
+            progress_level: int = 0, save_samples: bool = False,
+            sample_batch_size: int = 1):
     
     """
     Predicts image for given model, adjusting image size with padding,
@@ -53,6 +54,8 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
                                          "samples needs to be specified")
 
     progress = ensure_progress(progress)
+    hdn_options = (dict(save_samples=save_samples, sample_batch_size=sample_batch_size)
+                   if is_lvae else {})
     
     original_size = np.array(inp.shape[-2:])
     # print(f"Original input size: {original_size}")
@@ -71,12 +74,11 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             output_shape = (*inp.shape[:-3],ch_out,*output_size)
 
         inp_pad = adjust_img_size(inp,mltpl_of = mltpl_of, mode="pad")
-        outputs = make_prediction(model,inp_pad,device,is_lvae,num_samples)
+        outputs = make_prediction(model,inp_pad,device,is_lvae,num_samples, **hdn_options)
         outputs["prediction"] = crop_center(outputs.get("prediction"),
                                             crop_size = output_size)
-        if is_lvae:
-            outputs["samples"] = crop_center(outputs.get("samples"),
-                                             crop_size = output_size)
+        if "samples" in outputs:
+            outputs["samples"] = crop_center(outputs["samples"], crop_size=output_size)
 
     # tiling prediction
     else:
@@ -103,7 +105,7 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
 
         # create empty prediction and samples
         prediction = np.zeros(output_shape,dtype='float32')
-        if is_lvae:
+        if is_lvae and save_samples:
             samples = np.zeros((num_samples,*output_size),dtype='float32')
 
         # tiling loop 
@@ -124,7 +126,7 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             yy = y + full_tile_size[0]
             patch = inp_pad[...,y:yy,x:xx]
             # print(patch.shape)
-            patch_outputs = make_prediction(model,patch,device,is_lvae,num_samples)
+            patch_outputs = make_prediction(model,patch,device,is_lvae,num_samples, **hdn_options)
             # print(patch_outputs.get("prediction").shape)
             x_pred = (x+offset_x)*upsamp
             y_pred = (y+offset_y)*upsamp
@@ -132,108 +134,89 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             yy_pred = (y + offset_y + tiling_size[0])*upsamp
             prediction[...,y_pred:yy_pred,x_pred:xx_pred] = crop_center(patch_outputs.get("prediction"),
                                                                         crop_size=output_tile_size)
-            if is_lvae:
-                samples[:,y_pred:yy_pred,x_pred:xx_pred] = crop_center(patch_outputs.get("samples"),
-                                                                       crop_size=output_tile_size)
+            if is_lvae and save_samples:
+                samples[:,y_pred:yy_pred,x_pred:xx_pred] = crop_center(
+                    patch_outputs["samples"], crop_size=output_tile_size)
 
         outputs = {"prediction": prediction}
-        if is_lvae: 
+        if is_lvae and save_samples:
             outputs["samples"] = samples
             
     
     # imsave("prediction.tif", outputs["prediction"].astype(np.float32))
     outputs["prediction"] = adjust_pred_size(outputs.get("prediction"),original_size,upsamp)
-    if is_lvae: 
-        outputs["samples"] = adjust_pred_size(outputs.get("samples"),original_size,upsamp)
+    if "samples" in outputs:
+        outputs["samples"] = adjust_pred_size(outputs["samples"],original_size,upsamp)
     
     return outputs
 
 
 
-def make_prediction(model:torch.nn.Module,inp:torch.tensor,device=None,
-                    is_lvae:bool=False,num_samples:int = None):
-    """
-    Feed input in model and outputs prediction.
-
-    Parameters:
-    ----------
-    model: torch module
-        model used for prediction
-    inp: torch tensor
-        input to pass to model
-    device: torch device
-        cpu or gpu
-    is_lvae: bool, default = False
-        if model is a LVAE or not
-    num_samples: int, default = None
-        Mandator if LVAE: number of samples to computer MMSE
-
-    Returns:
-    -------
-    outputs: dict
-        dictionnary with "prediction" (i.e. mmse for LVAE) and "samples"
-        if lvae, all as numpy arrays.
-    """
-    
+def make_prediction(model: torch.nn.Module, inp: torch.Tensor, device=None,
+                    is_lvae: bool = False, num_samples: int | None = None,
+                    *, save_samples: bool = False, sample_batch_size: int = 1):
+    """Predict one padded frame/tile; only collect HDN samples when requested."""
     model.eval()
-    
     if is_lvae:
+        if num_samples is None:
+            raise ValueError("LVAE inference requires lvae_num_samples.")
+        model.mode_pred = True
+        result = lvae_predict(inp, num_samples, model, None, device,
+                              return_samples=save_samples,
+                              sample_batch_size=sample_batch_size)
+        if save_samples:
+            mmse, samples = result
+            return {"prediction": mmse, "samples": np.stack(samples, axis=0)}
+        return {"prediction": result}
 
-        assert num_samples is not None, ("for LVAE inference, number of " \
-                                         "samples needs to be specified")
-        
-        model.mode_pred=True
-        
-        img_mmse, samples = lvae_predict(inp,num_samples,model,None,device,return_samples=True)
-
-        outputs = {
-            "prediction": img_mmse,
-            "samples": np.stack(samples,axis=0),
-        }
-    
-    else:
-        with torch.no_grad():
-            prediction = model(inp)
-        outputs = {
-            "prediction": prediction.cpu().detach().numpy()
-        }
-    
-    return outputs
-
-
-def lvae_predict(inp, num_samples, model, gaussian_noise_std, device, return_samples=False):
-    """
-    Predicts desired number of samples and computes MMSE estimate for HDN model.
-    Parameters
-    ----------
-    inp: torch.tensor
-        input to feed into model.
-    num_samples: int
-        Number of samples to average for computing MMSE estimate.
-    model: Ladder VAE object
-        Hierarchical DivNoising model.
-    gaussian_noise_std: float
-        std of Gaussian noise used to corrupty data. For intrinsically noisy data, set to None.
-    device: GPU device
-    """
-
-    img_height,img_width=inp.shape[0],inp.shape[1]
-    if len(inp.shape)==2:
-        inp = inp.view(1,1,img_height,img_width)
-    inp = inp.to(device=device, dtype=torch.float)
-    samples = []
-        
     with torch.no_grad():
-        for _ in range(num_samples):
-            output = lvae_forward_pass(inp,None,device,model,gaussian_noise_std)
-            sample = output.get('out_mean').cpu().detach().numpy()
-            samples.append(np.squeeze(sample))
-    
-    img_mmse = np.mean(np.array(samples),axis=0)
-    if return_samples:
-        return img_mmse, samples
-    else:
-        return img_mmse
+        prediction = model(inp)
+    return {"prediction": prediction.detach().cpu().numpy()}
+
+
+def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
+                 return_samples=False, *, sample_batch_size: int = 1,
+                 reuse_encoder: bool = True):
+    """Generate exactly N HDN draws and accumulate an FP32 Monte Carlo mean.
+
+    Cached deterministic features and their stochastic draws are scoped to this
+    call (one frame/tile). Batches may change the random-number stream; FP32
+    accumulation order can differ slightly from NumPy's historical mean.
+    """
+    if isinstance(num_samples, bool) or not isinstance(num_samples, int) or num_samples < 1:
+        raise ValueError("num_samples must be a positive integer.")
+    if (isinstance(sample_batch_size, bool) or not isinstance(sample_batch_size, int)
+            or sample_batch_size < 1):
+        raise ValueError("sample_batch_size must be a positive integer.")
+    if inp.ndim == 2:
+        inp = inp[None, None]
+    if inp.ndim != 4 or inp.shape[0] != 1:
+        raise ValueError("LVAE inference expects one image in NCHW format.")
+    inp = inp.to(device=device, dtype=torch.float32)
+    collected = [] if return_samples else None
+    total = None
+    with torch.no_grad():
+        features = (model.prepare_inference_features(inp)
+                    if reuse_encoder and hasattr(model, "prepare_inference_features") else None)
+        for start in range(0, num_samples, sample_batch_size):
+            batch_size = min(sample_batch_size, num_samples - start)
+            batch_input = inp.expand(batch_size, *inp.shape[1:])
+            if features is not None:
+                model_out = model(batch_input, cached_bottomup=features)
+                draw = model_out["out_mean"]
+            else:
+                draw = lvae_forward_pass(batch_input, None, device, model,
+                                         gaussian_noise_std)["out_mean"]
+            if draw.shape[0] != batch_size:
+                raise RuntimeError("LVAE did not produce the requested number of stochastic draws.")
+            draw = draw.float()
+            # Sum a batch on the GPU before transferring its contribution.
+            contribution = draw.sum(dim=0).detach().cpu().numpy()
+            total = contribution if total is None else total + contribution
+            if collected is not None:
+                collected.extend(np.squeeze(sample) for sample in draw.detach().cpu().numpy())
+    mmse = np.squeeze(total / np.float32(num_samples)).astype(np.float32, copy=False)
+    return (mmse, collected) if return_samples else mmse
 
 
 def predict_sample(inp, model, gaussian_noise_std, device):

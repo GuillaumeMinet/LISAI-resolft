@@ -13,12 +13,14 @@ def infer_batch(
     model: torch.nn.Module, x: torch.Tensor, *, is_lvae: bool,
     tiling_size: int | None, num_samples: int | None, upsamp: int,
     ch_out: int | None, progress: ProgressLike | None = None,
-    progress_level: int = 0,
+    progress_level: int = 0, save_samples: bool = False,
+    sample_batch_size: int = 1,
 ):
     return predict(
         model, x, is_lvae=is_lvae, tiling_size=tiling_size,
         num_samples=num_samples, upsamp=upsamp, ch_out=ch_out,
         progress=progress, progress_level=progress_level,
+        save_samples=save_samples, sample_batch_size=sample_batch_size,
     )
 
 
@@ -63,6 +65,7 @@ def predict_4d_stack(
     temporal_edge_mode: str = "drop", normalized_black_value: float = 0.0,
     dark_frame_context_length: bool | None = None,
     verbose: bool = False, progress: ProgressLike | None = None,
+    sample_batch_size: int = 1,
 ):
     """Return [Z,T,Y,X] or [Z,1,Y,X]; temporal drop physically removes edges."""
     progress = ensure_progress(progress)
@@ -116,6 +119,7 @@ def predict_4d_stack(
             model, x, is_lvae=is_lvae, tiling_size=tiling_size,
             num_samples=lvae_num_samples, upsamp=upsamp, ch_out=resolved_ch_out,
             progress=progress, progress_level=1 if show_stack_progress else 0,
+            save_samples=lvae_save_samples, sample_batch_size=sample_batch_size,
         )
         output_t = t-half if do_drop else t
         pred_stack[z, output_t, ...] = np.asarray(outputs["prediction"]).squeeze()
