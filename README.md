@@ -132,6 +132,21 @@ shorter series. HDN output is stochastic unless the random state is controlled.
 The model must first be installed into the selected workspace with
 `lisai models download NAME --install` or `lisai models install`.
 
+### HDN inference performance and GPU diagnostics
+
+For new apply configurations, HDN uses **FP16 autocast on compatible CUDA
+GPUs**, **one stochastic draw per forward pass** (larger batches are advanced
+and experimental), and **spatial tiling Off** by default. An explicit legacy
+`tiling_size: auto` still uses the saved model setting; it is not automatic
+memory-aware tiling. CUDA out-of-memory errors suggest a manually confirmed
+smaller tile, without a silent retry.
+
+Pass `measure_gpu_memory=True` to `predict(..., return_info=True)` to record
+PyTorch peak/allocated/reserved GPU memory around model execution. The default
+is `False`; the ImProcess plugin currently enables it so that last-run memory
+appears beside inference/total timing. See
+[HDN inference performance and diagnostics](docs/hdn_inference_performance.md).
+
 ### Generate an HDN noise model from paired arrays
 
 Applications can calibrate an HDN noise model directly from aligned high-SNR

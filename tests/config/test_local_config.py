@@ -157,7 +157,7 @@ def test_local_inference_configs_are_created_from_builtin_defaults(tmp_path: Pat
     defaults = load_yaml(defaults_path)
     post_training = load_yaml(post_training_path)
 
-    assert defaults["apply"]["inference"]["tiling_size"] == "auto"
+    assert defaults["apply"]["inference"]["tiling_size"] == "off"
     assert defaults["apply"]["postprocess"]["color_code"]["enabled"] is False
     assert defaults["evaluate"]["checkpoint"]["best_or_last"] == "best"
     assert post_training["evaluate"]["checkpoint"]["best_or_last"] == "both"

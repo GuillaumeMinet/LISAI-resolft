@@ -1,3 +1,5 @@
+from contextlib import nullcontext
+
 import numpy as np
 import torch
 
@@ -11,7 +13,7 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             tiling_size:int = None,tiling_overlap = 50,upsamp:int=1,
             ch_out = None, progress: ProgressLike | None = None,
             progress_level: int = 0, save_samples: bool = False,
-            sample_batch_size: int = 1):
+            sample_batch_size: int = 1, precision: str = "fp32"):
     
     """
     Predicts image for given model, adjusting image size with padding,
@@ -54,7 +56,8 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
                                          "samples needs to be specified")
 
     progress = ensure_progress(progress)
-    hdn_options = (dict(save_samples=save_samples, sample_batch_size=sample_batch_size)
+    hdn_options = (dict(save_samples=save_samples, sample_batch_size=sample_batch_size,
+                        precision=precision)
                    if is_lvae else {})
     
     original_size = np.array(inp.shape[-2:])
@@ -154,29 +157,41 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
 
 def make_prediction(model: torch.nn.Module, inp: torch.Tensor, device=None,
                     is_lvae: bool = False, num_samples: int | None = None,
-                    *, save_samples: bool = False, sample_batch_size: int = 1):
+                    *, save_samples: bool = False, sample_batch_size: int = 1,
+                    precision: str = "fp32"):
     """Predict one padded frame/tile; only collect HDN samples when requested."""
+    was_training = model.training
+    original_pred_mode = getattr(model, "mode_pred", None)
     model.eval()
     if is_lvae:
         if num_samples is None:
             raise ValueError("LVAE inference requires lvae_num_samples.")
-        model.mode_pred = True
-        result = lvae_predict(inp, num_samples, model, None, device,
-                              return_samples=save_samples,
-                              sample_batch_size=sample_batch_size)
-        if save_samples:
-            mmse, samples = result
-            return {"prediction": mmse, "samples": np.stack(samples, axis=0)}
-        return {"prediction": result}
+        try:
+            model.mode_pred = True
+            result = lvae_predict(inp, num_samples, model, None, device,
+                                  return_samples=save_samples,
+                                  sample_batch_size=sample_batch_size,
+                                  precision=precision)
+            if save_samples:
+                mmse, samples = result
+                return {"prediction": mmse, "samples": np.stack(samples, axis=0)}
+            return {"prediction": result}
+        finally:
+            if original_pred_mode is not None:
+                model.mode_pred = original_pred_mode
+            model.train(was_training)
 
-    with torch.no_grad():
-        prediction = model(inp)
-    return {"prediction": prediction.detach().cpu().numpy()}
+    try:
+        with torch.no_grad():
+            prediction = model(inp)
+        return {"prediction": prediction.detach().cpu().numpy()}
+    finally:
+        model.train(was_training)
 
 
 def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
                  return_samples=False, *, sample_batch_size: int = 1,
-                 reuse_encoder: bool = True):
+                 reuse_encoder: bool = True, precision: str = "fp32"):
     """Generate exactly N HDN draws and accumulate an FP32 Monte Carlo mean.
 
     Cached deterministic features and their stochastic draws are scoped to this
@@ -192,10 +207,17 @@ def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
         inp = inp[None, None]
     if inp.ndim != 4 or inp.shape[0] != 1:
         raise ValueError("LVAE inference expects one image in NCHW format.")
-    inp = inp.to(device=device, dtype=torch.float32)
+    resolved_device = torch.device(device) if device is not None else inp.device
+    if precision not in ("fp32", "fp16"):
+        raise ValueError("HDN inference precision must be fp32 or fp16.")
+    if precision == "fp16" and resolved_device.type != "cuda":
+        raise ValueError("FP16 HDN inference requires a compatible CUDA device.")
+    inp = inp.to(device=resolved_device, dtype=torch.float32)
     collected = [] if return_samples else None
     total = None
-    with torch.no_grad():
+    autocast = (torch.autocast(device_type="cuda", dtype=torch.float16)
+                if precision == "fp16" else nullcontext())
+    with torch.no_grad(), autocast:
         features = (model.prepare_inference_features(inp)
                     if reuse_encoder and hasattr(model, "prepare_inference_features") else None)
         for start in range(0, num_samples, sample_batch_size):
@@ -209,6 +231,8 @@ def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
                                          gaussian_noise_std)["out_mean"]
             if draw.shape[0] != batch_size:
                 raise RuntimeError("LVAE did not produce the requested number of stochastic draws.")
+            if not bool(torch.isfinite(draw).all()):
+                raise FloatingPointError("Non-finite HDN prediction under " + precision.upper())
             draw = draw.float()
             # Sum a batch on the GPU before transferring its contribution.
             contribution = draw.sum(dim=0).detach().cpu().numpy()

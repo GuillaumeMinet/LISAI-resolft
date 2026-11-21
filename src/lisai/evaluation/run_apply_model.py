@@ -6,10 +6,12 @@ run stack inference, and save outputs.
 """
 
 import warnings
+from time import perf_counter
 from typing import Mapping
 from pathlib import Path
 
 import numpy as np
+import torch
 from tifffile import imread
 
 from lisai.config.models.inference import ApplyDefaults, InputNormalization, TilingSizePolicy
@@ -17,8 +19,14 @@ from lisai.config.progress import resolve_progress_bar
 from lisai.data.utils import center_pad, crop_center
 from lisai.evaluation.defaults import resolve_apply_output_policy, resolve_apply_save_input
 from lisai.evaluation.inference.normalization import denormalize_pred, normalize_apply_input
+from lisai.evaluation.inference.memory import (
+    start_gpu_memory_measurement, finish_gpu_memory_measurement,
+)
 from lisai.evaluation.inference.progress import InferenceProgress
 from lisai.evaluation.inference.results import PredictionInfo, PredictionResult
+from lisai.evaluation.inference.planning import (
+    HDNOutOfMemoryError, resolve_hdn_plan,
+)
 from lisai.evaluation.inference.shape import inverse_make_4d, make_4d
 from lisai.evaluation.inference.stack import predict_4d_stack
 from lisai.evaluation.io import resolve_prediction_inputs, save_outputs
@@ -80,7 +88,7 @@ def _format_tiling_size_for_display(requested: TilingSizePolicy, effective: int 
     if effective is None:
         return "off"
     if requested is None or requested == "auto":
-        return f"{effective} (auto)"
+        return f"{effective} (model settings)"
     return str(effective)
 
 
@@ -259,16 +267,9 @@ def _resolve_apply_files_for_output(
     return selected
 
 
-def compute_prediction_array(
-    img: np.ndarray, *, saved_run, runtime, cfg: ApplyDefaults,
-    normalization: InputNormalization | None = None,
-    progress: InferenceProgress | None = None, verbose: bool = False,
-) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, PredictionInfo, np.ndarray]:
-    """The single array computation path used by public predict and legacy apply.
-
-    Returns final prediction, optional samples, processed input, alignment info,
-    and internal ZTYX prediction for optional CLI color visualization.
-    """
+def _prepare_prediction_input(img: np.ndarray, *, saved_run, cfg: ApplyDefaults,
+                              normalization: InputNormalization | None = None):
+    """Shared input preparation for execution and the public plan preview."""
     if not isinstance(img, np.ndarray) or img.ndim not in (2, 3, 4):
         raise ValueError("Prediction expects an image with axes YX, TYX or TZYX.")
     selected = cfg.input.stack_selection_idx
@@ -304,6 +305,7 @@ def compute_prediction_array(
     )[0, 0]) if context_length is not None and cfg.inference.temporal_edge_mode == "black_input" else 0.0
 
     crop_size = cfg.inference.crop_size
+    original_size = normalized.shape[-2:]
     if crop_size is not None:
         if isinstance(crop_size, int):
             crop_size = (crop_size, crop_size)
@@ -326,17 +328,89 @@ def compute_prediction_array(
                 "multiple_prm": {"fill_factor": fill_factor, "random": False},
             })
 
-    ch_out = 1 if normalized.ndim >= 4 and normalized.shape[1] > 1 else None
-    pred_stack, samples_stack = predict_4d_stack(
-        runtime.model, normalized, timelapse=timelapse, ch_out=ch_out,
-        device=runtime.device, is_lvae=saved_run.is_lvae,
-        tiling_size=runtime.tiling_size, lvae_num_samples=cfg.inference.lvae_num_samples,
-        lvae_save_samples=cfg.saving.lvae_save_samples,
-        upsamp=saved_run.upsampling_factor, context_length=context_length,
-        temporal_edge_mode=cfg.inference.temporal_edge_mode,
-        normalized_black_value=normalized_black,
-        verbose=verbose, progress=progress,
+    return (normalized, timelapse, volumetric, source_indices, data_norm,
+            model_norm, crop_size, original_size, normalized_black, context_length)
+
+
+def _resolved_prediction_plan(*, saved_run, runtime, cfg: ApplyDefaults,
+                              normalized: np.ndarray):
+    options = cfg.inference.performance
+    if not saved_run.is_lvae:
+        if options is not None and (options.precision != "auto" or options.sample_batch_size not in (1, "auto")):
+            raise ValueError("HDN performance options cannot be applied to a non-HDN model.")
+        return None
+    return resolve_hdn_plan(
+        model=runtime.model, device=runtime.device,
+        image_shape=tuple(normalized.shape[-2:]),
+        tiling_size=runtime.tiling_size,
+        requested_samples=cfg.inference.lvae_num_samples,
+        performance=options,
     )
+
+
+def compute_prediction_plan(img: np.ndarray, *, saved_run, runtime,
+                            cfg: ApplyDefaults):
+    """Preview only: load/normalize and inspect the effective shape; no draws."""
+    normalized, *_ = _prepare_prediction_input(img, saved_run=saved_run, cfg=cfg)
+    return _resolved_prediction_plan(
+        saved_run=saved_run, runtime=runtime, cfg=cfg, normalized=normalized,
+    )
+
+
+def compute_prediction_array(
+    img: np.ndarray, *, saved_run, runtime, cfg: ApplyDefaults,
+    normalization: InputNormalization | None = None,
+    progress: InferenceProgress | None = None, verbose: bool = False,
+    measure_gpu_memory: bool = False,
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, PredictionInfo, np.ndarray]:
+    """The single array computation path used by public predict and legacy apply.
+
+    Returns final prediction, optional samples, processed input, alignment info,
+    and internal ZTYX prediction for optional CLI color visualization.
+    """
+    (normalized, timelapse, volumetric, source_indices, data_norm,
+     model_norm, crop_size, original_size, normalized_black, context_length) = (
+        _prepare_prediction_input(img, saved_run=saved_run, cfg=cfg,
+                                  normalization=normalization)
+    )
+    plan = _resolved_prediction_plan(
+        saved_run=saved_run, runtime=runtime, cfg=cfg, normalized=normalized,
+    )
+    ch_out = 1 if normalized.ndim >= 4 and normalized.shape[1] > 1 else None
+    stack_options = (
+        {"sample_batch_size": plan.sample_batch_size, "precision": plan.precision}
+        if plan is not None else {}
+    )
+    # Synchronize CUDA around the timed stack computation: CUDA kernels are
+    # asynchronous and a host-only stopwatch underreports their elapsed time.
+    # This excludes model loading, normalization, denormalization, and TIFF I/O.
+    cuda_device = torch.device(runtime.device)
+    if cuda_device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize(cuda_device)
+    gpu_memory_baseline = (start_gpu_memory_measurement(cuda_device)
+                           if measure_gpu_memory else None)
+    inference_started = perf_counter()
+    try:
+        pred_stack, samples_stack = predict_4d_stack(
+            runtime.model, normalized, timelapse=timelapse, ch_out=ch_out,
+            device=runtime.device, is_lvae=saved_run.is_lvae,
+            tiling_size=runtime.tiling_size, lvae_num_samples=cfg.inference.lvae_num_samples,
+            lvae_save_samples=cfg.saving.lvae_save_samples,
+            upsamp=saved_run.upsampling_factor, context_length=context_length,
+            temporal_edge_mode=cfg.inference.temporal_edge_mode,
+            normalized_black_value=normalized_black,
+            verbose=verbose, progress=progress, **stack_options,
+        )
+    except torch.cuda.OutOfMemoryError as error:
+        if plan is None or torch.device(runtime.device).type != "cuda":
+            raise
+        raise HDNOutOfMemoryError(plan, error) from error
+    if cuda_device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize(cuda_device)
+    inference_seconds = perf_counter() - inference_started
+    gpu_memory = finish_gpu_memory_measurement(gpu_memory_baseline)
+    if progress is not None:
+        progress.write(f"Inference (model execution): {inference_seconds:.3f} s")
     if crop_size is not None and cfg.inference.keep_original_shape:
         pad = (max(0, original_size[0] - crop_size[0]), max(0, original_size[1] - crop_size[1]))
         pred_stack = center_pad(pred_stack, pad)
@@ -370,7 +444,7 @@ def compute_prediction_array(
     return (
         np.asarray(prediction, dtype=np.float32), samples,
         np.asarray(normalized, dtype=np.float32),
-        PredictionInfo(tuple(source_indices), black_positions), internal_pred,
+        PredictionInfo(tuple(source_indices), black_positions, plan, inference_seconds, gpu_memory), internal_pred,
     )
 
 
@@ -391,6 +465,7 @@ def run_apply_model(
     input_normalization: InputNormalization | Mapping[str, object] | None = None,
     device: str | None = None,
     return_result: bool = False,
+    measure_gpu_memory: bool = False,
 ):
     """Apply a saved model using a fully resolved typed apply config.
 
@@ -564,6 +639,7 @@ def run_apply_model(
         pred_stack, samples_stack, normalized_input, info, internal_pred = compute_prediction_array(
             img, saved_run=saved_run, runtime=runtime, cfg=cfg,
             normalization=normalization, progress=progress, verbose=True,
+            measure_gpu_memory=measure_gpu_memory,
         )
         volumetric = img.ndim == 4
         tosave = {"pred": pred_stack}
@@ -609,4 +685,6 @@ def run_apply_model(
             info_by_path[prediction_path] = info
 
     if return_result:
-        return PredictionResult(Path(save_folder), tuple(saved_predictions), info_by_path)
+        unique_plans = {info.inference_plan for info in info_by_path.values()}
+        shared_plan = next(iter(unique_plans)) if len(unique_plans) == 1 else None
+        return PredictionResult(Path(save_folder), tuple(saved_predictions), info_by_path, shared_plan)

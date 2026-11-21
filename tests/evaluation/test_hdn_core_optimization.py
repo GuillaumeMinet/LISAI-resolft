@@ -98,3 +98,14 @@ def test_invalid_batches_and_samples():
     for n, batch in [(0, 1), (1, 0), (True, 2), (2, True)]:
         with pytest.raises(ValueError, match="positive integer"):
             lvae_predict(x, n, model, None, "cpu", sample_batch_size=batch)
+
+
+def test_training_forward_retains_gradients():
+    model = _model().train()
+    model.mode_pred = False
+    image = torch.rand((1, 1, 32, 32))
+    output = model(image)
+    assert output["kl_loss"] is not None
+    loss = -output["ll"].mean() + output["kl_loss"]
+    loss.backward()
+    assert any(param.grad is not None for param in model.parameters())

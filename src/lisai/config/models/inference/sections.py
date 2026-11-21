@@ -4,6 +4,8 @@ from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from lisai.hdn_performance import HDNPerformanceOptions
+
 from .compat import migrate_legacy_flat_apply_config, migrate_legacy_flat_evaluate_config
 
 ApplyOutputMode: TypeAlias = Literal["default", "in_place", "folder_inside", "folder_outside"]
@@ -170,8 +172,11 @@ class ApplyInferenceDefaults(BaseModel):
 
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     keep_original_shape: bool = Field(default=True, description=KEEP_ORIGINAL_SHAPE_DESC)
-    tiling_size: TilingSizePolicy = Field(default="auto", description=TILING_SIZE_DESC)
-    lvae_num_samples: int | None = Field(default=30, description=LVAE_NUM_SAMPLES_DESC)
+    tiling_size: TilingSizePolicy = Field(default="off", description=TILING_SIZE_DESC)
+    lvae_num_samples: int | None = Field(default=30, gt=0, description=LVAE_NUM_SAMPLES_DESC)
+    # Unspecified performance uses Auto precision (FP16 on supported CUDA) and batch 1.
+    # Explicit historical FP32/batch-1 settings remain reproducible.
+    performance: HDNPerformanceOptions | None = None
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
     temporal_edge_mode: TemporalEdgeMode = Field(default="drop", description=TEMPORAL_EDGE_MODE_DESC)
@@ -193,7 +198,8 @@ class ApplyInferenceOverrides(BaseModel):
     crop_size: int | tuple[int, int] | None = Field(default=None, description=CROP_SIZE_DESC)
     keep_original_shape: bool | None = Field(default=None, description=KEEP_ORIGINAL_SHAPE_DESC)
     tiling_size: TilingSizePolicy = Field(default=None, description=TILING_SIZE_DESC)
-    lvae_num_samples: int | None = Field(default=None, description=LVAE_NUM_SAMPLES_DESC)
+    lvae_num_samples: int | None = Field(default=None, gt=0, description=LVAE_NUM_SAMPLES_DESC)
+    performance: HDNPerformanceOptions | None = None
     downsamp: int | None = Field(default=None, description=DOWNSAMP_DESC)
     fill_factor: float | None = Field(default=None, gt=0, le=1, description=FILL_FACTOR_DESC)
     temporal_edge_mode: TemporalEdgeMode | None = Field(default=None, description=TEMPORAL_EDGE_MODE_DESC)

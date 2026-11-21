@@ -1,3 +1,5 @@
+from lisai.hdn_performance import HDNPerformanceOptions
+
 from .root import (
     InferenceConfig,
     InferenceDefaults,
@@ -37,6 +39,7 @@ from .sections import (
 )
 
 __all__ = [
+    "HDNPerformanceOptions",
     "ApplyDefaults",
     "ApplyInferenceDefaults",
     "ApplyInferenceOverrides",
