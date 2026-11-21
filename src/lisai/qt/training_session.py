@@ -119,9 +119,15 @@ class TrainingSession(QtCore.QObject):
                     experiment_name=self.plan.experiment_name,
                     old_run_ids=self.run_ids_before,
                 )
+                runs = list_usable_training_runs(self.workspace)
+                if not completed_id and getattr(self.plan, "mode", "train") == "continue_training":
+                    # Resume keeps its original run ID; it is not a newly created run.
+                    resumed = [run for run in runs if self.run_dir is not None
+                               and Path(run["run_dir"]).resolve() == self.run_dir.resolve()]
+                    if len(resumed) == 1:
+                        completed_id = resumed[0]["run_id"]
                 if completed_id:
-                    actual = next((run for run in list_usable_training_runs(self.workspace)
-                                   if run["run_id"] == completed_id), None)
+                    actual = next((run for run in runs if run["run_id"] == completed_id), None)
                     if actual is not None:
                         self.run_dir = actual["run_dir"]
             except Exception as exc:

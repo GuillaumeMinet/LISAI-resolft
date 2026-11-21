@@ -1,4 +1,4 @@
-"""Small, toolkit-independent quick training launch contract and preflight."""
+"""Toolkit-independent training preflight and subprocess invocation."""
 from __future__ import annotations
 
 import sys
@@ -11,14 +11,16 @@ class SavedTrainingPlan:
     """Launch parameters for a validated, user-authored training YAML."""
 
     def __init__(self, config_path: Path, dataset_name: str, experiment_name: str,
-                 models_subfolder: str = "HDN"):
+                 models_subfolder: str = "HDN", *, mode: str = "train", run_dir: Path | None = None):
         self.config_path = Path(config_path)
         self.dataset_name = str(dataset_name)
         self.experiment_name = str(experiment_name)
         self.models_subfolder = str(models_subfolder)
+        self.mode = str(mode)
+        self.run_dir = Path(run_dir) if run_dir is not None else None
 
 
-def quick_hdn_training_command(settings, plan, *, interpreter: str | None = None) -> list[str]:
+def training_command(settings, plan, *, interpreter: str | None = None) -> list[str]:
     """Build an isolated LISAI worker invocation; never consult CLI selection."""
     executable = interpreter or sys.executable
     config_path = Path(plan.config_path).resolve()
@@ -34,6 +36,53 @@ def quick_hdn_training_command(settings, plan, *, interpreter: str | None = None
         "--workspace", str(workspace),
         "--config-root", str(config_root),
     ]
+
+
+# Compatibility with the R1 Quick HDN public helper.
+quick_hdn_training_command = training_command
+
+
+def plan_for_training_config(config_path: str | Path, *, settings) -> SavedTrainingPlan:
+    """Preflight any supported saved training YAML for the regular LISAI runner.
+
+    Unlike Quick HDN preparation, this path does not assume unsupervised LVAE,
+    unprepared data, a noise model, or file-level splitting. The resolved
+    training engine remains authoritative for model/dataset compatibility.
+    Refuse destructive overwrites in this GUI entry point.
+    """
+    from lisai.infra.paths import Paths
+
+    path = managed_training_config_path(settings, config_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Training configuration not found: {path}")
+    resolved = validate_training_yaml_text(path.read_text(encoding="utf-8"), settings)
+    mode = resolved.experiment.mode
+    if mode not in {"train", "retrain", "continue_training"}:
+        raise ValueError(f"Unsupported training mode: {mode}")
+    if mode != "continue_training" and resolved.experiment.overwrite:
+        raise ValueError("GUI training refuses overwrite=true; use a new experiment name or the CLI.")
+    dataset_name = resolved.data.dataset_name
+    experiment_name = resolved.experiment.exp_name
+    if not dataset_name or not experiment_name:
+        raise ValueError("Training config must resolve a dataset and experiment name.")
+    if mode == "continue_training":
+        origin = resolved.experiment.origin_run_dir
+        if not origin:
+            raise ValueError("Continue training requires an origin run directory.")
+        run_dir = Path(origin).resolve()
+        if not run_dir.is_dir():
+            raise FileNotFoundError(f"Original run does not exist: {run_dir}")
+    else:
+        run_dir = Paths(settings).run_dir(
+            dataset_name=dataset_name, models_subfolder=resolved.routing.models_subfolder,
+            exp_name=experiment_name,
+        )
+        if run_dir.exists():
+            raise FileExistsError(f"Run already exists at {run_dir}; choose a different experiment name.")
+    return SavedTrainingPlan(
+        path, dataset_name, experiment_name, resolved.routing.models_subfolder,
+        mode=mode, run_dir=run_dir,
+    )
 
 
 def plan_for_saved_training_config(config_path: str | Path, *, settings) -> SavedTrainingPlan:

@@ -21,6 +21,8 @@ from .config_editor import (
 from .training import (
     SavedTrainingPlan,
     plan_for_saved_training_config,
+    plan_for_training_config,
+    training_command,
     quick_hdn_training_command,
 )
 from .workspace import create_workspace, validate_workspace
@@ -31,5 +33,5 @@ __all__ = [
     "list_hdn_noise_models", "list_reusable_training_datasets", "list_usable_training_runs",
     "list_user_training_configs", "managed_training_config_path", "save_training_yaml_text",
     "validate_training_yaml_text", "SavedTrainingPlan", "plan_for_saved_training_config",
-    "quick_hdn_training_command",
+    "quick_hdn_training_command", "plan_for_training_config", "training_command",
 ]

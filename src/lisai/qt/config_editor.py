@@ -131,6 +131,8 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
     """Embeddable training config browser, guided fields, raw YAML and safe saves."""
 
     closeRequested = QtCore.Signal()
+    configSaved = QtCore.Signal(object)
+    configOpened = QtCore.Signal(object)
 
     def __init__(self, settings, parent=None, *, on_saved=None, initial=None):
         super().__init__(parent)
@@ -192,27 +194,40 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
                     self.selector.setCurrentIndex(index)
                     break
 
+    @property
+    def has_unsaved_changes(self) -> bool:
+        return self.raw.toPlainText() != self.clean_text
+
     def _confirm_discard(self):
-        if self.raw.toPlainText() == self.clean_text:
+        if not self.has_unsaved_changes:
             return True
         return (QtWidgets.QMessageBox.question(
             self, "Discard edits?", "Discard changes not saved to disk?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.Yes)
 
-    def open_selected(self):
-        value = self.selector.currentData()
-        if not value or not self._confirm_discard():
-            return
+    def load_path(self, value, *, confirm_discard=True) -> bool:
+        """Load a concrete user YAML into both editors; safe for host composition."""
+        if confirm_discard and not self._confirm_discard():
+            return False
         try:
             source = managed_training_config_path(self.settings, value)
             text = source.read_text(encoding="utf-8")
             self.current_path, self.clean_text = source, text
             self.raw.setPlainText(text)
+            self.refresh(str(source))
             self.reload_guided()
             self.status.setText(str(source))
+            self.configOpened.emit(source)
+            return True
         except Exception as error:
             self.status.setText(f"Open failed: {error}")
+            return False
+
+    def open_selected(self):
+        value = self.selector.currentData()
+        if value:
+            self.load_path(value)
 
     def reload_guided(self):
         try:
@@ -265,6 +280,7 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
             self.current_path, self.clean_text = path, self.raw.toPlainText()
             self.refresh(str(path))
             self.status.setText(f"Saved: {path}")
+            self.configSaved.emit(path)
             if self.on_saved is not None:
                 self.on_saved(path)
         except Exception as error:
