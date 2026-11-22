@@ -177,6 +177,14 @@ class ModelManagerWidget(QtWidgets.QWidget):
         current = self.model_list.currentItem()
         return str(current.data(QtCore.Qt.UserRole)) if current is not None else ""
 
+    def is_busy(self) -> bool:
+        """Whether a catalog or installation job is still owned by this page."""
+        return self._job is not None
+
+    def is_installed(self, name: str) -> bool:
+        """Check the currently refreshed installed-model catalog."""
+        return bool(name) and name in self._installed
+
     def set_settings(self, settings: Settings):
         """Change workspace only when no catalog/download job is using the old one."""
         if self._job is not None:

@@ -536,3 +536,7 @@ The normal automated tests use **locally generated untrained** LVAE and
 UNet-RCAN bundles; they are not substitutes for this published-weight test.
 No source checkout is required for LISAI itself, but the standalone validation
 script must be copied into the environment where it is executed.
+
+### Optional standalone Qt application (APP-4)
+
+Run `python -m lisai.app --workspace PATH` after installing `lisai[qt]` and a Qt binding (e.g. PySide6). It embeds the reusable Training workspace and a TIFF→model→side-by-side inference viewer. See [docs/app4_standalone.md](docs/app4_standalone.md).
