@@ -12,10 +12,7 @@ from typing import Any
 import yaml
 from qtpy import QtCore, QtWidgets
 
-from lisai.application import (
-    list_user_training_configs, managed_training_config_path,
-    save_training_yaml_text, validate_training_yaml_text,
-)
+from lisai.application import TrainingConfigDocument, list_user_training_configs
 from lisai.application.schema_editor import TASK_LABELS, training_editor_fields, update_yaml_field
 
 
@@ -128,7 +125,11 @@ class ScientificFieldsWidget(QtWidgets.QWidget):
 
 
 class TrainingConfigEditorWidget(QtWidgets.QWidget):
-    """Embeddable training config browser, guided fields, raw YAML and safe saves."""
+    """Two views over ONE application-owned configuration document.
+
+    All text/source/dirty/revision state belongs to TrainingConfigDocument.
+    QPlainTextEdit is an editable view, not a competing configuration model.
+    """
 
     closeRequested = QtCore.Signal()
     configSaved = QtCore.Signal(object)
@@ -138,8 +139,7 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
         super().__init__(parent)
         self.settings = settings
         self.on_saved = on_saved
-        self.current_path: Path | None = None
-        self.clean_text = ""
+        self.document = TrainingConfigDocument.from_text("")
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(QtWidgets.QLabel(
             "Edit scientific parameters first, or use Raw YAML for full control. "
@@ -174,6 +174,7 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
         open_button.clicked.connect(self.open_selected)
         self.reload_button.clicked.connect(self.reload_guided)
         self.guided.fieldEdited.connect(self._edited_field)
+        self.raw.textChanged.connect(self._raw_changed)
         self.tabs.currentChanged.connect(self._tab_changed)
         validate.clicked.connect(self.validate)
         save.clicked.connect(lambda: self.save(as_new=False))
@@ -182,6 +183,22 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
         self.refresh(initial)
         if self.selector.count():
             self.open_selected()
+
+    @property
+    def current_path(self) -> Path | None:
+        return self.document.save_path
+
+    @property
+    def clean_text(self) -> str:
+        """R3-compatible read-only view; document owns the saved text."""
+        return self.document.saved_text or ""
+
+    @property
+    def has_unsaved_changes(self) -> bool:
+        return self.document.dirty
+
+    def _raw_changed(self):
+        self.document.replace_text(self.raw.toPlainText())
 
     def refresh(self, selected=None):
         previous = selected if isinstance(selected, (str, Path)) else self.selector.currentData()
@@ -194,32 +211,42 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
                     self.selector.setCurrentIndex(index)
                     break
 
-    @property
-    def has_unsaved_changes(self) -> bool:
-        return self.raw.toPlainText() != self.clean_text
-
     def _confirm_discard(self):
-        if not self.has_unsaved_changes:
+        if not self.document.dirty or (self.document.save_path is None and not self.document.yaml_text.strip()):
             return True
         return (QtWidgets.QMessageBox.question(
-            self, "Discard edits?", "Discard changes not saved to disk?",
+            self, "Discard edits?", "Discard unsaved configuration changes?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No) == QtWidgets.QMessageBox.Yes)
 
-    def load_path(self, value, *, confirm_discard=True) -> bool:
-        """Load a concrete user YAML into both editors; safe for host composition."""
+    def set_document(self, document: TrainingConfigDocument, *, confirm_discard=True) -> bool:
+        """Display an existing/draft document without copying its authoritative state."""
         if confirm_discard and not self._confirm_discard():
             return False
+        self.document = document
+        with QtCore.QSignalBlocker(self.raw):
+            self.raw.setPlainText(self.document.yaml_text)
+        self.refresh(self.document.save_path)
+        self.reload_guided()
+        self.status.setText(str(self.current_path) if self.current_path else
+                            f"Unsaved {self.document.source_kind} configuration — Save As to create a file.")
+        self.configOpened.emit(self.current_path)
+        return True
+
+    def load_path(self, value, *, confirm_discard=True) -> bool:
+        """Open one user-owned YAML; never modify the selected file on read."""
         try:
-            source = managed_training_config_path(self.settings, value)
-            text = source.read_text(encoding="utf-8")
-            self.current_path, self.clean_text = source, text
-            self.raw.setPlainText(text)
-            self.refresh(str(source))
-            self.reload_guided()
-            self.status.setText(str(source))
-            self.configOpened.emit(source)
-            return True
+            candidate = TrainingConfigDocument.open(self.settings, value)
+            return self.set_document(candidate, confirm_discard=confirm_discard)
+        except Exception as error:
+            self.status.setText(f"Open failed: {error}")
+            return False
+
+    def load_source(self, source_ref: str, *, confirm_discard=True) -> bool:
+        """Load a built-in preset/example/template as an unsaved draft."""
+        try:
+            candidate = TrainingConfigDocument.from_source(self.settings, source_ref)
+            return self.set_document(candidate, confirm_discard=confirm_discard)
         except Exception as error:
             self.status.setText(f"Open failed: {error}")
             return False
@@ -231,8 +258,12 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
 
     def reload_guided(self):
         try:
-            self.guided.load_text(self.raw.toPlainText())
+            self.guided.load_text(self.document.yaml_text)
+            self.guided.setEnabled(True)
         except Exception as error:
+            self.guided._clear()
+            self.guided.task_label.setText("Guided fields unavailable until YAML syntax is corrected.")
+            self.guided.setEnabled(False)
             self.status.setText(f"Cannot show guided fields: {error}. Raw YAML remains editable.")
 
     def _tab_changed(self, index):
@@ -241,8 +272,8 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
 
     def _edited_field(self, path, value):
         try:
-            updated = update_yaml_field(self.raw.toPlainText(), tuple(path), value)
-            self.raw.setPlainText(updated)
+            self.document.update_field(tuple(path), value)
+            self.raw.setPlainText(self.document.yaml_text)
             self.status.setText(f"Edited {'.'.join(path)} — validate and save to apply.")
         except Exception as error:
             self.status.setText(f"Guided edit failed: {error}. Use Raw YAML instead.")
@@ -250,36 +281,47 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
 
     def validate(self) -> bool:
         try:
-            resolved = validate_training_yaml_text(self.raw.toPlainText(), self.settings)
-            self.status.setText(f"Valid {resolved.experiment.mode} configuration: "
+            resolved = self.document.validate_for_training(self.settings)
+            self.status.setText(f"Trainable {resolved.experiment.mode} configuration: "
                                 f"{resolved.experiment.exp_name}")
             return True
         except Exception as error:
-            self.status.setText(f"Validation failed: {type(error).__name__}: {error}")
+            self.status.setText(f"Not trainable: {type(error).__name__}: {error}")
             return False
 
     def save(self, *, as_new: bool) -> None:
-        if not self.validate():
+        try:
+            warnings = self.document.validate_for_save(self.settings)
+        except Exception as error:
+            self.status.setText(f"Cannot save invalid YAML: {type(error).__name__}: {error}")
             return
-        target = self.current_path
-        if as_new or target is None:
+        if as_new or self.current_path is None:
+            target = self.current_path
             proposal = f"{target.stem}_copy.yml" if target is not None else "new_experiment.yml"
             value, ok = QtWidgets.QInputDialog.getText(
                 self, "Save training YAML as…", "Path relative to configs/training:", text=proposal)
             if not ok or not value.strip():
                 return
-            target = value.strip()
-        elif QtWidgets.QMessageBox.question(
-            self, "Overwrite training YAML?", "Overwrite this configuration? Save As is safer for a new run.",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
-            return
+            destination = value.strip()
+            operation = lambda: self.document.save_as(self.settings, destination)
+        else:
+            if self.document.dirty and QtWidgets.QMessageBox.question(
+                self, "Overwrite training YAML?",
+                f"Save edits to {self.current_path.name}? Save As creates a separate copy.",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.No) != QtWidgets.QMessageBox.Yes:
+                return
+            operation = lambda: self.document.save(self.settings)
         try:
-            path = save_training_yaml_text(self.raw.toPlainText(), target, settings=self.settings,
-                                           overwrite=not as_new and self.current_path is not None)
-            self.current_path, self.clean_text = path, self.raw.toPlainText()
+            path = operation()
+            # Document canonicalizes the on-disk newline after a successful save.
+            if self.raw.toPlainText() != self.document.yaml_text:
+                with QtCore.QSignalBlocker(self.raw):
+                    self.raw.setPlainText(self.document.yaml_text)
             self.refresh(str(path))
-            self.status.setText(f"Saved: {path}")
+            suffix = " (draft saved; not ready for training)" if warnings else ""
+            self.status.setText(f"Saved: {path}{suffix}" +
+                                (". " + "; ".join(warnings) if warnings else ""))
             self.configSaved.emit(path)
             if self.on_saved is not None:
                 self.on_saved(path)

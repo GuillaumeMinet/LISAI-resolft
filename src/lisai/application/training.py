@@ -11,13 +11,18 @@ class SavedTrainingPlan:
     """Launch parameters for a validated, user-authored training YAML."""
 
     def __init__(self, config_path: Path, dataset_name: str, experiment_name: str,
-                 models_subfolder: str = "HDN", *, mode: str = "train", run_dir: Path | None = None):
+                 models_subfolder: str = "HDN", *, mode: str = "train", run_dir: Path | None = None,
+                 workspace_root: Path | None = None, config_root: Path | None = None):
         self.config_path = Path(config_path)
         self.dataset_name = str(dataset_name)
         self.experiment_name = str(experiment_name)
         self.models_subfolder = str(models_subfolder)
         self.mode = str(mode)
+        # Only continue_training knows its final directory during preflight.
+        # New/retrain runs are numbered by the backend at execution time.
         self.run_dir = Path(run_dir) if run_dir is not None else None
+        self.workspace_root = Path(workspace_root).resolve() if workspace_root is not None else None
+        self.config_root = Path(config_root).resolve() if config_root is not None else None
 
 
 def training_command(settings, plan, *, interpreter: str | None = None) -> list[str]:
@@ -30,6 +35,9 @@ def training_command(settings, plan, *, interpreter: str | None = None) -> list[
         raise FileNotFoundError(f"Training configuration not found: {config_path}")
     if not config_root.is_dir() or not workspace.is_dir():
         raise ValueError("LISAI workspace or writable config directory is missing.")
+    if (getattr(plan, "workspace_root", None) not in (None, workspace) or
+            getattr(plan, "config_root", None) not in (None, config_root)):
+        raise ValueError("Training plan belongs to another workspace or config root. Revalidate it.")
     return [
         str(executable), "-u", "-m", "lisai_runner.training_entrypoint",
         "--config", str(config_path),
@@ -50,8 +58,6 @@ def plan_for_training_config(config_path: str | Path, *, settings) -> SavedTrain
     training engine remains authoritative for model/dataset compatibility.
     Refuse destructive overwrites in this GUI entry point.
     """
-    from lisai.infra.paths import Paths
-
     path = managed_training_config_path(settings, config_path)
     if not path.is_file():
         raise FileNotFoundError(f"Training configuration not found: {path}")
@@ -73,15 +79,15 @@ def plan_for_training_config(config_path: str | Path, *, settings) -> SavedTrain
         if not run_dir.is_dir():
             raise FileNotFoundError(f"Original run does not exist: {run_dir}")
     else:
-        run_dir = Paths(settings).run_dir(
-            dataset_name=dataset_name, models_subfolder=resolved.routing.models_subfolder,
-            exp_name=experiment_name,
-        )
-        if run_dir.exists():
-            raise FileExistsError(f"Run already exists at {run_dir}; choose a different experiment name.")
+        if mode == "retrain":
+            origin = resolved.experiment.origin_run_dir
+            if not origin or not Path(origin).is_dir():
+                raise FileNotFoundError(f"Retrain requires an existing origin run: {origin}")
+        run_dir = None
     return SavedTrainingPlan(
         path, dataset_name, experiment_name, resolved.routing.models_subfolder,
         mode=mode, run_dir=run_dir,
+        workspace_root=settings.WORKSPACE_ROOT, config_root=settings.CONFIGS_ROOT,
     )
 
 
@@ -106,11 +112,6 @@ def plan_for_saved_training_config(config_path: str | Path, *, settings) -> Save
     if not name or not experiment_name:
         raise ValueError("Training config must define data.dataset_name and experiment.exp_name.")
     paths = Paths(settings)
-    run_dir = paths.run_dir(dataset_name=name,
-                            models_subfolder=resolved.routing.models_subfolder,
-                            exp_name=experiment_name)
-    if run_dir.exists():
-        raise FileExistsError(f"A run already exists at {run_dir}. Save As with a new experiment name.")
     noise_model_name = getattr(resolved.noise_model, "name", None)
     if not noise_model_name:
         raise ValueError("The HDN configuration must reference a calibrated noise model.")
@@ -124,4 +125,26 @@ def plan_for_saved_training_config(config_path: str | Path, *, settings) -> Save
     if len(inputs) < 2:
         raise ValueError("At least two independent TIFF recordings are required.")
     make_unprepared_split_manifest(data, data_format=resolved.data.data_format)
-    return SavedTrainingPlan(path, name, experiment_name, resolved.routing.models_subfolder)
+    return SavedTrainingPlan(
+        path, name, experiment_name, resolved.routing.models_subfolder,
+        workspace_root=settings.WORKSPACE_ROOT, config_root=settings.CONFIGS_ROOT,
+    )
+
+
+def quick_hdn_training_document(**kwargs):
+    """Prepare a validated Quick HDN draft, without writing a config or run.
+
+    Returns (document, scientific_plan). The training engine still owns the
+    split manifest and numbered run creation once the draft is saved.
+    """
+    import yaml
+    from lisai.training.quick_hdn import prepare_quick_hdn_training
+    from .config_document import TrainingConfigDocument
+
+    if kwargs.get("write"):
+        raise ValueError("Use the draft API without write=True; save the document explicitly.")
+    params = {**kwargs, "write": False}
+    plan = prepare_quick_hdn_training(**params)
+    text = yaml.safe_dump(plan.config, sort_keys=False, allow_unicode=True)
+    return TrainingConfigDocument.from_text(text, source_kind="new",
+                                            source_ref="presets/denoising_hdn_unsup"), plan

@@ -92,3 +92,30 @@ def test_training_recordings_validate_axes_without_improcess(qapp):
     assert [entry[0] for entry in sources] == ["a.tif", "b.tif"]
     with pytest.raises(ValueError, match="YX"):
         _training_sources(records, [], "single")
+
+
+def test_r4_document_is_single_editor_state(qapp, tmp_path):
+    """R4-A: raw and guided views update the same toolkit-independent object."""
+    from lisai.application import TrainingConfigDocument
+
+    settings = Settings.from_workspace(_init_workspace(tmp_path / "doc-ws"))
+    editor = TrainingConfigEditorWidget(settings)
+    draft = TrainingConfigDocument.from_text(
+        "# retain this note\nexperiment:\n  exp_name: demo\n"
+        "  task:\n    name: denoising_hdn\n    betaKL: 0.5\n"
+    )
+    assert editor.set_document(draft, confirm_discard=False)
+    assert editor.document is draft
+    assert editor.has_unsaved_changes
+    editor.guided.fieldEdited.emit(("experiment", "task", "betaKL"), 0.4)
+    assert "betaKL: 0.4" in editor.document.yaml_text
+    assert editor.raw.toPlainText() == editor.document.yaml_text
+    assert "# retain this note" in editor.document.yaml_text
+    editor.raw.setPlainText("experiment: [broken")
+    assert editor.document.yaml_text == "experiment: [broken"
+    editor.reload_guided()
+    assert not editor.guided.isEnabled()
+    editor.raw.setPlainText("experiment:\n  exp_name: fixed\n")
+    editor.reload_guided()
+    assert editor.guided.isEnabled()
+    editor.close()

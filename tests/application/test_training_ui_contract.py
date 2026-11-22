@@ -39,14 +39,23 @@ def test_general_saved_yaml_accepts_upsampling(workspace, example):
     assert plan.mode == "train"
     assert plan.dataset_name == "mito"
     assert plan.models_subfolder == "Upsamp"
-    assert plan.run_dir is not None
+    assert plan.run_dir is None  # Numbered run allocated only when execution starts.
     cmd = training_command(workspace, plan, interpreter="python-test")
     assert cmd[0] == "python-test"
     assert cmd[cmd.index("--config") + 1] == str(saved)
 
-    plan.run_dir.mkdir(parents=True)
-    with pytest.raises(FileExistsError):
-        plan_for_training_config(saved, settings=workspace)
+    # Simulate a completed prior run and verify that the same YAML remains
+    # preflightable; the backend, not the GUI, chooses the next numbered folder.
+    from lisai.infra.fs.folders import create_run_dir
+    from lisai.infra.paths import Paths
+
+    paths = Paths(workspace)
+    first, _ = create_run_dir(paths, "mito", plan.experiment_name, plan.models_subfolder)
+    second_plan = plan_for_training_config(saved, settings=workspace)
+    assert second_plan.run_dir is None
+    second, _ = create_run_dir(paths, "mito", plan.experiment_name, plan.models_subfolder)
+    assert first != second and first.is_dir() and second.is_dir()
+    assert plan_for_training_config(saved, settings=workspace).run_dir is None
 
 
 def test_gui_preflight_rejects_destructive_overwrite(workspace):

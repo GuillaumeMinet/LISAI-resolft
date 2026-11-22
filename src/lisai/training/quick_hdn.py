@@ -191,11 +191,11 @@ def prepare_quick_hdn_training(
     if resolved.model is None or resolved.model.architecture != "lvae":
         raise ValueError("Packaged quick HDN preset did not resolve to LVAE.")
     target = settings.TRAINING_CONFIG_DIR / "improcess" / f"{experiment_name}.yml"
-    if target.exists():
+    # Drafts may reuse an experiment name. A config can be launched for any
+    # number of independently numbered runs. Only an explicit *write* reserves
+    # a new config filename, and that remains exclusive.
+    if write and target.exists():
         raise FileExistsError(f"Training config already exists: {target}")
-    run_dir = paths.run_dir(dataset_name=dataset_name, models_subfolder="HDN", exp_name=experiment_name)
-    if run_dir.exists():
-        raise FileExistsError(f"Training run already exists: {run_dir}")
     if write:
         target.parent.mkdir(parents=True, exist_ok=True)
         fd, temp_name = tempfile.mkstemp(prefix=f".{experiment_name}-", suffix=".yml", dir=target.parent)
