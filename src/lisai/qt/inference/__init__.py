@@ -1,9 +1,9 @@
-"""Reusable inference Qt controls; no viewer or standalone-host dependencies.
+"""Reusable inference Qt components (optional, lazily imported).
 
-Importing this package does not import Qt until a widget is requested.
+No image files, model engines, or Qt bindings are imported at package import time.
 """
 
-__all__ = ["InferenceControlsWidget"]
+__all__ = ["InferenceControlsWidget", "ImageViewer2D", "ImageComparisonWidget"]
 
 
 def __getattr__(name):
@@ -11,4 +11,12 @@ def __getattr__(name):
         from .controls import InferenceControlsWidget
 
         return InferenceControlsWidget
+    if name == "ImageViewer2D":
+        from .image_viewer import ImageViewer2D
+
+        return ImageViewer2D
+    if name == "ImageComparisonWidget":
+        from .comparison import ImageComparisonWidget
+
+        return ImageComparisonWidget
     raise AttributeError(name)

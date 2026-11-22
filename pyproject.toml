@@ -23,7 +23,7 @@ lisai = "lisai.cli:main"
 lisai-runner = "lisai_runner.cli:main"
 
 [project.optional-dependencies]
-qt = ["qtpy>=2.4", "ruamel.yaml>=0.18"]
+qt = ["qtpy>=2.4", "ruamel.yaml>=0.18", "pyqtgraph>=0.13.7"]
 full = [
   "tensorboard",
   "h5py",
