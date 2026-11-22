@@ -35,6 +35,9 @@ from .training import (
 from .workspace import create_workspace, validate_workspace
 from .noise_models import NoiseModelEntry, list_noise_model_entries
 from .jobs import TrainingLaunchRequest, JobSnapshot
+from .inference import InferenceSelection, resolve_inference_selection
+from .inference_io import (InferenceProvenance, TiffInputInfo, load_inference_tiff,
+                           save_prediction_tiff)
 
 __all__ = [
     "create_workspace", "validate_workspace",
@@ -50,4 +53,6 @@ __all__ = [
     "quick_hdn_training_command", "quick_hdn_training_document", "plan_for_training_config",
     "training_command", "NoiseModelEntry", "list_noise_model_entries",
     "TrainingLaunchRequest", "JobSnapshot",
+    "InferenceSelection", "resolve_inference_selection", "InferenceProvenance",
+    "TiffInputInfo", "load_inference_tiff", "save_prediction_tiff",
 ]
