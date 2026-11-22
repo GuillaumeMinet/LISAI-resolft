@@ -102,3 +102,62 @@ share a single Qt-independent `TrainingConfigDocument` (`lisai.application`):
 The GUI layout, Quick HDN-only guided setup, ImProcess integration, and process
 monitor are intentionally unchanged in this first R4 increment. No `lisai.qt`
 module is imported by `lisai.application`.
+
+## R4-2: general Data and catalog-driven Configuration creation
+
+R4-2 adds the reusable non-Qt services `lisai.application.datasets` and
+`lisai.application.configs`. They list **all** registered training datasets
+(including preprocessed datasets not eligible for Quick HDN), normalize host
+recording arrays/TIFFs, and create unsaved training YAML documents from
+packaged presets, examples or templates. The CLI's preset/template writing APIs
+now delegate to the same *in-memory* scaffold builders, preserving their output
+format and existing exclusive-create behavior.
+
+For use without Qt:
+
+```python
+from lisai.application import (list_training_datasets, list_config_sources,
+                               create_document_from_source, preview_dataset_change,
+                               apply_dataset_change)
+
+available = list_training_datasets(settings)
+sources = list_config_sources(settings, kind="preset")
+doc, warnings = create_document_from_source(
+    settings, "presets/denoising_hdn_unsup", dataset_selection="my_dataset",
+    experiment_name="my_hdn",
+)
+# For an existing YAML, inspect and confirm changed dataset fields first:
+preview = preview_dataset_change(doc, settings, "my_other_dataset")
+apply_dataset_change(doc, preview)  # explicit operation; no automatic changes on browsing
+# Review guided fields or Raw YAML, then doc.save_as(settings, "my_hdn.yml")
+```
+
+`TrainingConfigEditorWidget` now embeds `TrainingConfigSourceWidget`, with task,
+source-kind, and catalog filters. "Create editable draft" loads the same shared
+`TrainingConfigDocument`, and **Raw YAML** always remains available. The guided
+editor shows schema-backed scientific fields (HDN supervised/unsupervised,
+βKL, and noise-model name; upsampling ratio/window/factor; CARE/RCAN loss),
+plus Dataset, Optimization and Saving/Advanced groups. Missing values are
+labeled as schema defaults, not silently written into YAML.
+
+`TrainingDataWidget` offers general registered-dataset browsing, data-type
+selection and transactional quick import from TIFF/NumPy recordings. Import
+runs on a Qt worker thread; registry queries and previews do not write files.
+After selecting a dataset, **Apply selected dataset to configuration** previews
+exact field changes and requests confirmation. For the known quick-imported
+`raw/` layout it also offers the necessary `prep_before=false`,
+`already_split=false` and empty `routing.data_subfolder`; other routing/layout
+semantics remain a manual training configuration decision.
+
+R4-2 temporarily embeds this new Data view alongside the legacy Quick HDN
+form in R3's first tab, to keep existing quick-preparation paths usable. The
+source creator works in the existing Configuration tab, and a new draft
+switches to the general saved-YAML launch path after Save As. **R4-3** will
+replace the legacy Quick-vs-existing workflow switch with the agreed Data /
+Configuration / Training workspace and eliminate duplicated Quick HDN form
+controls. R4-2 makes no ImProcess-plugin changes and requires no additional
+window; it intentionally does not implement Noise Models tools or runner jobs.
+
+R4-2 validation includes headless application regression tests and optional
+GUI smoke tests; visual/interactive Windows verification still requires a Qt
+binding on the target machine.

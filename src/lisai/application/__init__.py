@@ -20,6 +20,10 @@ from .config_editor import (
     validate_training_yaml_authoring,
 )
 from .config_document import TrainingConfigDocument
+from .configs import (list_config_sources, open_existing_document, create_document_from_source)
+from .datasets import (TrainingRecording, TrainingDatasetEntry, DatasetChangePreview,
+                       list_training_datasets, training_recording_sources,
+                       preview_dataset_change, apply_dataset_change)
 from .training import (
     SavedTrainingPlan,
     plan_for_saved_training_config,
@@ -36,6 +40,10 @@ __all__ = [
     "list_hdn_noise_models", "list_reusable_training_datasets", "list_usable_training_runs",
     "list_user_training_configs", "managed_training_config_path", "save_training_yaml_text",
     "validate_training_yaml_text", "validate_training_yaml_authoring", "TrainingConfigDocument",
+    "list_config_sources", "open_existing_document", "create_document_from_source",
+    "TrainingRecording", "TrainingDatasetEntry", "DatasetChangePreview",
+    "list_training_datasets", "training_recording_sources",
+    "preview_dataset_change", "apply_dataset_change",
     "SavedTrainingPlan", "plan_for_saved_training_config",
     "quick_hdn_training_command", "quick_hdn_training_document", "plan_for_training_config",
     "training_command",

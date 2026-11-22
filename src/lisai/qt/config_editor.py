@@ -14,6 +14,7 @@ from qtpy import QtCore, QtWidgets
 
 from lisai.application import TrainingConfigDocument, list_user_training_configs
 from lisai.application.schema_editor import TASK_LABELS, training_editor_fields, update_yaml_field
+from lisai.qt.config_sources import TrainingConfigSourceWidget
 
 
 def _document(text: str) -> dict:
@@ -81,7 +82,21 @@ class ScientificFieldsWidget(QtWidgets.QWidget):
                 form = QtWidgets.QFormLayout(group)
                 for field in fields:
                     value = _read_path(document, field.path)
-                    if field.field_type == "boolean" or isinstance(value, bool):
+                    if field.path == ("noise_model", "name"):
+                        from lisai.application import list_hdn_noise_models
+                        control = QtWidgets.QComboBox(group)
+                        control.setEditable(True)
+                        control.addItem("", "")
+                        for noise_name in list_hdn_noise_models(self.settings):
+                            control.addItem(noise_name, noise_name)
+                        if value not in (None, "") and control.findText(str(value)) < 0:
+                            control.addItem(str(value), str(value))
+                        control.setCurrentText(str(value) if value is not None else "")
+                        control.activated.connect(
+                            lambda _index, c=control, path=field.path: self._edit(path, c.currentText()))
+                        control.lineEdit().editingFinished.connect(
+                            lambda c=control, path=field.path: self._edit(path, c.currentText()))
+                    elif field.field_type == "boolean" or isinstance(value, bool):
                         control = QtWidgets.QCheckBox(group)
                         control.setChecked(bool(value if value is not None else field.default))
                         control.toggled.connect(lambda checked, path=field.path: self._edit(path, checked))
@@ -112,8 +127,13 @@ class ScientificFieldsWidget(QtWidgets.QWidget):
                         control.editingFinished.connect(
                             lambda c=control, path=field.path: self._edit(path, c.text()))
                     control.setToolTip(field.description or ".".join(field.path))
-                    label = QtWidgets.QLabel(field.title.replace("BetaKL", "βKL"), group)
-                    label.setToolTip(field.description)
+                    label_text = field.title.replace("BetaKL", "βKL")
+                    if value is None and field.default is not None:
+                        label_text += " (default)"
+                    label = QtWidgets.QLabel(label_text, group)
+                    label.setToolTip(field.description + (
+                        "\nThis value is not explicit in the YAML; the schema default is shown."
+                        if value is None and field.default is not None else ""))
                     form.addRow(label, control)
                 self.fields_layout.addWidget(group)
         finally:
@@ -134,17 +154,24 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
     closeRequested = QtCore.Signal()
     configSaved = QtCore.Signal(object)
     configOpened = QtCore.Signal(object)
+    draftCreated = QtCore.Signal(object)
 
     def __init__(self, settings, parent=None, *, on_saved=None, initial=None):
         super().__init__(parent)
         self.settings = settings
         self.on_saved = on_saved
         self.document = TrainingConfigDocument.from_text("")
+        self.dataset_selection_provider = None
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(QtWidgets.QLabel(
             "Edit scientific parameters first, or use Raw YAML for full control. "
             "Packaged presets are read-only; Save As creates a user configuration."
         ))
+        self.source_creator = TrainingConfigSourceWidget(
+            settings, self, dataset_provider=lambda: (
+                self.dataset_selection_provider() if self.dataset_selection_provider is not None else None))
+        self.source_creator.draftReady.connect(self._catalog_draft)
+        layout.addWidget(self.source_creator)
         self.selector = QtWidgets.QComboBox(self)
         layout.addWidget(self.selector)
         self.tabs = QtWidgets.QTabWidget(self)
@@ -241,6 +268,21 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
         except Exception as error:
             self.status.setText(f"Open failed: {error}")
             return False
+
+    def _catalog_draft(self, document, warnings):
+        if self.set_document(document):
+            message = f"New unsaved {document.source_kind} draft. Save As before training."
+            if warnings:
+                message += " " + " ".join(warnings)
+            self.status.setText(message)
+            self.draftCreated.emit(document)
+
+    def refresh_document_view(self):
+        """Refresh both editor views after the document was edited elsewhere."""
+        with QtCore.QSignalBlocker(self.raw):
+            self.raw.setPlainText(self.document.yaml_text)
+        self.reload_guided()
+        self.configOpened.emit(self.current_path)
 
     def load_source(self, source_ref: str, *, confirm_discard=True) -> bool:
         """Load a built-in preset/example/template as an unsaved draft."""

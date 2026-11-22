@@ -70,54 +70,16 @@ class QuickHDNParametersWidget(QtWidgets.QWidget):
 # The panel deliberately consumes ordinary arrays or TIFF paths. ImProcess (or
 # another host) supplies these records; it does not supply UI widgets, callbacks
 # for individual form controls, or a second training state machine.
-from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 
 from lisai.application import list_hdn_noise_models, list_reusable_training_datasets
-
-
-@dataclass(frozen=True)
-class TrainingRecording:
-    """A host-provided independent recording, not a frame in a timelapse."""
-
-    name: str
-    data: np.ndarray
-    axes: tuple[str, ...]
-    selected: bool = False
+from lisai.application.datasets import TrainingRecording, training_recording_sources
 
 
 def _training_sources(recordings, files, data_format: str):
-    """Convert selected raw arrays and TIFF paths to LISAI's existing L1 inputs."""
-    expected = ("Y", "X") if data_format == "single" else ("T", "Y", "X")
-    sources = []
-    for i, recording in enumerate(recordings, 1):
-        array = np.asarray(recording.data)
-        if tuple(recording.axes) != expected or array.ndim != len(expected):
-            raise ValueError(f"Recording {recording.name!r} does not have {''.join(expected)} axes.")
-        filename = str(recording.name or f"recording_{i:04d}")
-        filename = filename.replace("/", "_").replace("\\", "_")
-        for char in '<>:"|?*':
-            filename = filename.replace(char, "_")
-        filename = filename.strip().rstrip(". ") or f"recording_{i:04d}"
-        if not filename.lower().endswith((".tif", ".tiff")):
-            filename += ".tif"
-        sources.append((filename, array))
-    unique_paths = set()
-    for source in files:
-        path = Path(source).expanduser().resolve()
-        if path in unique_paths:
-            continue
-        if not path.is_file() or path.suffix.lower() not in {".tif", ".tiff"}:
-            raise ValueError(f"Not a TIFF recording: {path}")
-        unique_paths.add(path)
-        sources.append(path)
-    if len(sources) < 2:
-        raise ValueError("Quick HDN needs at least two independent recordings for training/validation.")
-    names = [item[0] if isinstance(item, tuple) else item.name for item in sources]
-    if len({name.casefold() for name in names}) != len(names):
-        raise ValueError("Two recordings have the same TIFF filename; rename one before importing.")
-    return sources
+    """R3-compatible Quick HDN minimum; shared conversion is toolkit independent."""
+    return training_recording_sources(recordings, files, data_format, minimum_recordings=2)
 
 
 class _QuickHDNPreparation(QtCore.QThread):

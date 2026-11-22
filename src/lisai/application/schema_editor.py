@@ -82,19 +82,25 @@ def training_editor_fields(settings, task_name: str) -> dict[str, tuple[EditorFi
     experiment = _ref(schema, schema["properties"]["experiment"])
     data = _ref(schema, schema["properties"]["data"])
     training = _ref(schema, schema["properties"]["training"])
+    saving = _ref(schema, schema["properties"]["saving"])
     task_definition = schema.get("$defs", {}).get(TASK_DEFS.get(task_name, ""), {})
     scientific = tuple(_field(schema, task_definition, name, ("experiment", "task", name))
                        for name in TASK_FIELDS.get(task_name, ()))
+    noise = (
+        (_field(schema, schema["$defs"]["NoiseModelSection"], "name", ("noise_model", "name")),)
+        if task_name == "denoising_hdn" else ()
+    )
     return {
         "Experiment": (
             _field(schema, experiment, "exp_name", ("experiment", "exp_name")),
-            *scientific,
+            *scientific, *noise,
         ),
-        "Dataset": (
-            _field(schema, data, "dataset_name", ("data", "dataset_name")),
-        ),
+        "Dataset": tuple(_field(schema, data, name, ("data", name))
+                         for name in ("dataset_name", "input", "target", "data_format")),
         "Optimization": tuple(_field(schema, training, name, ("training", name))
                               for name in ("n_epochs", "batch_size", "learning_rate")),
+        "Saving / Advanced": tuple(_field(schema, saving, name, ("saving", name))
+                                   for name in ("enabled", "validation_freq")),
     }
 
 

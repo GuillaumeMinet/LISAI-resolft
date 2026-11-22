@@ -83,6 +83,7 @@ import importlib.util
 from lisai.application import list_usable_training_runs, plan_for_training_config, training_command
 from lisai.qt.config_editor import TrainingConfigEditorWidget
 from lisai.qt.quick_hdn import TrainingRecording, QuickHDNSetupWidget, _QuickHDNPreparation
+from lisai.qt.training_data import TrainingDataWidget
 from lisai.qt.training_session import get_training_session
 
 
@@ -114,13 +115,29 @@ class TrainingPanel(QtWidgets.QWidget):
 
         self.tabs = QtWidgets.QTabWidget(self)
         outer.addWidget(self.tabs, 1)
-        self.setup = QuickHDNSetupWidget(settings, recordings, self.tabs)
-        self.tabs.addTab(self.setup, "1 · Prepare")
+        # R4-B transition: a general Data view now owns dataset selection/import.
+        # Keep the former Quick HDN setup alongside it until R4-C removes the
+        # duplicated task-specific form and replaces the old workflow switch.
+        self.prepare_container = QtWidgets.QWidget(self.tabs)
+        prepare_layout = QtWidgets.QVBoxLayout(self.prepare_container)
+        self.prepare_views = QtWidgets.QTabWidget(self.prepare_container)
+        prepare_layout.addWidget(self.prepare_views)
+        self.data_page = TrainingDataWidget(settings, recordings, self.prepare_views)
+        self.prepare_views.addTab(self.data_page, "Datasets")
+        self.setup = QuickHDNSetupWidget(settings, recordings, self.prepare_views)
+        self.prepare_views.addTab(self.setup, "Quick HDN setup (legacy)")
+        self.tabs.addTab(self.prepare_container, "1 · Data / Prepare")
+        self.prepare_views.setCurrentWidget(self.setup)
 
         self.editor = TrainingConfigEditorWidget(settings, self.tabs)
+        self.editor.dataset_selection_provider = lambda: self.data_page.selected_dataset_name
+        self.data_page.set_document(self.editor.document)
         self.editor.closeRequested.connect(lambda: self.tabs.setCurrentIndex(0))
         self.editor.configOpened.connect(self._config_opened)
         self.editor.configSaved.connect(self._config_saved)
+        self.editor.draftCreated.connect(self._catalog_draft)
+        self.data_page.documentUpdated.connect(self._dataset_applied)
+        self.data_page.datasetImported.connect(self._dataset_imported)
         self.editor.raw.textChanged.connect(self._sync)
         self.tabs.addTab(self.editor, "2 · Configuration / Raw YAML")
 
@@ -143,13 +160,41 @@ class TrainingPanel(QtWidgets.QWidget):
         self.prepare_button.clicked.connect(self.prepare)
         self.start_button.clicked.connect(self.start_training)
         self.new_button.clicked.connect(self.new_training)
-        self.workflow.currentIndexChanged.connect(self._sync)
+        self.workflow.currentIndexChanged.connect(self._workflow_changed)
         self.session.changed.connect(self._refresh_session)
         self.setup.sourceChanged.connect(self._sync)
         self._sync()
 
     def _config_opened(self, *_):
         self.prepared = None
+        self.data_page.set_document(self.editor.document)
+        self._sync()
+
+    def _catalog_draft(self, *_):
+        # A catalog draft is now a normal saved-YAML workflow, never a second
+        # Quick HDN preparation job or an implicit dataset import.
+        index = self.workflow.findData("saved")
+        if index >= 0:
+            self.workflow.setCurrentIndex(index)
+        self.tabs.setCurrentWidget(self.editor)
+        self.status.setText("New configuration draft. Review fields and Save As before training.")
+        self._sync()
+
+    def _dataset_applied(self):
+        self.editor.refresh_document_view()
+        self.prepared = None
+        self.status.setText("Dataset selection applied to configuration. Review, validate and save.")
+        self._sync()
+
+    def _dataset_imported(self, result):
+        # The old Quick HDN form is retained until R4-C. Keep its dataset
+        # selector in step with imports made through the new general Data view.
+        self.setup._refresh_datasets()
+        index = self.setup.existing_dataset.findData(result.dataset_name)
+        if index >= 0:
+            self.setup.dataset_source.setCurrentIndex(self.setup.dataset_source.findData("existing"))
+            self.setup.existing_dataset.setCurrentIndex(index)
+        self.status.setText(f"Imported dataset {result.dataset_name!r}. Create a config in Configuration.")
         self._sync()
 
     def _config_saved(self, path):
@@ -159,14 +204,22 @@ class TrainingPanel(QtWidgets.QWidget):
             self.prepared = None
         self._sync()
 
+    def _workflow_changed(self, *_):
+        # On choosing Existing YAML, start in Configuration, but do not lock
+        # out the general Data page. Dataset changes remain explicit.
+        if (self.workflow.currentData() == "saved" and
+                self.tabs.currentWidget() is self.prepare_container and
+                self.prepare_views.currentWidget() is self.setup):
+            self.tabs.setCurrentWidget(self.editor)
+        self._sync()
+
     def _sync(self, *_):
         busy = self.worker is not None or self.session.is_active()
         quick = self.workflow.currentData() == "quick"
-        if not quick and self.tabs.currentWidget() is self.setup:
-            self.tabs.setCurrentWidget(self.editor)
         imported = self.imported is not None
         locked = self.prepared is not None
         self.setup.setEnabled(quick and not busy and not locked)
+        self.data_page.setEnabled(not busy)
         self.setup.update_availability(busy=busy, locked=locked, imported=imported)
         self.workflow.setEnabled(not busy and not locked)
         self.editor.setEnabled(not busy)
@@ -305,6 +358,7 @@ class TrainingPanel(QtWidgets.QWidget):
         self.status.setText("Choose a new experiment or saved training YAML.")
         self.tabs.setCurrentIndex(0)
         self.setup._refresh_datasets()
+        self.data_page.refresh()
         self._sync()
 
 

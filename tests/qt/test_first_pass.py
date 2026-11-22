@@ -119,3 +119,49 @@ def test_r4_document_is_single_editor_state(qapp, tmp_path):
     editor.reload_guided()
     assert editor.guided.isEnabled()
     editor.close()
+
+
+def test_r4_b_catalog_draft_and_general_data_widget(qapp, tmp_path):
+    """R4-B components can operate without a host and share the document."""
+    import numpy as np
+    from lisai.application import TrainingConfigDocument
+    from lisai.data.import_training import import_training_dataset
+    from lisai.qt.training_data import TrainingDataWidget
+
+    settings = Settings.from_workspace(_init_workspace(tmp_path / "r4b-ws"))
+    import_training_dataset(
+        [np.ones((3, 24, 24), dtype=np.uint16), np.ones((3, 24, 24), dtype=np.uint16)],
+        settings=settings, dataset_name="mito", data_format="timelapse",
+    )
+    data = TrainingDataWidget(settings)
+    assert data.selected_dataset_name == "mito"
+    editor = TrainingConfigEditorWidget(settings)
+    editor.dataset_selection_provider = lambda: data.selected_dataset_name
+    creator = editor.source_creator
+    source = "presets/denoising_hdn_unsup.yml"
+    index = creator.source.findData(source)
+    assert index >= 0
+    creator.source.setCurrentIndex(index)
+    creator.experiment.setText("quick_config")
+    creator.create_draft()
+    assert editor.document.source_kind == "preset"
+    assert editor.document.read_field(("experiment", "exp_name")) == "quick_config"
+    assert editor.document.read_field(("data", "dataset_name")) == "mito"
+    assert editor.current_path is None and editor.has_unsaved_changes
+    assert "Raw YAML" in editor.tabs.tabText(1)
+    data.set_document(editor.document)
+    data.close()
+    editor.close()
+
+
+def test_r4_b_training_panel_data_and_catalog_available_in_saved_workflow(qapp, tmp_path):
+    settings = Settings.from_workspace(_init_workspace(tmp_path / "r4b-panel"))
+    panel = TrainingPanel(settings)
+    panel.workflow.setCurrentIndex(1)
+    assert panel.tabs.currentWidget() is panel.editor
+    panel.tabs.setCurrentWidget(panel.prepare_container)
+    panel.prepare_views.setCurrentWidget(panel.data_page)
+    panel._sync()
+    assert panel.tabs.currentWidget() is panel.prepare_container
+    assert not panel.start_button.isEnabled()
+    panel.close()

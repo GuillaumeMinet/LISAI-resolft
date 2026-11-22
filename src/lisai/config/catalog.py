@@ -170,6 +170,59 @@ def create_training_config_from_preset(
     overwrite: bool = False,
     stg: Settings,
 ) -> tuple[Path, list[str]]:
+    """Write the in-memory preset scaffold using the existing CLI contract."""
+    cfg, warnings = build_training_config_from_preset(
+        preset, exp_name=exp_name, dataset_name=dataset_name, input_name=input_name,
+        target_name=target_name, betaKL=betaKL, loss=loss,
+        upsampling_factor=upsampling_factor, sampling_ratio=sampling_ratio,
+        temporal_window=temporal_window, stg=stg,
+    )
+    output_path = _resolve_output_path(output=output, exp_name=cfg["experiment"]["exp_name"], stg=stg)
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"Config already exists: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    save_training_config_yaml(cfg, output_path, schema_root=stg.CONFIGS_ROOT / "schema")
+    return output_path, warnings
+
+
+def create_training_config_from_template(
+    template: str | Path = "base_training",
+    *,
+    exp_name: str | None = None,
+    dataset_name: str | None = None,
+    input_name: str | None = None,
+    target_name: str | None = None,
+    output: str | Path | None = None,
+    overwrite: bool = False,
+    stg: Settings,
+) -> tuple[Path, list[str]]:
+    """Write the in-memory template scaffold using the existing CLI contract."""
+    cfg, warnings = build_training_config_from_template(
+        template, exp_name=exp_name, dataset_name=dataset_name,
+        input_name=input_name, target_name=target_name, stg=stg,
+    )
+    output_path = _resolve_output_path(output=output, exp_name=cfg["experiment"]["exp_name"], stg=stg)
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"Config already exists: {output_path}")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    save_training_config_yaml(cfg, output_path, schema_root=stg.CONFIGS_ROOT / "schema")
+    return output_path, warnings
+
+
+def build_training_config_from_preset(
+    preset: TrainingPresetName,
+    *,
+    exp_name: str | None = None,
+    dataset_name: str | None = None,
+    input_name: str | None = None,
+    target_name: str | None = None,
+    betaKL: float | None = None,
+    loss: str | None = None,
+    upsampling_factor: int | None = None,
+    sampling_ratio: float | None = None,
+    temporal_window: int | None = None,
+    stg: Settings,
+) -> tuple[dict[str, Any], list[str]]:
     preset_path = resolve_training_preset_path(preset, stg=stg)
     preset_cfg = load_yaml(preset_path)
     cfg = strip_config_metadata(preset_cfg)
@@ -256,26 +309,17 @@ def create_training_config_from_preset(
         _dset(cfg, "data.target", None)
 
     _validate_scaffold_config(cfg)
-    output_path = _resolve_output_path(output=output, exp_name=exp_name, stg=stg)
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Config already exists: {output_path}")
+    return cfg, warnings
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_training_config_yaml(cfg, output_path, schema_root=stg.CONFIGS_ROOT / "schema")
-    return output_path, warnings
-
-
-def create_training_config_from_template(
+def build_training_config_from_template(
     template: str | Path = "base_training",
     *,
     exp_name: str | None = None,
     dataset_name: str | None = None,
     input_name: str | None = None,
     target_name: str | None = None,
-    output: str | Path | None = None,
-    overwrite: bool = False,
     stg: Settings,
-) -> tuple[Path, list[str]]:
+) -> tuple[dict[str, Any], list[str]]:
     template_path = resolve_training_template_path(template, stg=stg)
     template_cfg = load_yaml(template_path)
     validate_training_template_dict(template_cfg)
@@ -315,13 +359,13 @@ def create_training_config_from_template(
         warnings.append("Template placeholders were left as CHANGEME; edit them before validation or training.")
 
     _validate_scaffold_config(cfg)
-    output_path = _resolve_output_path(output=output, exp_name=exp_name, stg=stg)
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Config already exists: {output_path}")
+    return cfg, warnings
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_training_config_yaml(cfg, output_path, schema_root=stg.CONFIGS_ROOT / "schema")
-    return output_path, warnings
+
+def render_training_config_yaml(cfg: dict[str, Any]) -> str:
+    """Render a draft with the same section comments as CLI-generated YAML."""
+    yaml_text = yaml.dump(cfg, Dumper=_IndentedSafeDumper, sort_keys=False)
+    return _with_section_comments(yaml_text, schema_line="")
 
 
 def save_training_config_yaml(

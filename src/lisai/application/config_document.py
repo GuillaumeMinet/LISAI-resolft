@@ -167,8 +167,26 @@ class TrainingConfigDocument:
     def save_as(self, settings, destination: str | Path) -> Path:
         """Create a new user YAML exclusively; never overwrite an existing file."""
         self.validate_for_save(settings)
+        target = managed_training_config_path(settings, destination)
+        text = self.yaml_text
+        if self.source_kind in {"preset", "example", "template"}:
+            # Packaged source headers are relative to their *old* package
+            # paths. Rebase only generated/copied drafts on Save As, without
+            # reformatting their YAML or modifying package resources.
+            from lisai.config.io.schema_hints import schema_header
+
+            schema = ("experiment-template.schema.json" if self.source_kind == "template"
+                      else "experiment.schema.json")
+            header = schema_header(target, settings.CONFIGS_ROOT / "schema", schema)
+            if header:
+                lines = text.splitlines(keepends=True)
+                if lines and lines[0].startswith("# yaml-language-server: $schema="):
+                    lines[0] = header + "\n"
+                else:
+                    lines.insert(0, header + "\n")
+                text = "".join(lines)
         saved = save_training_yaml_text(
-            self.yaml_text, destination, settings=settings, overwrite=False,
+            text, target, settings=settings, overwrite=False,
             validation="authoring",
         )
         self._record_saved(saved)

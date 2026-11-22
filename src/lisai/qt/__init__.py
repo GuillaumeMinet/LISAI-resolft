@@ -5,4 +5,6 @@ Import specific submodules when needed; ``import lisai`` and
 must provide qtpy and a supported Qt binding (PySide6/PyQt5/etc.).
 """
 
-__all__ = ["config_editor", "training_session", "training_panel", "quick_hdn"]
+__all__ = ["config_editor", "training_session", "training_panel", "quick_hdn", "training_data", "config_sources"]
+# R4-B: TrainingDataWidget and TrainingConfigSourceWidget live in dedicated
+# submodules so they can be embedded by a future standalone LISAI shell.
