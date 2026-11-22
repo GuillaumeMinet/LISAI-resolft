@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from lisai.evaluation.inference.engine import predict
-from lisai.evaluation.inference.progress import ProgressLike, ensure_progress
+from lisai.evaluation.inference.progress import ProgressLike, InferenceProgressReporter, ensure_progress
 
 
 def infer_batch(
@@ -15,6 +15,8 @@ def infer_batch(
     ch_out: int | None, progress: ProgressLike | None = None,
     progress_level: int = 0, save_samples: bool = False,
     sample_batch_size: int = 1, precision: str = "fp32",
+    progress_reporter: InferenceProgressReporter | None = None,
+    frame_index: int = 1,
 ):
     return predict(
         model, x, is_lvae=is_lvae, tiling_size=tiling_size,
@@ -22,6 +24,8 @@ def infer_batch(
         progress=progress, progress_level=progress_level,
         save_samples=save_samples, sample_batch_size=sample_batch_size,
         precision=precision,
+        **(dict(progress_reporter=progress_reporter, frame_index=frame_index)
+           if progress_reporter is not None else {}),
     )
 
 
@@ -67,6 +71,7 @@ def predict_4d_stack(
     dark_frame_context_length: bool | None = None,
     verbose: bool = False, progress: ProgressLike | None = None,
     sample_batch_size: int = 1, precision: str = "fp32",
+    progress_reporter: InferenceProgressReporter | None = None,
 ):
     """Return [Z,T,Y,X] or [Z,1,Y,X]; temporal drop physically removes edges."""
     progress = ensure_progress(progress)
@@ -102,7 +107,10 @@ def predict_4d_stack(
         stack_iter = progress.track(
             stack_iter, total=n_stack_items, desc="Stack inference", level=0, leave=True,
         )
+    frame_index = 0
     for z, t in stack_iter:
+        if progress_reporter is not None:
+            progress_reporter.checkpoint()
         if timelapse:
             x_np = _build_temporal_input(
                 img, z=z, t=t, context_length=context_length,
@@ -114,6 +122,7 @@ def predict_4d_stack(
             x_np = img[z, ...][None, ...]
         if x_np is None:
             continue
+        frame_index += 1
         x = torch.from_numpy(np.ascontiguousarray(x_np)).to(device)
         resolved_ch_out = 1 if ch_out is None and context_length is not None else ch_out
         outputs = infer_batch(
@@ -122,6 +131,8 @@ def predict_4d_stack(
             progress=progress, progress_level=1 if show_stack_progress else 0,
             save_samples=lvae_save_samples, sample_batch_size=sample_batch_size,
             precision=precision,
+            **(dict(progress_reporter=progress_reporter, frame_index=frame_index)
+               if progress_reporter is not None else {}),
         )
         output_t = t-half if do_drop else t
         pred_stack[z, output_t, ...] = np.asarray(outputs["prediction"]).squeeze()

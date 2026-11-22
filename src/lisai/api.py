@@ -1,13 +1,14 @@
 """Convenient Python boundaries; internal inference functions receive explicit paths."""
 
 from pathlib import Path
-from typing import Literal, overload
+from typing import Callable, Literal, overload
 
 import numpy as np
 
 from lisai.config.models.inference import ApplyOverrides
 from lisai.config.settings import Settings, load_default_settings
-from lisai.evaluation.inference.results import PredictionInfo, PredictionResult
+from lisai.evaluation.inference.results import ArrayPrediction, PredictionInfo, PredictionResult
+from lisai.evaluation.inference.progress import InferenceProgressEvent, InferenceProgressReporter
 from lisai.hdn_performance import HDNPerformanceOptions, InferencePlan
 from lisai.infra.paths import Paths
 from lisai.model_sources import RunRef
@@ -130,8 +131,11 @@ def predict(
     overrides: ApplyOverrides | None = None, device: str = "auto",
     performance: HDNPerformanceOptions | None = None,
     measure_gpu_memory: bool = False,
+    on_progress: Callable[[InferenceProgressEvent], None] | None = None,
+    cancel_check: Callable[[], None] | None = None,
+    return_samples: bool = False,
     overwrite: Literal[False] = False, return_info: Literal[False] = False,
-) -> np.ndarray: ...
+) -> np.ndarray | ArrayPrediction: ...
 
 
 @overload
@@ -141,8 +145,11 @@ def predict(
     overrides: ApplyOverrides | None = None, device: str = "auto",
     performance: HDNPerformanceOptions | None = None,
     measure_gpu_memory: bool = False,
+    on_progress: Callable[[InferenceProgressEvent], None] | None = None,
+    cancel_check: Callable[[], None] | None = None,
+    return_samples: bool = False,
     overwrite: Literal[False] = False, return_info: Literal[True],
-) -> tuple[np.ndarray, PredictionInfo]: ...
+) -> tuple[np.ndarray, PredictionInfo] | ArrayPrediction: ...
 
 
 @overload
@@ -152,6 +159,9 @@ def predict(
     overrides: ApplyOverrides | None = None, device: str = "auto",
     performance: HDNPerformanceOptions | None = None,
     measure_gpu_memory: bool = False,
+    on_progress: Callable[[InferenceProgressEvent], None] | None = None,
+    cancel_check: Callable[[], None] | None = None,
+    return_samples: bool = False,
     overwrite: bool = False, return_info: Literal[False] = False,
 ) -> PredictionResult: ...
 
@@ -167,9 +177,12 @@ def predict(
     device: str = "auto",
     performance: HDNPerformanceOptions | None = None,
     measure_gpu_memory: bool = False,
+    on_progress: Callable[[InferenceProgressEvent], None] | None = None,
+    cancel_check: Callable[[], None] | None = None,
+    return_samples: bool = False,
     overwrite: bool = False,
     return_info: bool = False,
-) -> np.ndarray | tuple[np.ndarray, PredictionInfo] | PredictionResult:
+) -> np.ndarray | tuple[np.ndarray, PredictionInfo] | ArrayPrediction | PredictionResult:
     """Predict from an installed model name or an explicit saved-run reference.
 
     A string means a promoted model, while RunRef(run_id=...) means a training
@@ -206,10 +219,19 @@ def predict(
 
     from lisai.evaluation.run_apply_model import compute_prediction_array
 
+    if return_samples and not is_array:
+        raise ValueError("return_samples is only supported for NumPy array prediction.")
+    reporter = (InferenceProgressReporter(on_progress, cancel_check)
+                if on_progress is not None or cancel_check is not None else None)
+    if reporter is not None:
+        reporter.stage("loading")
+
     paths, selected_run, saved_run, promoted, cfg = _resolve_prediction_setup(
         model, settings=settings, config=config, overrides=overrides,
         device=device, performance=performance, output_dir=output_dir,
     )
+    if return_samples and not saved_run.is_lvae:
+        raise ValueError("return_samples requires an HDN/LVAE model.")
     if is_path:
         # The new public TIFF adapter accepts both extensions regardless of
         # legacy experiment-specific CLI filters in a bundled inference YAML.
@@ -217,17 +239,25 @@ def predict(
             "input": cfg.input.model_copy(update={"filters": ["tif", "tiff"]})
         })
     if is_array:
-        # Sampling outputs are a file-saving option; avoid calculating them for arrays.
+        # The caller explicitly opts into the additional memory required to
+        # retain individual HDN stochastic draws. Ordinary arrays stay cheap.
         cfg = cfg.model_copy(update={
-            "saving": cfg.saving.model_copy(update={"lvae_save_samples": False})
+            "saving": cfg.saving.model_copy(update={"lvae_save_samples": bool(return_samples)})
         })
         runtime = _load_prediction_runtime(
             saved_run=saved_run, promoted=promoted, paths=paths, cfg=cfg, device=device,
         )
-        result, _, _, info, _ = compute_prediction_array(
+        if reporter is not None:
+            reporter.checkpoint()
+        result, samples, _, info, _ = compute_prediction_array(
             data, saved_run=saved_run, runtime=runtime, cfg=cfg,
             verbose=False, measure_gpu_memory=measure_gpu_memory,
+            progress_reporter=reporter,
         )
+        if return_samples:
+            if samples is None:
+                raise RuntimeError("HDN inference did not return requested samples.")
+            return ArrayPrediction(result, samples, info)
         return (result, info) if return_info else result
 
     # Path adapter uses the same computation function through run_apply_model,
@@ -243,6 +273,7 @@ def predict(
         device=None if device == "auto" else device,
         overwrite=overwrite, return_result=True,
         measure_gpu_memory=measure_gpu_memory,
+        progress_reporter=reporter,
     )
 
 

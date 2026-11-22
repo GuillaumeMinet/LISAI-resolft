@@ -22,7 +22,9 @@ from lisai.evaluation.inference.normalization import denormalize_pred, normalize
 from lisai.evaluation.inference.memory import (
     start_gpu_memory_measurement, finish_gpu_memory_measurement,
 )
-from lisai.evaluation.inference.progress import InferenceProgress
+from lisai.evaluation.inference.progress import (
+    InferenceProgress, InferenceProgressReporter, count_tiles,
+)
 from lisai.evaluation.inference.results import PredictionInfo, PredictionResult
 from lisai.evaluation.inference.planning import (
     HDNOutOfMemoryError, resolve_hdn_plan,
@@ -362,12 +364,15 @@ def compute_prediction_array(
     normalization: InputNormalization | None = None,
     progress: InferenceProgress | None = None, verbose: bool = False,
     measure_gpu_memory: bool = False,
+    progress_reporter: InferenceProgressReporter | None = None,
 ) -> tuple[np.ndarray, np.ndarray | None, np.ndarray, PredictionInfo, np.ndarray]:
     """The single array computation path used by public predict and legacy apply.
 
     Returns final prediction, optional samples, processed input, alignment info,
     and internal ZTYX prediction for optional CLI color visualization.
     """
+    if progress_reporter is not None:
+        progress_reporter.stage("preparing")
     (normalized, timelapse, volumetric, source_indices, data_norm,
      model_norm, crop_size, original_size, normalized_black, context_length) = (
         _prepare_prediction_input(img, saved_run=saved_run, cfg=cfg,
@@ -376,6 +381,22 @@ def compute_prediction_array(
     plan = _resolved_prediction_plan(
         saved_run=saved_run, runtime=runtime, cfg=cfg, normalized=normalized,
     )
+    if progress_reporter is not None:
+        context_half = context_length // 2 if context_length is not None else 0
+        # Drop removes invalid edge frames; black_output retains them as zero
+        # placeholders but does NOT run inference on them. Count only work.
+        output_frames = (normalized.shape[1] - 2 * context_half
+                         if context_length is not None and
+                         cfg.inference.temporal_edge_mode in ("drop", "black_output")
+                         else normalized.shape[1])
+        if not timelapse:
+            output_frames = 1
+        frames = int(normalized.shape[0] * output_frames)
+        samples = int(cfg.inference.lvae_num_samples) if saved_run.is_lvae else 1
+        progress_reporter.begin(
+            total=frames * count_tiles(normalized.shape[-2:], runtime.tiling_size) * samples,
+            frames=frames, samples=samples,
+        )
     ch_out = 1 if normalized.ndim >= 4 and normalized.shape[1] > 1 else None
     stack_options = (
         {"sample_batch_size": plan.sample_batch_size, "precision": plan.precision}
@@ -399,7 +420,9 @@ def compute_prediction_array(
             upsamp=saved_run.upsampling_factor, context_length=context_length,
             temporal_edge_mode=cfg.inference.temporal_edge_mode,
             normalized_black_value=normalized_black,
-            verbose=verbose, progress=progress, **stack_options,
+            verbose=verbose, progress=progress,
+            **(dict(progress_reporter=progress_reporter) if progress_reporter is not None else {}),
+            **stack_options,
         )
     except torch.cuda.OutOfMemoryError as error:
         if plan is None or torch.device(runtime.device).type != "cuda":
@@ -411,6 +434,8 @@ def compute_prediction_array(
     gpu_memory = finish_gpu_memory_measurement(gpu_memory_baseline)
     if progress is not None:
         progress.write(f"Inference (model execution): {inference_seconds:.3f} s")
+    if progress_reporter is not None:
+        progress_reporter.stage("finalizing")
     if crop_size is not None and cfg.inference.keep_original_shape:
         pad = (max(0, original_size[0] - crop_size[0]), max(0, original_size[1] - crop_size[1]))
         pred_stack = center_pad(pred_stack, pad)
@@ -441,6 +466,8 @@ def compute_prediction_array(
         inverse_make_4d(np.asarray(samples_stack, dtype=np.float32), volumetric, timelapse, lvae_samples=True)
         if samples_stack is not None else None
     )
+    if progress_reporter is not None:
+        progress_reporter.stage("done")
     return (
         np.asarray(prediction, dtype=np.float32), samples,
         np.asarray(normalized, dtype=np.float32),
@@ -466,6 +493,7 @@ def run_apply_model(
     device: str | None = None,
     return_result: bool = False,
     measure_gpu_memory: bool = False,
+    progress_reporter: InferenceProgressReporter | None = None,
 ):
     """Apply a saved model using a fully resolved typed apply config.
 
@@ -640,6 +668,7 @@ def run_apply_model(
             img, saved_run=saved_run, runtime=runtime, cfg=cfg,
             normalization=normalization, progress=progress, verbose=True,
             measure_gpu_memory=measure_gpu_memory,
+            progress_reporter=progress_reporter,
         )
         volumetric = img.ndim == 4
         tosave = {"pred": pred_stack}

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from lisai.data.utils import adjust_for_tiling, adjust_img_size, adjust_pred_size, crop_center
-from lisai.evaluation.inference.progress import ProgressLike, ensure_progress
+from lisai.evaluation.inference.progress import ProgressLike, InferenceProgressReporter, ensure_progress
 from lisai.lib.hdn.forwardpass import forward_pass as lvae_forward_pass
 
 
@@ -13,7 +13,9 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             tiling_size:int = None,tiling_overlap = 50,upsamp:int=1,
             ch_out = None, progress: ProgressLike | None = None,
             progress_level: int = 0, save_samples: bool = False,
-            sample_batch_size: int = 1, precision: str = "fp32"):
+            sample_batch_size: int = 1, precision: str = "fp32",
+            progress_reporter: InferenceProgressReporter | None = None,
+            frame_index: int = 1):
     
     """
     Predicts image for given model, adjusting image size with padding,
@@ -60,6 +62,8 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
                         precision=precision)
                    if is_lvae else {})
     
+    if progress_reporter is not None:
+        progress_reporter.checkpoint()
     original_size = np.array(inp.shape[-2:])
     # print(f"Original input size: {original_size}")
     if inp.shape[-1] % 2 !=0 or inp.shape[-2] % 2 !=0: # ensure that image size is even
@@ -77,7 +81,12 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
             output_shape = (*inp.shape[:-3],ch_out,*output_size)
 
         inp_pad = adjust_img_size(inp,mltpl_of = mltpl_of, mode="pad")
-        outputs = make_prediction(model,inp_pad,device,is_lvae,num_samples, **hdn_options)
+        outputs = make_prediction(
+            model, inp_pad, device, is_lvae, num_samples,
+            **(dict(progress_reporter=progress_reporter, frame_index=frame_index,
+                    tile_index=1, tile_total=1) if progress_reporter is not None else {}),
+            **hdn_options,
+        )
         outputs["prediction"] = crop_center(outputs.get("prediction"),
                                             crop_size = output_size)
         if "samples" in outputs:
@@ -117,19 +126,25 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
         total_iterations = len(y_iter) * len(x_iter)
 
         tile_iter = ((y, x) for y in y_iter for x in x_iter)
-        for y, x in progress.track(
+        for tile_index, (y, x) in enumerate(progress.track(
             tile_iter,
             total=total_iterations,
             desc="Tiling",
             level=progress_level,
             leave=progress_level <= 0,
-        ):
+        ), start=1):
             # print(f"\n","x:",x,"y:",y)
             xx = x + full_tile_size[1]
             yy = y + full_tile_size[0]
             patch = inp_pad[...,y:yy,x:xx]
             # print(patch.shape)
-            patch_outputs = make_prediction(model,patch,device,is_lvae,num_samples, **hdn_options)
+            patch_outputs = make_prediction(
+                model, patch, device, is_lvae, num_samples,
+                **(dict(progress_reporter=progress_reporter, frame_index=frame_index,
+                        tile_index=tile_index, tile_total=total_iterations)
+                   if progress_reporter is not None else {}),
+                **hdn_options,
+            )
             # print(patch_outputs.get("prediction").shape)
             x_pred = (x+offset_x)*upsamp
             y_pred = (y+offset_y)*upsamp
@@ -158,8 +173,13 @@ def predict(model:torch.nn.Module, inp:torch.tensor, device=None,
 def make_prediction(model: torch.nn.Module, inp: torch.Tensor, device=None,
                     is_lvae: bool = False, num_samples: int | None = None,
                     *, save_samples: bool = False, sample_batch_size: int = 1,
-                    precision: str = "fp32"):
+                    precision: str = "fp32",
+                    progress_reporter: InferenceProgressReporter | None = None,
+                    frame_index: int = 1, tile_index: int = 1,
+                    tile_total: int = 1):
     """Predict one padded frame/tile; only collect HDN samples when requested."""
+    if progress_reporter is not None:
+        progress_reporter.checkpoint()
     was_training = model.training
     original_pred_mode = getattr(model, "mode_pred", None)
     model.eval()
@@ -171,7 +191,11 @@ def make_prediction(model: torch.nn.Module, inp: torch.Tensor, device=None,
             result = lvae_predict(inp, num_samples, model, None, device,
                                   return_samples=save_samples,
                                   sample_batch_size=sample_batch_size,
-                                  precision=precision)
+                                  precision=precision,
+                                  **(dict(progress_reporter=progress_reporter,
+                                          frame_index=frame_index,
+                                          tile_index=tile_index, tile_total=tile_total)
+                                     if progress_reporter is not None else {}))
             if save_samples:
                 mmse, samples = result
                 return {"prediction": mmse, "samples": np.stack(samples, axis=0)}
@@ -184,6 +208,11 @@ def make_prediction(model: torch.nn.Module, inp: torch.Tensor, device=None,
     try:
         with torch.no_grad():
             prediction = model(inp)
+        if progress_reporter is not None:
+            progress_reporter.advance(
+                1, frame_index=frame_index, tile_index=tile_index,
+                tile_total=tile_total, sample_index=1,
+            )
         return {"prediction": prediction.detach().cpu().numpy()}
     finally:
         model.train(was_training)
@@ -191,7 +220,10 @@ def make_prediction(model: torch.nn.Module, inp: torch.Tensor, device=None,
 
 def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
                  return_samples=False, *, sample_batch_size: int = 1,
-                 reuse_encoder: bool = True, precision: str = "fp32"):
+                 reuse_encoder: bool = True, precision: str = "fp32",
+                 progress_reporter: InferenceProgressReporter | None = None,
+                 frame_index: int = 1, tile_index: int = 1,
+                 tile_total: int = 1):
     """Generate exactly N HDN draws and accumulate an FP32 Monte Carlo mean.
 
     Cached deterministic features and their stochastic draws are scoped to this
@@ -221,6 +253,8 @@ def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
         features = (model.prepare_inference_features(inp)
                     if reuse_encoder and hasattr(model, "prepare_inference_features") else None)
         for start in range(0, num_samples, sample_batch_size):
+            if progress_reporter is not None:
+                progress_reporter.checkpoint()
             batch_size = min(sample_batch_size, num_samples - start)
             batch_input = inp.expand(batch_size, *inp.shape[1:])
             if features is not None:
@@ -239,6 +273,12 @@ def lvae_predict(inp, num_samples, model, gaussian_noise_std, device,
             total = contribution if total is None else total + contribution
             if collected is not None:
                 collected.extend(np.squeeze(sample) for sample in draw.detach().cpu().numpy())
+            if progress_reporter is not None:
+                progress_reporter.advance(
+                    batch_size, frame_index=frame_index,
+                    tile_index=tile_index, tile_total=tile_total,
+                    sample_index=start + batch_size,
+                )
     mmse = np.squeeze(total / np.float32(num_samples)).astype(np.float32, copy=False)
     return (mmse, collected) if return_samples else mmse
 

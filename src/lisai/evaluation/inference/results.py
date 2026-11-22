@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+import numpy as np
 from pathlib import Path
 
 from lisai.hdn_performance import InferencePlan
@@ -64,3 +66,16 @@ class PredictionResult:
     prediction_paths: tuple[Path, ...]
     info_by_path: dict[Path, PredictionInfo]
     inference_plan: InferencePlan | None = None
+
+
+@dataclass(frozen=True)
+class ArrayPrediction:
+    """Opt-in NumPy prediction with the individual HDN draws.
+
+    ``samples`` has a leading S axis and the same remaining axes/alignment as
+    ``prediction``. This is only returned by predict(return_samples=True).
+    """
+
+    prediction: np.ndarray
+    samples: np.ndarray
+    info: PredictionInfo

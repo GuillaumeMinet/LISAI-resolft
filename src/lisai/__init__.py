@@ -5,7 +5,8 @@ from .model_sources import RunRef
 from .config.models.inference import (
     ApplyOverrides, ApplyInputOverrides, ApplyInferenceOverrides, InputNormalization,
 )
-from .evaluation.inference.results import PredictionInfo, PredictionResult, GPUMemoryInfo
+from .evaluation.inference.results import PredictionInfo, PredictionResult, GPUMemoryInfo, ArrayPrediction
+from .evaluation.inference.progress import InferenceProgressEvent
 from .evaluation.inference.planning import HDNPerformanceOptions, InferencePlan, HDNOutOfMemoryError
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "HDNPerformanceOptions", "InferencePlan", "HDNOutOfMemoryError",
     "ApplyOverrides", "ApplyInputOverrides", "ApplyInferenceOverrides",
     "InputNormalization", "PredictionInfo", "PredictionResult", "GPUMemoryInfo",
+    "ArrayPrediction", "InferenceProgressEvent",
 ]
