@@ -7,5 +7,5 @@ binding is provided by the embedding host (or by the standalone test harness).
 
 __all__ = [
     "config_editor", "training_session", "training_panel", "training",
-    "quick_hdn", "training_data", "config_sources", "noise_models_panel",
+    "quick_hdn", "training_data", "config_sources", "noise_models_panel", "model_manager", "inference",
 ]
