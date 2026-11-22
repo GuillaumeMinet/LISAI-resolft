@@ -10,10 +10,12 @@ from pathlib import Path
 from qtpy import QtCore, QtWidgets
 
 from lisai.application import find_new_completed_run, list_usable_training_runs
+from lisai.application.jobs import JobSnapshot, TrainingLaunchRequest
 
 
 class TrainingSession(QtCore.QObject):
     changed = QtCore.Signal()
+    started_new = QtCore.Signal()
     log_appended = QtCore.Signal(str)
     completed = QtCore.Signal(str)
 
@@ -31,6 +33,7 @@ class TrainingSession(QtCore.QObject):
         self.run_id = None
         self.workspace = None
         self.plan = None
+        self.launch_request = None
         self.run_ids_before = set()
         self.log_text = ""
         self.stop_requested = False
@@ -61,6 +64,12 @@ class TrainingSession(QtCore.QObject):
             raise ValueError("Training command must not be empty.")
         self.workspace = settings
         self.plan = plan
+        self.launch_request = TrainingLaunchRequest(
+            config_path=Path(plan.config_path),
+            workspace_root=Path(settings.WORKSPACE_ROOT).resolve(),
+            config_root=Path(settings.CONFIGS_ROOT).resolve(),
+            mode=str(plan.mode),
+        )
         self.run_ids_before = set(run_ids_before)
         self.run_dir = Path(run_dir) if run_dir is not None else None
         self.run_id = None
@@ -72,6 +81,7 @@ class TrainingSession(QtCore.QObject):
         self._completion_callback = on_completed
         self.running = True  # Includes QProcess.Starting.
         self.status_text = "Launching training in an independent Python process…"
+        self.started_new.emit()
         self.process.setWorkingDirectory(str(settings.WORKSPACE_ROOT))
         self.append_log("Starting: " + " ".join(map(str, command[:4])) + " …\n")
         self.changed.emit()
@@ -95,6 +105,7 @@ class TrainingSession(QtCore.QObject):
             raise RuntimeError("Cannot reset an active training session.")
         self.has_started = False
         self.plan = None
+        self.launch_request = None
         self.run_dir = None
         self.run_id = None
         self.exit_code = None
@@ -135,8 +146,10 @@ class TrainingSession(QtCore.QObject):
                 completed_id = None
             self.run_id = completed_id
             self.status_text = (
-                f"Training completed successfully. Run: {self.run_dir}"
-                + (f" (ID: {completed_id})" if completed_id else "")
+                f"Training completed successfully. Run: {self.run_dir} (ID: {completed_id})"
+                if completed_id and self.run_dir is not None else
+                "Training completed successfully; run identification unavailable. "
+                "Check the run browser or log for the generated directory."
             )
         else:
             self.status_text = (
@@ -182,6 +195,22 @@ class TrainingSession(QtCore.QObject):
             if not self.process.waitForFinished(1500):
                 self.process.kill()
                 self.process.waitForFinished(1500)
+
+    def snapshot(self) -> JobSnapshot:
+        """Stable status shape for Qt views and future runner-backed adapters."""
+        if self.is_active():
+            status = "stopping" if self.stop_requested else (
+                "starting" if self.process.state() == QtCore.QProcess.Starting else "running")
+        elif not self.has_started:
+            status = "idle"
+        elif self.exit_code == 0:
+            status = "completed"
+        else:
+            status = "failed"
+        return JobSnapshot(
+            job_id=None, status=status, run_id=self.run_id, run_dir=self.run_dir,
+            progress=None, message=self.status_text,
+        )
 
     def show_window(self) -> bool:
         if self.dialog is None:

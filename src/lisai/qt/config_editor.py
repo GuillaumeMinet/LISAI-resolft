@@ -38,6 +38,7 @@ class ScientificFieldsWidget(QtWidgets.QWidget):
     """Task-aware scientific fields; independent of any host application."""
 
     fieldEdited = QtCore.Signal(object, object)
+    manageNoiseModelsRequested = QtCore.Signal()
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -134,6 +135,16 @@ class ScientificFieldsWidget(QtWidgets.QWidget):
                     label.setToolTip(field.description + (
                         "\nThis value is not explicit in the YAML; the schema default is shown."
                         if value is None and field.default is not None else ""))
+                    if field.path == ("noise_model", "name"):
+                        row_widget = QtWidgets.QWidget(group)
+                        row_layout = QtWidgets.QHBoxLayout(row_widget)
+                        row_layout.setContentsMargins(0, 0, 0, 0)
+                        row_layout.addWidget(control, 1)
+                        manage = QtWidgets.QPushButton("Manage…", row_widget)
+                        manage.setToolTip("Open the full-width Noise Models tool in this training workspace.")
+                        manage.clicked.connect(self.manageNoiseModelsRequested.emit)
+                        row_layout.addWidget(manage)
+                        control = row_widget
                     form.addRow(label, control)
                 self.fields_layout.addWidget(group)
         finally:
@@ -155,8 +166,9 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
     configSaved = QtCore.Signal(object)
     configOpened = QtCore.Signal(object)
     draftCreated = QtCore.Signal(object)
+    manageNoiseModelsRequested = QtCore.Signal()
 
-    def __init__(self, settings, parent=None, *, on_saved=None, initial=None):
+    def __init__(self, settings, parent=None, *, on_saved=None, initial=None, embedded=False):
         super().__init__(parent)
         self.settings = settings
         self.on_saved = on_saved
@@ -176,6 +188,7 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
         layout.addWidget(self.selector)
         self.tabs = QtWidgets.QTabWidget(self)
         self.guided = ScientificFieldsWidget(settings, self)
+        self.guided.manageNoiseModelsRequested.connect(self.manageNoiseModelsRequested.emit)
         self.tabs.addTab(self.guided, "Experiment parameters")
         self.raw = QtWidgets.QPlainTextEdit(self)
         no_wrap = (QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap
@@ -194,6 +207,7 @@ class TrainingConfigEditorWidget(QtWidgets.QWidget):
         save = QtWidgets.QPushButton("Save…")
         save_as = QtWidgets.QPushButton("Save As…")
         close = QtWidgets.QPushButton("Close")
+        close.setVisible(not embedded)
         for button in (refresh, open_button, self.reload_button, validate, save, save_as, close):
             buttons.addWidget(button)
         layout.addLayout(buttons)

@@ -161,3 +161,68 @@ window; it intentionally does not implement Noise Models tools or runner jobs.
 R4-2 validation includes headless application regression tests and optional
 GUI smoke tests; visual/interactive Windows verification still requires a Qt
 binding on the target machine.
+
+## R4-3: reusable Training workspace and in-window Noise Models
+
+R4-3 supersedes the R3/R4-2 **workflow layout** described earlier in this
+file. The public compatibility exports `TrainingPanel`, `TrainingDialog`,
+`TrainingMonitorWidget` and `show_training_dialog` remain available, but
+`TrainingPanel` is now an alias of `TrainingWorkspaceWidget`.
+
+```python
+from lisai.qt.training.workspace import TrainingWorkspaceWidget
+
+widget = TrainingWorkspaceWidget(settings, recordings=())  # ImProcess-free
+widget.show()
+```
+
+The same workspace consists of **Data / Configuration / Training** tabs:
+
+- **Data** uses `TrainingDataWidget` for read-only registered-dataset discovery,
+  explicit field-change previews and quick import of TIFF/array recordings.
+  Dataset browsing alone does not rewrite a YAML.
+- **Configuration** embeds the single `TrainingConfigEditorWidget`, including
+  catalog-derived presets/examples/templates, schema-guided scientific fields,
+  and the complete editable **Raw YAML**. A collapsed **Quick HDN from raw
+  dataset…** shortcut uses `quick_hdn_training_document` to create an unsaved
+  draft. Its initial experiment name/noise model are *creation inputs*, not a
+  second live parameter form; after creation, the shared document is
+  authoritative. The R3 duplicate Quick HDN form has been retired from the
+  main workspace.
+- **Training** displays the saved configuration identity and mode, validates on
+  explicit request, and starts the common local `TrainingSession`. All supported
+  saved LISAI task YAMLs use the same launch path. New runs use backend numbered
+  directories; rerunning the same YAML is allowed. Continue/retrain still need
+  valid YAML origin information and a confirmation when launched.
+
+**Tools ▾ → Noise models** replaces the main content with a full-width
+`NoiseModelsPanel` inside the *same window*. The HDN noise-model guided field
+also exposes a **Manage…** action leading to that same page. Returning does not
+recreate the document or training session. **Use selected model** writes only
+`noise_model.name` in an HDN document and marks it dirty; it must be saved
+before launch. The browser distinguishes complete file pairs from missing
+files, and does **not** claim their scientific validity has been verified.
+Full calibration creation/checking and diagnostics remain future work.
+
+The local session exposes a small `JobSnapshot` shape with `progress=None`
+when structured progress is not available; it does not invent epoch progress or
+persist jobs after application exit. On successful completion, run discovery
+handles both base and numbered directory names. Ambiguous matches are reported
+rather than guessed. An active session is bound to its original workspace;
+changing the host's workspace cannot reattach its window to another root.
+
+An independent Qt smoke launcher is available:
+
+```bash
+python scripts/lisai_training_qt_demo.py /absolute/path/to/workspace
+```
+
+**R4-4 / ImProcess shell remains separate:** the plugin is still the R3-style
+inference form with a training-window button. The R4-3 companion plugin only
+removes an unsafe early reopen shortcut and prevents status from another
+workspace being displayed as the current workspace. The planned compact
+Inference / Training tabs are not part of this patch.
+
+Qt GUI interaction must still be verified on a real Qt-enabled installation.
+The headless test environment runs application/catalog regression tests but
+skips tests which need an actual Qt binding.

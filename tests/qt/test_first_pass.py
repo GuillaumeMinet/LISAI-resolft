@@ -63,17 +63,24 @@ training:
     editor.close()
 
 
-def test_training_panel_composes_editor_quick_hdn_and_generic_saved_yaml(qapp, tmp_path):
+def test_training_panel_has_three_stages_and_internal_tools(qapp, tmp_path):
     settings = Settings.from_workspace(_init_workspace(tmp_path / "r3-ws"))
     records = [TrainingRecording("frame1", __import__("numpy").ones((16, 16)), ("Y", "X"), True)]
     panel = TrainingPanel(settings, records)
-    assert panel.setup.hdn.beta_kl.value() == 0.5
+    assert panel.tabs.count() == 3
+    assert [panel.tabs.tabText(i) for i in range(3)] == [
+        "1 · Data", "2 · Configuration", "3 · Training"]
     assert panel.editor.tabs.tabText(0) == "Experiment parameters"
     assert "Raw YAML" in panel.editor.tabs.tabText(1)
-    assert not panel.start_button.isEnabled()
-    panel.workflow.setCurrentIndex(1)
-    assert panel.tabs.currentWidget() is panel.editor
-    assert not panel.start_button.isEnabled()
+    assert not panel.execution_page.start_button.isEnabled()
+    document = panel.editor.document
+    panel.tabs.setCurrentIndex(1)
+    panel.open_noise_models()
+    assert panel.stack.currentWidget() is panel.noise_page
+    panel.back_from_tools()
+    assert panel.stack.currentWidget() is panel.tabs
+    assert panel.tabs.currentIndex() == 1
+    assert panel.editor.document is document
     panel.close()
 
 
@@ -154,14 +161,33 @@ def test_r4_b_catalog_draft_and_general_data_widget(qapp, tmp_path):
     editor.close()
 
 
-def test_r4_b_training_panel_data_and_catalog_available_in_saved_workflow(qapp, tmp_path):
+def test_r4_b_training_panel_data_and_catalog_available_in_configuration(qapp, tmp_path):
     settings = Settings.from_workspace(_init_workspace(tmp_path / "r4b-panel"))
     panel = TrainingPanel(settings)
-    panel.workflow.setCurrentIndex(1)
-    assert panel.tabs.currentWidget() is panel.editor
-    panel.tabs.setCurrentWidget(panel.prepare_container)
-    panel.prepare_views.setCurrentWidget(panel.data_page)
-    panel._sync()
-    assert panel.tabs.currentWidget() is panel.prepare_container
-    assert not panel.start_button.isEnabled()
+    panel.tabs.setCurrentIndex(0)
+    assert panel.tabs.currentWidget() is panel.data_page
+    panel.tabs.setCurrentIndex(1)
+    assert panel.editor.source_creator is not None
+    assert not panel.execution_page.start_button.isEnabled()
+    panel.close()
+
+
+def test_r4_c_select_noise_model_updates_only_shared_hdn_document(qapp, tmp_path):
+    from lisai.application import TrainingConfigDocument
+
+    settings = Settings.from_workspace(_init_workspace(tmp_path / "noise-page"))
+    panel = TrainingPanel(settings)
+    doc = TrainingConfigDocument.from_text(
+        "experiment:\n  task:\n    name: denoising_hdn\n    betaKL: 0.5\n"
+        "noise_model:\n  name: old\n"
+    )
+    panel.editor.set_document(doc, confirm_discard=False)
+    panel.tabs.setCurrentIndex(1)
+    panel.open_noise_models()
+    panel._use_noise_model("new_calibration")
+    assert panel.stack.currentWidget() is panel.tabs
+    assert panel.editor.document is doc
+    assert doc.read_field(("noise_model", "name")) == "new_calibration"
+    assert doc.read_field(("experiment", "task", "betaKL")) == 0.5
+    assert panel.editor.has_unsaved_changes
     panel.close()

@@ -33,6 +33,8 @@ from .training import (
     quick_hdn_training_document,
 )
 from .workspace import create_workspace, validate_workspace
+from .noise_models import NoiseModelEntry, list_noise_model_entries
+from .jobs import TrainingLaunchRequest, JobSnapshot
 
 __all__ = [
     "create_workspace", "validate_workspace",
@@ -46,5 +48,6 @@ __all__ = [
     "preview_dataset_change", "apply_dataset_change",
     "SavedTrainingPlan", "plan_for_saved_training_config",
     "quick_hdn_training_command", "quick_hdn_training_document", "plan_for_training_config",
-    "training_command",
+    "training_command", "NoiseModelEntry", "list_noise_model_entries",
+    "TrainingLaunchRequest", "JobSnapshot",
 ]

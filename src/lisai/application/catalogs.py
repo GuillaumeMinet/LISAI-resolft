@@ -1,6 +1,8 @@
 """Workspace-bound catalogs for existing LISAI datasets, models, and runs."""
 from __future__ import annotations
 
+from pathlib import Path
+
 def get_installed_model_card(settings, model_name: str) -> str | None:
     """Read the local card only; never fetch model weights for a preview."""
     from lisai.infra.paths import Paths
@@ -81,9 +83,19 @@ def list_usable_training_runs(settings) -> list[dict]:
 def find_new_completed_run(settings, *, dataset_name: str, experiment_name: str,
                            old_run_ids: set[str]) -> str | None:
     """Use the run scanner's real IDs after subprocess completion, not guessed paths."""
-    matches = [run for run in list_usable_training_runs(settings)
-               if run["run_id"] not in old_run_ids and run["dataset"] == dataset_name
-               and run["name"] == experiment_name]
+    from lisai.infra.fs.run_naming import parse_run_dir_name
+
+    matches = []
+    for run in list_usable_training_runs(settings):
+        if run["run_id"] in old_run_ids or run["dataset"] != dataset_name:
+            continue
+        # run_name metadata may be the base experiment name or its actual
+        # numbered directory label, depending on the source/run version.
+        folder = Path(run["run_dir"]).name
+        base, _index = parse_run_dir_name(folder)
+        if run["name"] == experiment_name or base == experiment_name:
+            matches.append(run)
+    # Two new matches are ambiguous: do not guess which run this process wrote.
     return matches[0]["run_id"] if len(matches) == 1 else None
 
 
